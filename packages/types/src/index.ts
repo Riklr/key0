@@ -1,0 +1,45 @@
+export type {
+  PaymentProtocol,
+  SkillPricing,
+  AgentSkillInputSchema,
+  AgentSkill,
+  AgentCard,
+} from "./agent-card.js";
+
+export type {
+  ChallengeState,
+  AccessRequest,
+  X402Challenge,
+  PaymentProof,
+  AccessGrant,
+  ChallengeRecord,
+} from "./challenge.js";
+
+export type {
+  NetworkName,
+  NetworkConfig,
+  ProductTier,
+  ResourceVerifier,
+  SellerConfig,
+} from "./config.js";
+
+export type {
+  IssueChallengeParams,
+  ChallengePayload,
+  VerifyProofParams,
+  VerificationResult,
+  VerificationErrorCode,
+} from "./adapter.js";
+export type { IPaymentAdapter } from "./adapter.js";
+
+export type { IChallengeStore, ISeenTxStore } from "./storage.js";
+
+export { AgentGateError } from "./errors.js";
+export type { AgentGateErrorCode } from "./errors.js";
+
+export type {
+  A2ATaskSendRequest,
+  A2AMessagePart,
+  A2ATaskStatus,
+  A2ATaskSendResponse,
+} from "./a2a.js";
