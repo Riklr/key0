@@ -1,0 +1,34 @@
+{
+  "name": "api-agentic-commerce",
+  "version": "1.0.0",
+  "description": "A2A + x402 photo service demo on Base Sepolia",
+  "main": "index.js",
+  "scripts": {
+    "dev:personal": "tsx src/personalAgent/server.ts",
+    "dev:photo": "tsx src/photoAgent/server.ts",
+    "test": "echo \"No tests configured\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://zaid-riklr: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@github.com/Riklr/api-agentic-commerce.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Riklr/api-agentic-commerce/issues"
+  },
+  "homepage": "https://github.com/Riklr/api-agentic-commerce#readme",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.9.3"
+  }
+}
