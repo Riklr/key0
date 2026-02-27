@@ -47,4 +47,27 @@ export class AccessTokenIssuer {
 		const { payload } = await jwtVerify(token, this.secret);
 		return payload as TokenClaims & { iat: number; exp: number };
 	}
+
+	async verifyWithFallback(
+		token: string,
+		fallbackSecrets: string[],
+	): Promise<TokenClaims & { iat: number; exp: number }> {
+		try {
+			return await this.verify(token);
+		} catch {
+			// Primary secret failed — try fallbacks
+		}
+
+		for (const secret of fallbackSecrets) {
+			try {
+				const key = new TextEncoder().encode(secret);
+				const { payload } = await jwtVerify(token, key);
+				return payload as TokenClaims & { iat: number; exp: number };
+			} catch {
+				// Try next fallback
+			}
+		}
+
+		throw new Error("Token verification failed with all secrets");
+	}
 }

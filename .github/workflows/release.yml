@@ -26,22 +26,10 @@ jobs:
       - name: Test
         run: bun test --recursive
 
-      - name: Publish @agentgate/types
-        run: cd packages/types && npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Version packages
+        run: npx changeset version
 
-      - name: Publish @agentgate/core
-        run: cd packages/core && npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @agentgate/x402-adapter
-        run: cd packages/x402-adapter && npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @agentgate/sdk
-        run: cd packages/sdk && npm publish --access public
+      - name: Publish packages
+        run: npx changeset publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

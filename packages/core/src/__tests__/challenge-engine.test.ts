@@ -1,55 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+	InMemoryChallengeStore,
+	InMemorySeenTxStore,
+	MockPaymentAdapter,
+} from "@agentgate/test-utils";
+import {
 	type AccessRequest,
 	AgentGateError,
-	type ChallengePayload,
-	type IPaymentAdapter,
-	type IssueChallengeParams,
 	type PaymentProof,
 	type SellerConfig,
-	type VerificationResult,
-	type VerifyProofParams,
 } from "@agentgate/types";
 import { AccessTokenIssuer } from "../access-token.js";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
-
-// ---------------------------------------------------------------------------
-// Mock Payment Adapter
-// ---------------------------------------------------------------------------
-class MockPaymentAdapter implements IPaymentAdapter {
-	readonly protocol = "mock";
-	private verifyResult: VerificationResult;
-
-	constructor(defaultResult?: Partial<VerificationResult>) {
-		this.verifyResult = {
-			verified: true,
-			txHash: `0x${"a".repeat(64)}` as `0x${string}`,
-			confirmedAmount: 100000n,
-			confirmedChainId: 84532,
-			confirmedAt: new Date(),
-			blockNumber: 1000n,
-			...defaultResult,
-		};
-	}
-
-	async issueChallenge(params: IssueChallengeParams): Promise<ChallengePayload> {
-		return {
-			challengeId: crypto.randomUUID(),
-			protocol: this.protocol,
-			raw: {},
-			expiresAt: params.expiresAt,
-		};
-	}
-
-	async verifyProof(_params: VerifyProofParams): Promise<VerificationResult> {
-		return this.verifyResult;
-	}
-
-	setVerifyResult(result: Partial<VerificationResult>): void {
-		this.verifyResult = { ...this.verifyResult, ...result };
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -539,6 +501,41 @@ describe("ChallengeEngine.getChallenge", () => {
 	test("returns null for non-existent", async () => {
 		const { engine } = makeEngine();
 		expect(await engine.getChallenge("nonexistent")).toBeNull();
+	});
+});
+
+describe("ChallengeEngine.onVerifyResource timeout", () => {
+	test("times out slow onVerifyResource with RESOURCE_VERIFY_TIMEOUT", async () => {
+		const { engine } = makeEngine({
+			config: {
+				onVerifyResource: () => new Promise(() => {}), // never resolves
+				resourceVerifyTimeoutMs: 50, // 50ms timeout for fast test
+			},
+		});
+
+		const req = makeRequest();
+		try {
+			await engine.requestAccess(req);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect(err).toBeInstanceOf(AgentGateError);
+			const agErr = err as AgentGateError;
+			expect(agErr.code).toBe("RESOURCE_VERIFY_TIMEOUT");
+			expect(agErr.httpStatus).toBe(504);
+		}
+	});
+
+	test("does not timeout fast onVerifyResource", async () => {
+		const { engine } = makeEngine({
+			config: {
+				onVerifyResource: async () => true,
+				resourceVerifyTimeoutMs: 5000,
+			},
+		});
+
+		const req = makeRequest();
+		const challenge = await engine.requestAccess(req);
+		expect(challenge.type).toBe("X402Challenge");
 	});
 });
 

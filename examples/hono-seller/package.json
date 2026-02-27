@@ -1,0 +1,13 @@
+{
+  "name": "hono-seller-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@agentgate/sdk": "workspace:*",
+    "@agentgate/x402-adapter": "workspace:*",
+    "hono": "^4.6.0"
+  }
+}

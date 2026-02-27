@@ -61,6 +61,34 @@ describe("AccessTokenIssuer", () => {
 		await expect(issuer2.verify(token)).rejects.toThrow();
 	});
 
+	test("verifyWithFallback succeeds with primary secret", async () => {
+		const issuer = new AccessTokenIssuer(SECRET);
+		const { token } = await issuer.sign(CLAIMS, 3600);
+		const decoded = await issuer.verifyWithFallback(token, []);
+		expect(decoded.sub).toBe(CLAIMS.sub);
+	});
+
+	test("verifyWithFallback succeeds with fallback secret", async () => {
+		const fallbackSecret = "another-secret-that-is-at-least-32-characters!!";
+		const fallbackIssuer = new AccessTokenIssuer(fallbackSecret);
+		const { token } = await fallbackIssuer.sign(CLAIMS, 3600);
+
+		// Primary secret is different, but fallback matches
+		const primaryIssuer = new AccessTokenIssuer(SECRET);
+		const decoded = await primaryIssuer.verifyWithFallback(token, [fallbackSecret]);
+		expect(decoded.sub).toBe(CLAIMS.sub);
+	});
+
+	test("verifyWithFallback throws when all secrets fail", async () => {
+		const otherIssuer = new AccessTokenIssuer("completely-unrelated-secret-at-least-32-chars!!");
+		const { token } = await otherIssuer.sign(CLAIMS, 3600);
+
+		const primaryIssuer = new AccessTokenIssuer(SECRET);
+		await expect(
+			primaryIssuer.verifyWithFallback(token, ["yet-another-wrong-secret-at-least-32-chars!!"]),
+		).rejects.toThrow("Token verification failed with all secrets");
+	});
+
 	test("expiresAt is approximately ttl seconds in the future", async () => {
 		const issuer = new AccessTokenIssuer(SECRET);
 		const before = Date.now();

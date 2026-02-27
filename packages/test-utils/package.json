@@ -1,5 +1,5 @@
 {
-	"name": "@agentgate/core",
+	"name": "@agentgate/test-utils",
 	"version": "0.1.0",
 	"type": "module",
 	"main": "./src/index.ts",
@@ -13,19 +13,9 @@
 	},
 	"dependencies": {
 		"@agentgate/types": "workspace:*",
-		"jose": "^6.0.0"
-	},
-	"peerDependencies": {
-		"ioredis": "^5.0.0"
-	},
-	"peerDependenciesMeta": {
-		"ioredis": {
-			"optional": true
-		}
+		"@agentgate/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@agentgate/test-utils": "workspace:*",
-		"ioredis": "^5.0.0",
 		"typescript": "^5.7.0"
 	}
 }

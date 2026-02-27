@@ -102,8 +102,20 @@ export class ChallengeEngine {
 			);
 		}
 
-		// 3. Pre-flight resource check
-		const exists = await this.config.onVerifyResource(req.resourceId, req.tierId);
+		// 3. Pre-flight resource check (with 5s timeout)
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(req.resourceId, req.tierId),
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() =>
+						reject(
+							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				),
+			),
+		]);
 		if (!exists) {
 			throw new AgentGateError(
 				"RESOURCE_NOT_FOUND",

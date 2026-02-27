@@ -46,6 +46,7 @@ export type SellerConfig = {
 
 	// Resource verification callback
 	readonly onVerifyResource: ResourceVerifier;
+	readonly resourceVerifyTimeoutMs?: number; // defaults to 5000
 
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;

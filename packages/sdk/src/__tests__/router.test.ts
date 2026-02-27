@@ -1,49 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { AccessTokenIssuer, ChallengeEngine } from "@agentgate/core";
 import {
-	AccessTokenIssuer,
-	ChallengeEngine,
 	InMemoryChallengeStore,
 	InMemorySeenTxStore,
-} from "@agentgate/core";
-import {
-	type A2ATaskSendRequest,
-	AgentGateError,
-	type ChallengePayload,
-	type IPaymentAdapter,
-	type IssueChallengeParams,
-	type SellerConfig,
-	type VerificationResult,
-	type VerifyProofParams,
-} from "@agentgate/types";
+	MockPaymentAdapter,
+} from "@agentgate/test-utils";
+import { type A2ATaskSendRequest, AgentGateError, type SellerConfig } from "@agentgate/types";
 import { AgentGateRouter } from "../router.js";
-
-// ---------------------------------------------------------------------------
-// Mock Adapter
-// ---------------------------------------------------------------------------
-class MockPaymentAdapter implements IPaymentAdapter {
-	readonly protocol = "mock";
-	private verifyResult: VerificationResult = {
-		verified: true,
-		txHash: `0x${"a".repeat(64)}` as `0x${string}`,
-		confirmedAmount: 100000n,
-		confirmedChainId: 84532,
-		confirmedAt: new Date(),
-		blockNumber: 1000n,
-	};
-
-	async issueChallenge(params: IssueChallengeParams): Promise<ChallengePayload> {
-		return {
-			challengeId: crypto.randomUUID(),
-			protocol: this.protocol,
-			raw: {},
-			expiresAt: params.expiresAt,
-		};
-	}
-
-	async verifyProof(_params: VerifyProofParams): Promise<VerificationResult> {
-		return this.verifyResult;
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

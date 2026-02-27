@@ -44,6 +44,11 @@ export function agentGateApp(opts: AgentGateHonoConfig): Hono {
 
 	app.get("/.well-known/agent.json", async (c) => {
 		const result = await handler.handleAgentCard();
+		if (result.headers) {
+			for (const [k, v] of Object.entries(result.headers)) {
+				c.header(k, v);
+			}
+		}
 		return c.json(result.body as Record<string, unknown>, result.status as 200);
 	});
 
