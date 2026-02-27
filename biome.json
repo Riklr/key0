@@ -6,7 +6,19 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "complexity": {
+        "useLiteralKeys": "off"
+      },
+      "suspicious": {
+        "noImplicitAnyLet": "warn"
+      },
+      "correctness": {
+        "noUnnecessaryContinue": "off"
+      }
     }
   },
   "formatter": {

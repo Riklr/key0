@@ -1,16 +1,20 @@
 // Validation
 export {
-  validateUUID,
-  validateTxHash,
-  validateAddress,
-  validateNonEmpty,
-  validateDollarAmount,
-  parseDollarToUsdcMicro,
+	validateUUID,
+	validateTxHash,
+	validateAddress,
+	validateNonEmpty,
+	validateDollarAmount,
+	parseDollarToUsdcMicro,
 } from "./validation.js";
 
-// Storage
+// Storage — In-Memory
 export { InMemoryChallengeStore, InMemorySeenTxStore } from "./storage/memory.js";
 export type { InMemoryStoreConfig } from "./storage/memory.js";
+
+// Storage — Redis
+export { RedisChallengeStore, RedisSeenTxStore } from "./storage/redis.js";
+export type { RedisStoreConfig } from "./storage/redis.js";
 
 // Access Token
 export { AccessTokenIssuer } from "./access-token.js";

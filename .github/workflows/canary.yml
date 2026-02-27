@@ -1,0 +1,38 @@
+name: Canary
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test --recursive
+
+      - name: Publish canary versions
+        run: |
+          CANARY_VERSION="0.0.0-canary.$(git rev-parse --short HEAD)"
+          for pkg in types core x402-adapter sdk; do
+            cd packages/$pkg
+            npm version "$CANARY_VERSION" --no-git-tag-version
+            npm publish --access public --tag canary
+            cd ../..
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
