@@ -16,6 +16,7 @@ import {
 
 import type { AccessTokenIssuer } from "./access-token.js";
 import { CHAIN_CONFIGS } from "./agent-card.js";
+import { validateSellerConfig } from "./config-validation.js";
 import { parseDollarToUsdcMicro, validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 
 export type ChallengeEngineConfig = {
@@ -38,6 +39,7 @@ export class ChallengeEngine {
   private readonly challengeTTL: number;
 
   constructor(opts: ChallengeEngineConfig) {
+    validateSellerConfig(opts.config);
     this.config = opts.config;
     this.store = opts.store;
     this.seenTxStore = opts.seenTxStore;

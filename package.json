@@ -1,7 +1,7 @@
 {
   "name": "agentgate",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "examples/*"],
   "scripts": {
     "build": "bun run --filter '*' build",
     "test": "bun run --filter '*' test",

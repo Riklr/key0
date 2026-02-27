@@ -1,0 +1,11 @@
+{
+  "name": "client-agent-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run agent.ts"
+  },
+  "dependencies": {
+    "@agentgate/types": "workspace:*"
+  }
+}
