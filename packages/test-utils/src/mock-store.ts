@@ -1,14 +1,4 @@
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "@agentgate/core";
-
-export { InMemoryChallengeStore, InMemorySeenTxStore };
-
 /**
- * Create a pair of in-memory stores for testing.
- * Cleanup interval is disabled by default to avoid timer leaks in tests.
+ * Store re-exports removed to avoid cyclic dependency with @agentgate/core.
+ * Import InMemoryChallengeStore and InMemorySeenTxStore directly from "@agentgate/core".
  */
-export function createTestStores() {
-	return {
-		store: new InMemoryChallengeStore({ cleanupIntervalMs: 0 }),
-		seenTxStore: new InMemorySeenTxStore(),
-	};
-}

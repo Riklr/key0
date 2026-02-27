@@ -1,17 +1,19 @@
 {
   "name": "agentgate",
   "private": true,
+  "packageManager": "bun@1.3.1",
   "workspaces": ["packages/*", "examples/*"],
   "scripts": {
-    "build": "bun run --filter '*' build",
-    "test": "bun run --filter '*' test",
-    "typecheck": "bun run --filter '*' typecheck",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "lint": "biome check packages/"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
     "@changesets/cli": "^2.27.0",
     "@types/bun": "^1.3.9",
+    "turbo": "^2.3.0",
     "typescript": "^5.7.0"
   }
 }

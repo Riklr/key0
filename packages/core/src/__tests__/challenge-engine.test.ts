@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	InMemoryChallengeStore,
-	InMemorySeenTxStore,
-	MockPaymentAdapter,
-} from "@agentgate/test-utils";
+import { MockPaymentAdapter } from "@agentgate/test-utils";
 import {
 	type AccessRequest,
 	AgentGateError,
@@ -12,6 +8,7 @@ import {
 } from "@agentgate/types";
 import { AccessTokenIssuer } from "../access-token.js";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
+import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -213,6 +210,47 @@ describe("ChallengeEngine.submitProof", () => {
 			expect(err).toBeInstanceOf(AgentGateError);
 			expect((err as AgentGateError).code).toBe("CHALLENGE_EXPIRED");
 		}
+	});
+
+	test("expired challenge fires onChallengeExpired hook", async () => {
+		let now = Date.now();
+		let expiredId = "";
+		const { engine } = makeEngine({
+			clock: () => now,
+			config: {
+				onChallengeExpired: async (challengeId: string) => {
+					expiredId = challengeId;
+				},
+			},
+		});
+		const req = makeRequest();
+		const challenge = await engine.requestAccess(req);
+
+		// Advance past expiry
+		now += 901_000;
+
+		const proof: PaymentProof = {
+			type: "PaymentProof",
+			challengeId: challenge.challengeId,
+			requestId: req.requestId,
+			chainId: 84532,
+			txHash: makeTxHash(),
+			amount: "$0.10",
+			asset: "USDC",
+			fromAgentId: "agent://test-client",
+		};
+
+		try {
+			await engine.submitProof(proof);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect(err).toBeInstanceOf(AgentGateError);
+			expect((err as AgentGateError).code).toBe("CHALLENGE_EXPIRED");
+		}
+
+		// Wait for fire-and-forget hook
+		await new Promise((r) => setTimeout(r, 10));
+		expect(expiredId).toBe(challenge.challengeId);
 	});
 
 	test("chain mismatch: throws CHAIN_MISMATCH", async () => {

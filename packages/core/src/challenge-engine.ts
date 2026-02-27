@@ -212,6 +212,11 @@ export class ChallengeEngine {
 		// 4. Check expiry
 		if (challenge.expiresAt <= new Date(this.now())) {
 			await this.store.transition(challenge.challengeId, "PENDING", "EXPIRED");
+			if (this.config.onChallengeExpired) {
+				this.config.onChallengeExpired(challenge.challengeId).catch((err: unknown) => {
+					console.error("[AgentGate] onChallengeExpired hook error:", err);
+				});
+			}
 			throw new AgentGateError(
 				"CHALLENGE_EXPIRED",
 				"Challenge expired. Re-request access to get a new challenge.",
