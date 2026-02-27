@@ -27,11 +27,12 @@ As the agent economy grows, SaaS companies need a way to:
 
 AgentGate provides:
 - A **seller SDK** to publish a payment-gated A2A agent for any SaaS product.
-- A **buyer SDK** to discover, pay, and consume those services from a client agent.
 - A **payment adapter interface** starting with x402 (Base Chain USDC), extensible to any payment rail.
 - A **challenge/access-token lifecycle** engine with idempotency, replay protection, and expiration handling.
 
-**Out of scope v0.1**: Multi-tenant SaaS dashboards, refund UIs, subscription recurring billing, fiat rails.
+Client agents are **out of scope** — any A2A-compatible agent that can discover an agent card, hold a USDC wallet, and submit a transaction hash can interact with AgentGate. No buyer SDK is provided or required.
+
+**Out of scope v0.1**: Buyer SDKs, multi-tenant SaaS dashboards, refund UIs, subscription recurring billing, fiat rails.
 
 ---
 
@@ -39,10 +40,9 @@ AgentGate provides:
 
 | Persona | Role | Pain Today |
 |---|---|---|
-| **SaaS Provider** (e.g. Riklr) | Owns the product, wants to sell access to agents | No way to monetize agent traffic; signup walls block autonomous clients |
-| **Client Agent** | Autonomous AI agent that needs a service | Cannot create accounts, enter credit cards, or pass CAPTCHAs |
-| **End User / Operator** | Human who owns the client agent | Wants their agent to work autonomously without constant approval prompts |
-| **Open Source Contributor** | Developer extending AgentGate | Needs clear adapter interfaces and well-typed contracts |
+| **SaaS Provider** (e.g. Riklr) | Owns the product, deploys AgentGate alongside their API | No way to monetize agent traffic; signup walls block autonomous clients |
+| **Client Agent** (external, not our concern) | Any A2A agent that discovers the card, pays on-chain, consumes the service | Treated as a black-box external caller — assumed capable of wallet management and payment |
+| **Open Source Contributor** | Developer adding new payment adapters or integrating AgentGate | Needs clear adapter interfaces and well-typed contracts |
 
 ---
 
@@ -74,77 +74,56 @@ I want payment challenges to be idempotent and replay-protected,
 So that I never double-bill or accept underpayment from a different chain.
 ```
 
-### 4.2 Client Agent Journey
-
-```
-As a client agent,
-I want to discover a seller's capabilities from their agent card URL,
-So that I know what services are available and at what price.
-```
-
-```
-As a client agent,
-I want to pay for access using my on-chain wallet (USDC on Base),
-So that I can complete the transaction without human intervention.
-```
-
-```
-As a client agent,
-I want to receive a short-lived access token after payment,
-So that I can call the seller's actual API without re-paying.
-```
-
-```
-As a client agent,
-I want clear error responses when a challenge has expired,
-So that I can request a new challenge and retry rather than hanging.
-```
-
 ---
 
 ## 5. System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         CLIENT AGENT                                │
-│  ┌──────────────┐   ┌──────────────────┐   ┌───────────────────┐  │
-│  │ A2A Discovery│   │  Payment Adapter │   │  Access Token Use │  │
-│  │ (Agent Card) │   │  (x402 / future) │   │  (Bearer Token)   │  │
-│  └──────┬───────┘   └────────┬─────────┘   └────────┬──────────┘  │
-└─────────┼────────────────────┼─────────────────────┼───────────────┘
-          │  A2A (JSON-RPC)    │  On-chain USDC       │  HTTPS
-          ▼                    ▼                      ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        AGENTGATE RUNTIME                            │
-│                                                                     │
-│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────┐ │
-│  │  Agent Card    │  │ Challenge Engine │  │  Access Token Store  │ │
-│  │  Registry      │  │ (Idempotency +  │  │  (JWT / opaque,      │ │
-│  │  /.well-known/ │  │  Expiry +       │  │   short-lived)       │ │
-│  │  agent.json    │  │  Replay Guard)  │  └──────────────────────┘ │
-│  └────────────────┘  └────────┬────────┘                           │
-│                               │                                    │
-│  ┌────────────────────────────▼────────────────────────────────┐   │
-│  │                  Payment Adapter Layer                       │   │
-│  │  ┌──────────────────┐    ┌──────────────────────────────┐  │   │
-│  │  │  x402Adapter     │    │  (Future) VisaAdapter / ...  │  │   │
-│  │  │  - issueChallenge│    │  implements IPaymentAdapter  │  │   │
-│  │  │  - verifyProof   │    └──────────────────────────────┘  │   │
-│  │  └──────────────────┘                                       │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                               │                                    │
-│  ┌────────────────────────────▼────────────────────────────────┐   │
-│  │               On-Chain Verification Layer                    │   │
-│  │  viem publicClient → waitForTransactionReceipt              │   │
-│  │  Validates: txHash, amount, recipient, chainId, block time  │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SELLER BACKEND (e.g. Riklr API)                  │
-│  Receives access token → validates via AgentGate SDK → serves data  │
-└─────────────────────────────────────────────────────────────────────┘
+  ANY A2A-COMPATIBLE CLIENT AGENT
+  (wallet + payment capability assumed — not AgentGate's concern)
+         │
+         │  ① GET /.well-known/agent.json  (discover)
+         │  ② A2A tasks/send → request-access  (get challenge)
+         │  ③ [client pays on-chain independently]
+         │  ④ A2A tasks/send → submit-proof  (submit txHash)
+         │  ⑤ HTTPS + Bearer token  (consume API)
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                        AGENTGATE RUNTIME                             │
+│                      (deployed by seller)                            │
+│                                                                      │
+│  ┌─────────────────┐  ┌──────────────────────┐  ┌────────────────┐  │
+│  │  Agent Card     │  │   Challenge Engine    │  │  Access Token  │  │
+│  │  /.well-known/  │  │  - Idempotency        │  │  Store         │  │
+│  │  agent.json     │  │  - Expiry tracking    │  │  (JWT, 1hr TTL)│  │
+│  │  (auto-served)  │  │  - State machine      │  └────────────────┘  │
+│  └─────────────────┘  └──────────┬───────────┘                      │
+│                                  │                                   │
+│  ┌───────────────────────────────▼───────────────────────────────┐  │
+│  │                    Payment Adapter Layer                       │  │
+│  │                                                                │  │
+│  │   interface IPaymentAdapter { issueChallenge, verifyProof }   │  │
+│  │                                                                │  │
+│  │   ┌──────────────────┐    ┌─────────────────────────────┐    │  │
+│  │   │  x402Adapter ✓   │    │  StripeAdapter (future)     │    │  │
+│  │   │  Base USDC       │    │  LightningAdapter (future)  │    │  │
+│  │   └──────────────────┘    └─────────────────────────────┘    │  │
+│  └───────────────────────────────┬───────────────────────────────┘  │
+│                                  │                                   │
+│  ┌───────────────────────────────▼───────────────────────────────┐  │
+│  │              On-Chain Verification (x402Adapter)               │  │
+│  │   viem publicClient.getTransactionReceipt(txHash)              │  │
+│  │   Validates: to address, USDC amount, chainId, block.timestamp │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+         │
+         │  validateAccessToken() middleware (one import)
+         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                  SELLER'S EXISTING API (e.g. Riklr)                  │
+│         Unchanged — AgentGate sits in front, injects token check     │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -560,46 +539,7 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 
 ---
 
-## 11. Client Agent Onboarding Flow
-
-### 11.1 Steps to Consume a Service
-
-```
-Step 1: Install buyer SDK
-  npm install @agentgate/buyer-sdk
-
-Step 2: Configure wallet
-  - Set CLIENT_WALLET_PRIVATE_KEY in .env
-  - Ensure wallet has sufficient USDC on Base
-
-Step 3: Discover service
-  const card = await fetchAgentCard("https://riklr.com/.well-known/agent.json")
-
-Step 4: Request access
-  const challenge = await requestAccess(card, {
-    requestId: uuidv4(),          // store this for retry idempotency
-    resourceId: "album-42",
-    tierId: "single-photo",
-    clientAgentId: myAgent.id,
-  })
-
-Step 5: Pay
-  const proof = await payChallenge(challenge, {
-    privateKey: process.env.CLIENT_WALLET_PRIVATE_KEY,
-  })
-
-Step 6: Submit proof
-  const grant = await submitProof(card, proof)
-
-Step 7: Use the service
-  const photos = await fetch(grant.resourceEndpoint, {
-    headers: { Authorization: `Bearer ${grant.accessToken}` },
-  })
-```
-
----
-
-## 12. Wallet Management for Sellers
+## 11. Wallet Management for Sellers
 
 | Concern | Recommendation |
 |---|---|
@@ -611,7 +551,7 @@ Step 7: Use the service
 
 ---
 
-## 13. Technical Stack (Reference Implementation)
+## 12. Technical Stack (Reference Implementation)
 
 | Layer | Choice | Rationale |
 |---|---|---|
@@ -626,7 +566,7 @@ Step 7: Use the service
 
 ---
 
-## 14. Non-Functional Requirements
+## 13. Non-Functional Requirements
 
 | Requirement | Target |
 |---|---|
@@ -641,17 +581,18 @@ Step 7: Use the service
 
 ---
 
-## 15. Open Questions & v0.2 Roadmap
+## 14. Open Questions & v0.2 Roadmap
 
 ### Open Questions
 
 | # | Question | Owner |
 |---|---|---|
-| OQ-1 | Should `requestId` be scoped per `clientAgentId` to prevent one agent using another's idempotency key? | Protocol design |
-| OQ-2 | What is the refund SLA expectation for expired challenges? Manual vs automated? | Product |
-| OQ-3 | Do we need a challenge registry (central lookup) or is peer-to-peer (seller holds all state) sufficient for v0.1? | Architecture |
-| OQ-4 | Should access tokens be tied to the client's wallet address to prevent token theft? | Security |
-| OQ-5 | How do we handle multi-step resources (e.g. paginated album) — single token covers all pages? | Product |
+| OQ-1 | Should `requestId` be scoped per `clientAgentId` to prevent one agent reusing another agent's idempotency key? | Protocol design |
+| OQ-2 | What is the seller's refund SLA for expired challenges where payment landed late on-chain? Manual hook vs auto-sweep? | Product |
+| OQ-3 | Is seller-local challenge state (in-memory / Redis) sufficient, or do we need a shared challenge registry for multi-seller discovery? | Architecture |
+| OQ-4 | Should the access token JWT bind to the submitting wallet address to prevent bearer token theft between agents? | Security |
+| OQ-5 | For multi-page / paginated resources, does one payment cover the full session or does each page require a new challenge? | Product |
+| OQ-6 | Should `onVerifyResource` be async with a timeout? What is the failure mode if the seller's backend is slow? | Reliability |
 
 ### v0.2 Roadmap
 
@@ -665,7 +606,7 @@ Step 7: Use the service
 
 ---
 
-## 16. Example: Riklr End-to-End Flow
+## 15. Example: Riklr End-to-End Flow
 
 ```
 [Riklr Agent Card at https://riklr.com/.well-known/agent.json]
@@ -683,7 +624,8 @@ Step 7: Use the service
    { challengeId: "chall-abc", amount: "$0.10", chainId: 8453,
      destination: "0xRIKLR...", expiresAt: "2026-02-28T10:15:00Z" }
 
-3. Client pays 0.10 USDC on Base mainnet → gets txHash "0xTX..."
+3. Client (using any wallet/tool it chooses) sends 0.10 USDC to 0xRIKLR... on Base mainnet.
+   Receives txHash "0xTX..." from the chain.
 
 4. Client → Riklr Agent (submit-proof)
    { challengeId: "chall-abc", txHash: "0xTX...", chainId: 8453, amount: "$0.10" }
