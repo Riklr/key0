@@ -95,7 +95,6 @@ bun test --recursive # Run all tests
 
 - [TECH.md](./TECH.md) - Detailed technical implementation blueprint
 - [SPEC.md](./SPEC.md) - Protocol specification
-- [Migration Guide](./docs/migration-from-x402-poc.md) - Migrating from x402-poc
 
 ## Networks
 
