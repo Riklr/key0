@@ -1,6 +1,4 @@
-export { CHAIN_CONFIGS } from "./chain-config.js";
 export {
-	USDC_DECIMALS,
 	USDC_TRANSFER_EVENT_SIGNATURE,
 	USDC_ABI,
 	parseDollarToUsdcMicro,

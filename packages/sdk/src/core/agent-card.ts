@@ -1,3 +1,4 @@
+import { CHAIN_CONFIGS } from "../types/index.js";
 import type {
 	AgentCard,
 	AgentSkill,
@@ -6,7 +7,6 @@ import type {
 	ProductTier,
 	SellerConfig,
 	SkillPricing,
-	CHAIN_CONFIGS,
 } from "../types/index.js";
 
 export function buildAgentCard(config: SellerConfig): AgentCard {

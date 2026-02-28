@@ -20,7 +20,7 @@ export { AccessTokenIssuer } from "./access-token.js";
 export type { TokenClaims, TokenResult } from "./access-token.js";
 
 // Agent Card
-export { buildAgentCard, CHAIN_CONFIGS } from "./agent-card.js";
+export { buildAgentCard } from "./agent-card.js";
 
 // Config Validation
 export { validateSellerConfig } from "./config-validation.js";

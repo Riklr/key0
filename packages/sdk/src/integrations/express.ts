@@ -1,8 +1,10 @@
-import { Router } from "express";
+import { type NextFunction, type Request, type Response, Router } from "express";
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { agentCardHandler, jsonRpcHandler, UserBuilder } from "@a2a-js/sdk/server/express";
 import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
+import { AgentGateError } from "../types/index.js";
+import { validateToken } from "../middleware.js";
 
 /**
  * Create an Express router that serves the agent card and A2A endpoint.
@@ -28,5 +30,27 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 	return router;
 }
 
-export { validateToken as validateAccessToken } from "../middleware.js";
+/**
+ * Express middleware to validate access tokens.
+ *
+ * Usage:
+ *   app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
+ */
+export function validateAccessToken(config: ValidateAccessTokenConfig) {
+	return async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const payload = await validateToken(req.headers.authorization, config);
+			// Attach decoded token to request for downstream handlers
+			(req as Request & { agentGateToken?: unknown }).agentGateToken = payload;
+			next();
+		} catch (err: unknown) {
+			if (err instanceof AgentGateError) {
+				res.status(err.httpStatus).json(err.toJSON());
+			} else {
+				res.status(500).json({ type: "Error", code: "INTERNAL_ERROR", message: "Internal error" });
+			}
+		}
+	};
+}
+
 export type { ValidateAccessTokenConfig };
