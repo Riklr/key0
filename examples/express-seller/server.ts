@@ -1,7 +1,7 @@
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
-import { X402Adapter } from "@agentgate/x402-adapter";
-import type { NetworkName } from "@agentgate/types";
+import { X402Adapter } from "@agentgate/sdk";
+import type { NetworkName } from "@agentgate/sdk";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;

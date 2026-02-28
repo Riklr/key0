@@ -7,8 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentgate/types": "workspace:*",
-    "@agentgate/x402-adapter": "workspace:*",
+    "@agentgate/sdk": "workspace:*",
     "viem": "^2.21.0"
   }
 }

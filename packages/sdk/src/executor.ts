@@ -1,10 +1,5 @@
-import type {
-	AgentExecutor,
-	ExecutionEventBus,
-	Message,
-	RequestContext,
-	Task,
-} from "@a2a-js/sdk";
+import type { Message, Task } from "@a2a-js/sdk";
+import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import type { ChallengeEngine } from "./core/index.js";
 import type { AccessRequest, PaymentProof } from "./types/index.js";
 import { v4 as uuidv4 } from "uuid";
@@ -16,23 +11,24 @@ export class AgentGateExecutor implements AgentExecutor {
 		const { taskId, contextId, userMessage } = context;
 
 		// Find data part
-		const dataPart = userMessage.parts.find((p) => p.kind === "data");
+		// biome-ignore lint/suspicious/noExplicitAny: library type issue
+		const dataPart = userMessage.parts.find((p: any) => p.kind === "data");
 		if (!dataPart) {
 			throw new Error("No data part found in message");
 		}
 
 		// The data field in A2A SDK is typed as unknown or similar, cast it
-		const payload = dataPart.data as Record<string, unknown>;
+		const payload = (dataPart as any).data as Record<string, unknown>;
 		let resultData: unknown;
 
 		try {
 			// Route by type or shape
-			if (payload.type === "AccessRequest" || this.isAccessRequest(payload)) {
+			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
 				resultData = await this.engine.requestAccess(payload as unknown as AccessRequest);
-			} else if (payload.type === "PaymentProof" || this.isPaymentProof(payload)) {
+			} else if (payload["type"] === "PaymentProof" || this.isPaymentProof(payload)) {
 				resultData = await this.engine.submitProof(payload as unknown as PaymentProof);
 			} else {
-				throw new Error(`Unknown message type: ${payload.type}`);
+				throw new Error(`Unknown message type: ${payload["type"]}`);
 			}
 
 			// Success - Publish task completion and result message
@@ -57,7 +53,6 @@ export class AgentGateExecutor implements AgentExecutor {
 					{
 						kind: "data",
 						data: resultData as Record<string, unknown>,
-						mimeType: "application/json",
 					},
 				],
 			};

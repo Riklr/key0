@@ -8,8 +8,6 @@
   },
   "dependencies": {
     "@agentgate/sdk": "workspace:*",
-    "@agentgate/types": "workspace:*",
-    "@agentgate/x402-adapter": "workspace:*",
     "express": "^4.21.0"
   },
   "devDependencies": {

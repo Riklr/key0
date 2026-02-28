@@ -28,5 +28,5 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 	return router;
 }
 
-export { validateAccessToken } from "../middleware.js";
+export { validateToken as validateAccessToken } from "../middleware.js";
 export type { ValidateAccessTokenConfig };

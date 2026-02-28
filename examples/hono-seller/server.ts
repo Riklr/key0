@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
-import { X402Adapter } from "@agentgate/x402-adapter";
-import type { NetworkName } from "@agentgate/types";
+import { X402Adapter } from "@agentgate/sdk";
+import type { NetworkName } from "@agentgate/sdk";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
 const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
