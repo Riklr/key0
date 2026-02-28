@@ -4,7 +4,7 @@ import type {
 	IssueChallengeParams,
 	VerificationResult,
 	VerifyProofParams,
-} from "@agentgate/types";
+} from "../types/index.js";
 
 /**
  * Mock payment adapter for testing.

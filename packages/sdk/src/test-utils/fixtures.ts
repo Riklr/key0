@@ -1,4 +1,4 @@
-import type { AccessRequest, ChallengeRecord, SellerConfig } from "@agentgate/types";
+import type { AccessRequest, ChallengeRecord, SellerConfig } from "../types/index.js";
 
 const DEFAULT_WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 const DEFAULT_SECRET = "a-very-long-secret-that-is-at-least-32-characters!";

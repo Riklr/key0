@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { agentCardHandler, jsonRpcHandler, UserBuilder } from "@a2a-js/sdk/server/express";
-import { type AgentGateConfig, createAgentGate } from "./factory.js";
-import type { ValidateAccessTokenConfig } from "./middleware.js";
+import { type AgentGateConfig, createAgentGate } from "../factory.js";
+import type { ValidateAccessTokenConfig } from "../middleware.js";
 
 /**
  * Create an Express router that serves the agent card and A2A endpoint.
@@ -28,5 +28,5 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 	return router;
 }
 
-export { validateAccessToken } from "./middleware.js";
+export { validateAccessToken } from "../middleware.js";
 export type { ValidateAccessTokenConfig };

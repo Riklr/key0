@@ -1,4 +1,4 @@
-import { AgentGateError } from "@agentgate/types";
+import { AgentGateError } from "./types/index.js";
 import { type JWTPayload, jwtVerify } from "jose";
 
 export type AccessTokenPayload = JWTPayload & {

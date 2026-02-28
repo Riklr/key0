@@ -6,7 +6,7 @@ import type {
 	NetworkName,
 	VerificationResult,
 	VerifyProofParams,
-} from "@agentgate/types";
+} from "../types/index.js";
 import { http, type PublicClient, createPublicClient } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { CHAIN_CONFIGS } from "./chain-config.js";

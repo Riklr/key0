@@ -1,4 +1,4 @@
-import { AgentGateError } from "@agentgate/types";
+import { AgentGateError } from "../types/index.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;

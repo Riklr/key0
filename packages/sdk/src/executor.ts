@@ -5,8 +5,8 @@ import type {
 	RequestContext,
 	Task,
 } from "@a2a-js/sdk";
-import type { ChallengeEngine } from "@agentgate/core";
-import type { AccessRequest, PaymentProof } from "@agentgate/types";
+import type { ChallengeEngine } from "./core/index.js";
+import type { AccessRequest, PaymentProof } from "./types/index.js";
 import { v4 as uuidv4 } from "uuid";
 
 export class AgentGateExecutor implements AgentExecutor {

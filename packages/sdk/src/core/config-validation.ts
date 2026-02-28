@@ -1,4 +1,4 @@
-import type { SellerConfig } from "@agentgate/types";
+import type { SellerConfig } from "../types/index.js";
 import { validateAddress, validateDollarAmount } from "./validation.js";
 
 /**

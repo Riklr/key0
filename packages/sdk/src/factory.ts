@@ -4,14 +4,14 @@ import {
 	InMemoryChallengeStore,
 	InMemorySeenTxStore,
 	buildAgentCard,
-} from "@agentgate/core";
+} from "./core/index.js";
 import type {
 	AgentCard,
 	IChallengeStore,
 	IPaymentAdapter,
 	ISeenTxStore,
 	SellerConfig,
-} from "@agentgate/types";
+} from "./types/index.js";
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
 import { AgentGateExecutor } from "./executor.js";
 

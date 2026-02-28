@@ -7,7 +7,7 @@ import type {
 	SellerConfig,
 	SkillPricing,
 	CHAIN_CONFIGS,
-} from "@agentgate/types";
+} from "../types/index.js";
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];

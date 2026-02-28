@@ -12,11 +12,11 @@ import {
 	type ProductTier,
 	type SellerConfig,
 	type X402Challenge,
-} from "@agentgate/types";
+} from "../types/index.js";
 
-import { parseDollarToUsdcMicro } from "@agentgate/x402-adapter";
+import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type { AccessTokenIssuer } from "./access-token.js";
-import { CHAIN_CONFIGS } from "@agentgate/types";
+import { CHAIN_CONFIGS } from "../types/index.js";
 import { validateSellerConfig } from "./config-validation.js";
 import {
 	validateNonEmpty,
