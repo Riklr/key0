@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { MockPaymentAdapter } from "@agentgate/test-utils";
-import type { SellerConfig } from "@agentgate/types";
+import { MockPaymentAdapter } from "../test-utils";
+import type { SellerConfig } from "../types";
 import { validateToken } from "../middleware.js";
 import { createAgentGate } from "../factory.js";
 import { v4 as uuidv4 } from "uuid";
-import type { ExecutionEventBus, Message, Task, RequestContext } from "@a2a-js/sdk/server";
+import type { ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
+import type { Message, Task } from "@a2a-js/sdk";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
@@ -44,6 +45,22 @@ class MockEventBus implements ExecutionEventBus {
 	send(message: any): void {
 		this.events.push(message);
 	}
+
+	on(eventName: any, listener: any): this {
+		return this;
+	}
+
+	off(eventName: any, listener: any): this {
+		return this;
+	}
+
+	once(eventName: any, listener: any): this {
+		return this;
+	}
+
+	removeAllListeners(eventName?: any): this {
+		return this;
+	}
 }
 
 async function runTask(executor: any, payload: any) {
@@ -55,7 +72,7 @@ async function runTask(executor: any, payload: any) {
 		kind: "message",
 		messageId: uuidv4(),
 		role: "user",
-		parts: [{ kind: "data", data: payload, mimeType: "application/json" }],
+		parts: [{ kind: "data", data: payload }],
 		contextId,
 	};
 	
@@ -232,7 +249,7 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 		const failedTask = doubleSpendEvents.find(e => e.kind === "task" && e.status.state === "failed");
 		expect(failedTask).toBeDefined();
 		const errorMsg = doubleSpendEvents.find(e => e.kind === "message");
-		expect(errorMsg.parts[0].text).toContain("already been used"); 
+		expect(errorMsg.parts[0].text).toContain("already been redeemed"); 
 		// Or whatever error message core returns (AgentGateError messages are usually descriptive)
 	});
 });

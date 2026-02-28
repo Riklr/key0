@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { AgentGateError } from "@agentgate/types";
+import { AgentGateError } from "../../types";
 import {
-	parseDollarToUsdcMicro,
 	validateAddress,
 	validateDollarAmount,
 	validateNonEmpty,
 	validateTxHash,
 	validateUUID,
 } from "../validation.js";
+import { parseDollarToUsdcMicro } from "../../adapter/usdc.js";
 
 describe("validateUUID", () => {
 	test("accepts valid UUID", () => {

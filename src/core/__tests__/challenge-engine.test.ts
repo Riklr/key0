@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { MockPaymentAdapter } from "@agentgate/test-utils";
+import { MockPaymentAdapter } from "../../test-utils";
 import {
 	type AccessRequest,
 	AgentGateError,
 	type PaymentProof,
 	type SellerConfig,
-} from "@agentgate/types";
+} from "../../types";
 import { AccessTokenIssuer } from "../access-token.js";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
 import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";

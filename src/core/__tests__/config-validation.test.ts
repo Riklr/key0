@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SellerConfig } from "@agentgate/types";
+import type { SellerConfig } from "../../types";
 import { validateSellerConfig } from "../config-validation.js";
 
 function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {

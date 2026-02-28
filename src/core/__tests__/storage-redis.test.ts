@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AccessGrant, ChallengeRecord } from "@agentgate/types";
+import type { AccessGrant, ChallengeRecord } from "../../types";
 import { RedisChallengeStore, RedisSeenTxStore } from "../storage/redis.js";
 
 // ─── Mock ioredis Redis instance ─────────────────────────────────────

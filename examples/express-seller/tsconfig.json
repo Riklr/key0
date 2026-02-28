@@ -1,9 +1,11 @@
 {
-	"extends": "../../tsconfig.base.json",
+	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": ".",
-		"types": ["bun"]
+		"types": ["bun"],
+		"moduleResolution": "bundler",
+		"esModuleInterop": true
 	},
 	"include": ["."]
 }

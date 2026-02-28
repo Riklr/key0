@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SellerConfig } from "@agentgate/types";
+import type { SellerConfig } from "../../types";
 import { buildAgentCard } from "../agent-card.js";
 
 function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
@@ -34,7 +34,7 @@ describe("buildAgentCard", () => {
 
 	test("returns card with correct url and version", () => {
 		const card = buildAgentCard(makeConfig({ version: "2.0.0" }));
-		expect(card.url).toBe("https://agent.example.com");
+		expect(card.url).toBe("https://agent.example.com/a2a/jsonrpc");
 		expect(card.version).toBe("2.0.0");
 	});
 
@@ -91,8 +91,8 @@ describe("buildAgentCard", () => {
 
 	test("provider info is correct", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.provider.name).toBe("Test Provider");
-		expect(card.provider.url).toBe("https://provider.example.com");
+		expect(card.provider!.name).toBe("Test Provider");
+		expect(card.provider!.url).toBe("https://provider.example.com");
 	});
 
 	test("default modes are application/json", () => {

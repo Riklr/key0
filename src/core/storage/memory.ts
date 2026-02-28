@@ -3,7 +3,7 @@ import type {
 	ChallengeState,
 	IChallengeStore,
 	ISeenTxStore,
-} from "@agentgate/types";
+} from "../../types";
 
 export type InMemoryStoreConfig = {
 	readonly cleanupIntervalMs?: number | undefined; // default: 300_000 (5 min)

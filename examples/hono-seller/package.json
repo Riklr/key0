@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentgate/sdk": "workspace:*",
+    "@agentgate/sdk": "file:../..",
     "hono": "^4.6.0"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ChallengeRecord } from "@agentgate/types";
+import type { ChallengeRecord } from "../../types";
 import { InMemoryChallengeStore } from "../storage/memory.js";
 
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {

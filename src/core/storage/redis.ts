@@ -4,7 +4,7 @@ import type {
 	ChallengeState,
 	IChallengeStore,
 	ISeenTxStore,
-} from "@agentgate/types";
+} from "../../types";
 import type Redis from "ioredis";
 
 // ─── Serialization helpers ───────────────────────────────────────────
