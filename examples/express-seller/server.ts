@@ -1,7 +1,7 @@
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
 import { X402Adapter } from "@agentgate/sdk";
-import type { NetworkName } from "@agentgate/sdk";
+import type { AccessGrant, NetworkName } from "@agentgate/sdk";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
@@ -57,19 +57,42 @@ app.use(
         const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
         return validResources.includes(resourceId);
       },
-      onPaymentReceived: async (grant) => {
+      onPaymentReceived: async (grant: AccessGrant) => {
         console.log(
           `[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`,
         );
         console.log(`  TX: ${grant.explorerUrl}`);
       },
       resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
+      basePath: "/agent",
     },
     adapter,
   }),
 );
 
-// Protect existing API routes with access token validation
+// BEFORE (traditional session/API key middleware):
+// app.use("/api", async (req, res, next) => {
+//   const apiKey = req.headers["x-api-key"];           // or Authorization: Bearer <sessionToken>
+//   const user = await db.apiKeys.findOne({ key: apiKey }); // DB lookup on every request
+//   if (!user) return res.status(401).json({ error: "Unauthorized" });
+//   req.userId = user.id;
+//   next();
+// });
+//
+// Problems with the above for agent traffic:
+//   - Agents cannot sign up, verify email, or generate API keys autonomously
+//   - Every request hits your database for token validation
+//   - No payment is attached — you can't monetize per-call or per-resource
+//
+// NOW — AgentGate replaces all of the above with validateAccessToken.
+// On every request to /api it checks:
+//   1. Authorization: Bearer <token> header is present and well-formed
+//   2. JWT signature is valid — signed with AGENTGATE_ACCESS_TOKEN_SECRET (no DB hit)
+//   3. Token is not expired (exp claim; TTL set per tier in products config)
+//   4. Decodes payload and attaches to req.agentGateToken:
+//        { resourceId, tierId, txHash, sub (requestId), jti (challengeId), iat, exp }
+//   5. Calls next() — your route handler runs
+//   6. If anything fails → 401 Unauthorized, route is never reached
 app.use(
   "/api",
   validateAccessToken({ secret: SECRET }),
@@ -77,6 +100,15 @@ app.use(
 
 // Sample protected endpoint
 app.get("/api/photos/:id", (req, res) => {
+  // After validateAccessToken runs, req.agentGateToken contains the decoded JWT payload:
+  //   { resourceId, tierId, txHash, sub (requestId), jti (challengeId), iat, exp }
+  //
+  // BEFORE: you'd check req.userId against a DB record to confirm the caller owns this resource.
+  // NOW — optionally enforce that the token was issued for exactly this resource:
+  //   const token = (req as Request & { agentGateToken?: { resourceId: string } }).agentGateToken;
+  //   if (token?.resourceId !== req.params["id"]) {
+  //     return res.status(403).json({ error: "Token not issued for this resource" });
+  //   }
   const photoId = req.params["id"];
   res.json({
     id: photoId,
