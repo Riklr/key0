@@ -9,7 +9,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -18,16 +18,10 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Test
-        run: bun test --recursive
-
-      - name: Version packages
-        run: npx changeset version
+      - name: Build
+        run: bun run build
 
       - name: Publish packages
         run: npx changeset publish

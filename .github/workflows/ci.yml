@@ -16,7 +16,7 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
       - name: Typecheck
         run: bun run typecheck
