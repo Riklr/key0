@@ -98,7 +98,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		},
 	];
 
-	const basePath = config.basePath ?? "/agent";
+	const basePath = config.basePath ?? "/a2a";
 	// Ensure no double slashes if agentUrl ends with /
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const endpointUrl = `${baseUrl}${basePath}`;
@@ -106,13 +106,14 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	return {
 		name: config.agentName,
 		description: config.agentDescription,
-		url: config.agentUrl,
+		url: `${endpointUrl}/jsonrpc`,
 		version: config.version ?? "1.0.0",
-		protocolVersion: "0.3.0",
+		protocolVersion: "1.0.0",
 		capabilities: {
 			a2a: true,
 			paymentProtocols: ["x402"],
 			pushNotifications: false,
+			extendedAgentCard: true,
 		},
 		defaultInputModes: ["application/json"],
 		defaultOutputModes: ["application/json"],
@@ -121,14 +122,16 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			name: config.providerName,
 			url: config.providerUrl,
 		},
-		additionalInterfaces: [
+		supportedInterfaces: [
 			{
-				url: endpointUrl,
-				transport: "JSONRPC",
+				url: `${endpointUrl}/jsonrpc`,
+				protocolBinding: "JSONRPC",
+				protocolVersion: "1.0",
 			},
 			{
 				url: `${endpointUrl}/rest`,
-				transport: "HTTP+JSON",
+				protocolBinding: "HTTP+JSON",
+				protocolVersion: "1.0",
 			},
 		],
 	};

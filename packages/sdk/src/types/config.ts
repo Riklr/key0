@@ -53,6 +53,6 @@ export type SellerConfig = {
 	readonly onChallengeExpired?: (challengeId: string) => Promise<void>;
 
 	// Customization
-	readonly basePath?: string; // defaults to "/agent"
+	readonly basePath?: string; // defaults to "/a2a"
 	readonly resourceEndpointTemplate?: string; // e.g. "https://api.example.com/photos/{resourceId}"
 };

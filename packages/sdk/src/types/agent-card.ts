@@ -33,7 +33,8 @@ export type AgentSkill = {
 
 export type AgentInterface = {
 	readonly url: string;
-	readonly transport: "JSONRPC" | "HTTP+JSON" | "GRPC";
+	readonly protocolBinding: "JSONRPC" | "HTTP+JSON" | "GRPC";
+	readonly protocolVersion: string;
 };
 
 export type AgentCard = {
@@ -41,13 +42,14 @@ export type AgentCard = {
 	readonly description: string;
 	readonly url: string;
 	readonly version: string;
-	readonly protocolVersion: "0.3.0";
+	readonly protocolVersion: "1.0.0";
 	readonly capabilities: {
 		readonly a2a: true; // Keep for backward compat/internal flag
 		readonly paymentProtocols: readonly PaymentProtocol[];
 		readonly pushNotifications?: boolean;
 		readonly streaming?: boolean;
 		readonly stateTransitionHistory?: boolean;
+		readonly extendedAgentCard?: boolean;
 	};
 	readonly defaultInputModes: readonly string[];
 	readonly defaultOutputModes: readonly string[];
@@ -56,5 +58,5 @@ export type AgentCard = {
 		readonly name: string;
 		readonly url: string;
 	};
-	readonly additionalInterfaces?: readonly AgentInterface[];
+	readonly supportedInterfaces?: readonly AgentInterface[];
 };

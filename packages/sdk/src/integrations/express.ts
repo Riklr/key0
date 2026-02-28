@@ -22,10 +22,11 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 	// Agent Card
 	router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
+	router.use('/.well-known/agent.json', agentCardHandler({ agentCardProvider: requestHandler }));
 
 	// A2A endpoint
-	const basePath = opts.config.basePath ?? "/agent";
-	router.use(basePath, jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
+	const basePath = opts.config.basePath ?? "/a2a";
+	router.use(`${basePath}/jsonrpc`, jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 	router.use(`${basePath}/rest`, restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 
 	return router;
