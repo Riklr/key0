@@ -13,6 +13,7 @@
 	},
 	"dependencies": {
 		"@agentgate/types": "workspace:*",
+		"@agentgate/x402-adapter": "workspace:*",
 		"jose": "^6.0.0"
 	},
 	"peerDependencies": {

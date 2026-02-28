@@ -1,4 +1,4 @@
-export const USDC_DECIMALS = 6;
+import { USDC_DECIMALS } from "@agentgate/types";
 
 export const USDC_TRANSFER_EVENT_SIGNATURE =
 	"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as const;

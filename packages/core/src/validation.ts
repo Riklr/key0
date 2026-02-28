@@ -5,8 +5,6 @@ const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const DOLLAR_RE = /^\$\d+(\.\d{1,6})?$/;
 
-const USDC_DECIMALS = 6;
-
 export function validateUUID(value: string, label: string): void {
 	if (!UUID_RE.test(value)) {
 		throw new AgentGateError("INVALID_REQUEST", `${label} must be a valid UUID`, 400);
@@ -47,18 +45,4 @@ export function validateDollarAmount(value: string, label: string): void {
 			400,
 		);
 	}
-}
-
-/**
- * Convert a "$X.XX" string to USDC micro-units (bigint).
- * "$0.10" → 100000n
- * "$1.00" → 1000000n
- */
-export function parseDollarToUsdcMicro(amount: string): bigint {
-	const cleaned = amount.replace("$", "").trim();
-	const parts = cleaned.split(".");
-	const whole = BigInt(parts[0] ?? "0");
-	const fracStr = (parts[1] ?? "").padEnd(USDC_DECIMALS, "0").slice(0, USDC_DECIMALS);
-	const frac = BigInt(fracStr);
-	return whole * BigInt(10 ** USDC_DECIMALS) + frac;
 }

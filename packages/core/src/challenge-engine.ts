@@ -14,11 +14,11 @@ import {
 	type X402Challenge,
 } from "@agentgate/types";
 
+import { parseDollarToUsdcMicro } from "@agentgate/x402-adapter";
 import type { AccessTokenIssuer } from "./access-token.js";
-import { CHAIN_CONFIGS } from "./agent-card.js";
+import { CHAIN_CONFIGS } from "@agentgate/types";
 import { validateSellerConfig } from "./config-validation.js";
 import {
-	parseDollarToUsdcMicro,
 	validateNonEmpty,
 	validateTxHash,
 	validateUUID,

@@ -1,26 +1,9 @@
-import {
-	AccessTokenIssuer,
-	ChallengeEngine,
-	InMemoryChallengeStore,
-	InMemorySeenTxStore,
-} from "@agentgate/core";
-import type {
-	IChallengeStore,
-	IPaymentAdapter,
-	ISeenTxStore,
-	SellerConfig,
-} from "@agentgate/types";
-import { AgentGateError } from "@agentgate/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type ValidateAccessTokenConfig, validateToken } from "./middleware.js";
-import { AgentGateRouter } from "./router.js";
-
-export type AgentGateFastifyConfig = {
-	readonly config: SellerConfig;
-	readonly adapter: IPaymentAdapter;
-	readonly store?: IChallengeStore | undefined;
-	readonly seenTxStore?: ISeenTxStore | undefined;
-};
+import { AGENT_CARD_PATH } from "@a2a-js/sdk";
+import { type AgentGateConfig, createAgentGate } from "./factory.js";
+import { type ValidateAccessTokenConfig } from "./middleware.js";
+import { AgentGateError } from "@agentgate/types";
+import { validateToken } from "./middleware.js";
 
 /**
  * Fastify plugin that serves the agent card and A2A endpoint.
@@ -30,49 +13,25 @@ export type AgentGateFastifyConfig = {
  */
 export async function agentGatePlugin(
 	fastify: FastifyInstance,
-	opts: AgentGateFastifyConfig,
+	opts: AgentGateConfig,
 ): Promise<void> {
-	const store = opts.store ?? new InMemoryChallengeStore();
-	const seenTxStore = opts.seenTxStore ?? new InMemorySeenTxStore();
-	const tokenIssuer = new AccessTokenIssuer(opts.config.accessTokenSecret);
-
-	const engine = new ChallengeEngine({
-		config: opts.config,
-		store,
-		seenTxStore,
-		adapter: opts.adapter,
-		tokenIssuer,
-	});
-
-	const handler = new AgentGateRouter({ engine, config: opts.config });
+	const { requestHandler, agentCard } = createAgentGate(opts);
 
 	// Agent Card
-	fastify.get("/.well-known/agent.json", async (_request: FastifyRequest, reply: FastifyReply) => {
-		const result = await handler.handleAgentCard();
-		if (result.headers) {
-			for (const [k, v] of Object.entries(result.headers)) {
-				reply.header(k, v);
-			}
-		}
-		return reply.status(result.status).send(result.body);
+	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {
+		return reply.send(agentCard);
 	});
 
 	// A2A endpoint
 	const basePath = opts.config.basePath ?? "/agent";
-	fastify.post(basePath, async (request: FastifyRequest, reply: FastifyReply) => {
-		const result = await handler.handleA2ATask(request.body as never);
-		return reply.status(result.status).send(result.body);
+	fastify.post(basePath, async (_request: FastifyRequest, reply: FastifyReply) => {
+		// TODO: Use official A2A Fastify handler when available
+		return reply.code(501).send({ error: "Fastify support pending A2A SDK update" });
 	});
 }
 
 /**
  * Fastify onRequest hook to validate access tokens.
- *
- * Usage:
- *   fastify.addHook("onRequest", fastifyValidateAccessToken({ secret: ... }));
- *
- * Or per-route:
- *   fastify.get("/api/photos/:id", { onRequest: fastifyValidateAccessToken({ secret }) }, handler);
  */
 export function fastifyValidateAccessToken(config: ValidateAccessTokenConfig) {
 	return async (request: FastifyRequest, reply: FastifyReply) => {

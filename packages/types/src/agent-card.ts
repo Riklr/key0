@@ -31,20 +31,30 @@ export type AgentSkill = {
 	readonly pricing?: readonly SkillPricing[];
 };
 
+export type AgentInterface = {
+	readonly url: string;
+	readonly transport: "JSONRPC" | "HTTP+JSON" | "GRPC";
+};
+
 export type AgentCard = {
 	readonly name: string;
 	readonly description: string;
 	readonly url: string;
 	readonly version: string;
+	readonly protocolVersion: "0.3.0";
 	readonly capabilities: {
-		readonly a2a: true;
+		readonly a2a: true; // Keep for backward compat/internal flag
 		readonly paymentProtocols: readonly PaymentProtocol[];
+		readonly pushNotifications?: boolean;
+		readonly streaming?: boolean;
+		readonly stateTransitionHistory?: boolean;
 	};
 	readonly defaultInputModes: readonly string[];
 	readonly defaultOutputModes: readonly string[];
 	readonly skills: readonly AgentSkill[];
-	readonly provider: {
+	readonly provider?: {
 		readonly name: string;
 		readonly url: string;
 	};
+	readonly additionalInterfaces?: readonly AgentInterface[];
 };

@@ -5,7 +5,6 @@ export {
 	validateAddress,
 	validateNonEmpty,
 	validateDollarAmount,
-	parseDollarToUsdcMicro,
 } from "./validation.js";
 
 // Storage — In-Memory

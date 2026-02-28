@@ -23,6 +23,8 @@ export type {
 	SellerConfig,
 } from "./config.js";
 
+export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
+
 export type {
 	IssueChallengeParams,
 	ChallengePayload,
@@ -36,10 +38,3 @@ export type { IChallengeStore, ISeenTxStore } from "./storage.js";
 
 export { AgentGateError } from "./errors.js";
 export type { AgentGateErrorCode } from "./errors.js";
-
-export type {
-	A2ATaskSendRequest,
-	A2AMessagePart,
-	A2ATaskStatus,
-	A2ATaskSendResponse,
-} from "./a2a.js";
