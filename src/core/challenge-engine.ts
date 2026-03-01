@@ -335,13 +335,13 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 14. Store grant and mark as delivered — SDK auto-transitions to DELIVERED
+		// 12. Store grant and mark as delivered — SDK auto-transitions to DELIVERED
 		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
 			accessGrant: grant,
 			deliveredAt: new Date(this.now()),
 		});
 
-		// 15. Fire hook
+		// 13. Fire hook
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
 				console.error("[AgentGate] onPaymentReceived hook error:", err);

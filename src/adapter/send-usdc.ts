@@ -1,4 +1,4 @@
-import { http, createWalletClient } from "viem";
+import { http, createWalletClient, createPublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import type { NetworkConfig } from "../types/index.js";
@@ -13,7 +13,7 @@ export type SendUsdcParams = {
 
 /**
  * Send USDC on-chain using a seller's private key.
- * Returns txHash immediately — does NOT wait for confirmation.
+ * Waits for transaction confirmation before returning.
  * Used internally by processRefunds to return funds to payers.
  */
 export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
@@ -28,6 +28,11 @@ export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
 		transport: http(networkConfig.rpcUrl),
 	});
 
+	const publicClient = createPublicClient({
+		chain,
+		transport: http(networkConfig.rpcUrl),
+	});
+
 	const txHash = await walletClient.writeContract({
 		account,
 		address: networkConfig.usdcAddress,
@@ -35,6 +40,12 @@ export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
 		functionName: "transfer",
 		args: [to, amountRaw],
 	});
+
+	const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+	if (receipt.status !== "success") {
+		throw new Error(`Refund transaction reverted: ${txHash}`);
+	}
 
 	return txHash;
 }

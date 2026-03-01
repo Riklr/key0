@@ -40,7 +40,8 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 		// Destructure before the try/catch so TypeScript's narrowing is unambiguous
 		const fromAddress = record.fromAddress;
 		const txHash = record.txHash;
-		// fromAddress is guaranteed by findPendingForRefund, but guard for type safety
+		// txHash and fromAddress are always set on PAID records (written during PENDING→PAID
+		// transition), but ChallengeRecord types them as optional to cover all states.
 		if (!fromAddress || !txHash) continue;
 
 		// 1. Atomically claim this record for refunding — prevents double-refund
