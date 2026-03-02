@@ -13,6 +13,10 @@ import type {
 import { AgentGateError, CHAIN_ID_TO_NETWORK } from "../types/index.js";
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import { CHAIN_CONFIGS } from "../types/config-shared.js";
+import { createWalletClient, http as viemHttp, publicActions } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base, baseSepolia } from "viem/chains";
+import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 
 // x402 v2 headers
 const PAYMENT_SIGNATURE_HEADER = "payment-signature";
@@ -222,6 +226,165 @@ export async function settleViaFacilitator(
 }
 
 /**
+ * Settle an EIP-3009 payment via gas wallet (self-contained mode using ExactEvmScheme).
+ * The gas wallet pays for on-chain execution and settles the payment directly.
+ */
+export async function settleViaGasWallet(
+	paymentSignature: string,
+	privateKey: `0x${string}`,
+	networkConfig: NetworkConfig,
+): Promise<{ txHash: `0x${string}`; settleResponse: X402SettleResponse; payer?: string }> {
+	console.log("[settleViaGasWallet] Starting settlement...");
+	console.log(`[settleViaGasWallet] Network: ${networkConfig.name} (chainId: ${networkConfig.chainId})`);
+
+	// Decode the PAYMENT-SIGNATURE header (base64url)
+	let paymentPayload: any;
+	try {
+		console.log("[settleViaGasWallet] Decoding PAYMENT-SIGNATURE header (base64url)...");
+		const decoded = Buffer.from(paymentSignature, "base64url").toString("utf-8");
+		paymentPayload = JSON.parse(decoded);
+		console.log("[settleViaGasWallet] ✓ Decoded payload:", JSON.stringify(paymentPayload, null, 2));
+	} catch (err) {
+		// Try regular base64 as fallback
+		console.log("[settleViaGasWallet] base64url decode failed, trying regular base64...");
+		try {
+			const decoded = Buffer.from(paymentSignature, "base64").toString("utf-8");
+			paymentPayload = JSON.parse(decoded);
+			console.log("[settleViaGasWallet] ✓ Decoded payload (base64):", JSON.stringify(paymentPayload, null, 2));
+		} catch {
+			console.error("[settleViaGasWallet] ✗ Failed to decode PAYMENT-SIGNATURE header");
+			throw new AgentGateError(
+				"INVALID_REQUEST",
+				"Invalid PAYMENT-SIGNATURE header: must be base64url-encoded JSON",
+				400,
+			);
+		}
+	}
+
+	// Extract payer from payload (v2 structure: payload.payload.authorization.from)
+	let payer: string | undefined;
+	try {
+		if (paymentPayload.payload?.authorization?.from) {
+			payer = paymentPayload.payload.authorization.from;
+			console.log(`[settleViaGasWallet] Extracted payer: ${payer}`);
+		}
+	} catch {
+		console.log("[settleViaGasWallet] Could not extract payer from payload");
+	}
+
+	// Create wallet client from private key
+	console.log("[settleViaGasWallet] Creating wallet client from private key...");
+	const gasAccount = privateKeyToAccount(privateKey);
+	console.log(`[settleViaGasWallet] Gas account address: ${gasAccount.address}`);
+
+	const chain = networkConfig.chainId === 8453 ? base : baseSepolia;
+	const walletClient = createWalletClient({
+		account: gasAccount,
+		chain,
+		transport: viemHttp(networkConfig.rpcUrl),
+	}).extend(publicActions);
+
+	// Create ExactEvmScheme instance
+	console.log("[settleViaGasWallet] Initializing ExactEvmScheme...");
+	const scheme = new ExactEvmScheme(walletClient as any, {
+		deployERC4337WithEIP6492: true, // Enable smart wallet deployment for ERC-6492 signatures
+	});
+
+	// Extract requirement from payload
+	const requirement = paymentPayload.accepted;
+	if (!requirement) {
+		console.error("[settleViaGasWallet] ✗ No payment requirement found in payload");
+		throw new AgentGateError(
+			"INVALID_REQUEST",
+			"Payment signature missing 'accepted' requirement",
+			400,
+		);
+	}
+
+	console.log("[settleViaGasWallet] Payment requirement:", JSON.stringify(requirement, null, 2));
+
+	// STEP 1: Verify the payment
+	console.log("\n[settleViaGasWallet] STEP 1: Verifying payment...");
+	let verifyResult: any;
+	try {
+		verifyResult = await scheme.verify(paymentPayload, requirement);
+		console.log("[settleViaGasWallet] Verify result:", JSON.stringify(verifyResult, null, 2));
+	} catch (e) {
+		const errorMessage = e instanceof Error ? e.message : "Unknown verification error";
+		console.error(`[settleViaGasWallet] ✗ Verify error: ${errorMessage}`);
+		throw new AgentGateError("PAYMENT_FAILED", `Payment verification failed: ${errorMessage}`, 402);
+	}
+
+	if (!verifyResult.isValid) {
+		console.error(`[settleViaGasWallet] ✗ Payment verification failed: ${verifyResult.invalidReason}`);
+		throw new AgentGateError(
+			"PAYMENT_FAILED",
+			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}`,
+			402,
+		);
+	}
+
+	console.log("[settleViaGasWallet] ✓ Payment verified successfully");
+
+	// Update payer if we got it from verify response
+	if (verifyResult.payer && !payer) {
+		payer = verifyResult.payer;
+		console.log(`[settleViaGasWallet] Updated payer from verify response: ${payer}`);
+	}
+
+	// STEP 2: Settle the payment
+	console.log("\n[settleViaGasWallet] STEP 2: Settling payment on-chain...");
+	let settlement: any;
+	try {
+		settlement = await scheme.settle(paymentPayload, requirement);
+		console.log("[settleViaGasWallet] Settlement response:", JSON.stringify(settlement, null, 2));
+	} catch (e) {
+		const errorMessage = e instanceof Error ? e.message : "Unknown settlement error";
+		console.error(`[settleViaGasWallet] ✗ Settlement exception: ${errorMessage}`);
+		console.error("[settleViaGasWallet] Full error:", e);
+		throw new AgentGateError("PAYMENT_FAILED", `Settlement failed: ${errorMessage}`, 500);
+	}
+
+	if (!settlement.success) {
+		console.error(`[settleViaGasWallet] ✗ Settlement failed: ${settlement.errorReason}`);
+		if (settlement.errorMessage) {
+			console.error(`[settleViaGasWallet] Error message: ${settlement.errorMessage}`);
+		}
+		if (settlement.transaction) {
+			console.error(`[settleViaGasWallet] Failed tx: ${settlement.transaction}`);
+			console.error(`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`);
+		}
+		throw new AgentGateError(
+			"PAYMENT_FAILED",
+			settlement.errorReason || "Payment settlement failed",
+			500,
+		);
+	}
+
+	if (!settlement.transaction) {
+		console.error("[settleViaGasWallet] ✗ No transaction hash in response");
+		throw new AgentGateError("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
+	}
+
+	console.log(`[settleViaGasWallet] ✓ Settlement successful, txHash: ${settlement.transaction}`);
+	console.log(`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`);
+
+	// Build response matching facilitator format
+	const settleResponse: X402SettleResponse = {
+		success: true,
+		transaction: settlement.transaction,
+		network: `eip155:${networkConfig.chainId}`,
+		...(payer && { payer }),
+	};
+
+	return {
+		txHash: settlement.transaction as `0x${string}`,
+		settleResponse,
+		...(payer && { payer }),
+	};
+}
+
+/**
  * Express middleware that intercepts AccessRequest calls and implements the x402 HTTP flow.
  * 
  * If the client sends X-A2A-Extensions header -> pass through (A2A flow)
@@ -236,6 +399,22 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 		console.log("[x402-http-middleware] Method:", req.method);
 		console.log("[x402-http-middleware] Path:", req.path);
 		console.log("[x402-http-middleware] Headers:", JSON.stringify(req.headers, null, 2));
+
+		// Intercept response to log the body
+		const originalJson = res.json.bind(res);
+		const originalSend = res.send.bind(res);
+		
+		res.json = function(body: any) {
+			console.log("[x402-http-middleware] Response Status:", res.statusCode);
+			console.log("[x402-http-middleware] Response Body:", JSON.stringify(body, null, 2));
+			return originalJson(body);
+		};
+		
+		res.send = function(body: any) {
+			console.log("[x402-http-middleware] Response Status:", res.statusCode);
+			console.log("[x402-http-middleware] Response Body:", typeof body === 'string' ? body : JSON.stringify(body, null, 2));
+			return originalSend(body);
+		};
 
 		try {
 			// 1. If X-A2A-Extensions header present, this is an A2A client -> pass through
@@ -382,12 +561,35 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				console.log("[x402-http-middleware] → STEP 2: PAYMENT-SIGNATURE header present, processing payment");
 				console.log(`[x402-http-middleware] PAYMENT-SIGNATURE value (first 50 chars): ${paymentSignature.substring(0, 50)}...`);
 
-				// Settle via facilitator
-				console.log(`[x402-http-middleware] Settling via facilitator: ${networkConfig.facilitatorUrl}`);
-				const { txHash, settleResponse, payer } = await settleViaFacilitator(
-					paymentSignature,
-					networkConfig.facilitatorUrl,
-				);
+				// Route to appropriate settlement strategy
+				let txHash: `0x${string}`;
+				let settleResponse: X402SettleResponse;
+				let payer: string | undefined;
+
+				if (config.gasWalletPrivateKey) {
+					// Gas wallet mode: self-contained settlement via ExactEvmScheme
+					console.log("[x402-http-middleware] Using gas wallet settlement mode");
+					const result = await settleViaGasWallet(
+						paymentSignature,
+						config.gasWalletPrivateKey,
+						networkConfig,
+					);
+					txHash = result.txHash;
+					settleResponse = result.settleResponse;
+					payer = result.payer;
+				} else {
+					// Facilitator mode: HTTP-based settlement via Coinbase CDP
+					const resolvedFacilitatorUrl = config.facilitatorUrl ?? networkConfig.facilitatorUrl;
+					console.log(`[x402-http-middleware] Using facilitator settlement mode: ${resolvedFacilitatorUrl}`);
+					const result = await settleViaFacilitator(
+						paymentSignature,
+						resolvedFacilitatorUrl,
+					);
+					txHash = result.txHash;
+					settleResponse = result.settleResponse;
+					payer = result.payer;
+				}
+
 				console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
 
 				// Process payment and issue token

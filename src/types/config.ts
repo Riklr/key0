@@ -77,4 +77,8 @@ export type SellerConfig = {
 	// Customization
 	readonly basePath?: string; // defaults to "/a2a"
 	readonly resourceEndpointTemplate?: string; // e.g. "https://api.example.com/photos/{resourceId}"
+
+	// Settlement strategy (optional — defaults to facilitatorUrl mode)
+	readonly gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (self-contained settlement)
+	readonly facilitatorUrl?: string; // override default facilitatorUrl from CHAIN_CONFIGS
 };

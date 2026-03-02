@@ -6,10 +6,10 @@ export const CHAIN_CONFIGS: Record<NetworkName, NetworkConfig> = {
 		chainId: 84532,
 		rpcUrl: "https://sepolia.base.org",
 		usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-		facilitatorUrl: "https://x402.org/facilitator",
+		facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
 		explorerBaseUrl: "https://sepolia.basescan.org",
 		usdcDomain: {
-			name: "USD Coin",
+			name: "USDC",
 			version: "2",
 		},
 	},
@@ -21,7 +21,7 @@ export const CHAIN_CONFIGS: Record<NetworkName, NetworkConfig> = {
 		facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
 		explorerBaseUrl: "https://basescan.org",
 		usdcDomain: {
-			name: "USD Coin",
+			name: "USDC",
 			version: "2",
 		},
 	},
