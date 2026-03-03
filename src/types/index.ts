@@ -12,6 +12,7 @@ export type {
 	ResourceInfo,
 	X402PaymentRequiredResponse,
 	X402PaymentPayload,
+	EIP3009Authorization,
 	X402SettleResponse,
 	X402PaymentStatus,
 	FacilitatorVerifyResponse,

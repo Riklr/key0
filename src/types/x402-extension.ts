@@ -60,16 +60,38 @@ export type X402PaymentRequiredResponse = {
 // ---------------------------------------------------------------------------
 
 /**
+ * EIP-3009 authorization structure for transferWithAuthorization.
+ * Used when the payment scheme is "exact" with off-chain signatures.
+ */
+export type EIP3009Authorization = {
+	readonly from: string;
+	readonly to: string;
+	readonly value: string;
+	readonly validAfter: string;
+	readonly validBefore: string;
+	readonly nonce: string;
+};
+
+/**
  * Payment payload submitted by the client.
- * Placed in message.metadata["x402.payment.payload"] (Standalone Flow).
+ * Supports both:
+ * 1. EIP-3009 signature flow (scheme: "exact")
+ * 2. On-chain transaction proof flow (txHash provided)
+ * 
+ * Placed in message.metadata["x402.payment.payload"] (Standalone Flow)
+ * or in PAYMENT-SIGNATURE HTTP header (HTTP Flow).
  */
 export type X402PaymentPayload = {
 	readonly x402Version: number;
 	readonly network: string;
 	readonly scheme?: string;
 	readonly payload: {
-		/** Transaction hash of the on-chain payment */
-		readonly txHash: string;
+		/** EIP-3009 signature (for off-chain authorization) */
+		readonly signature?: string;
+		/** EIP-3009 authorization parameters (for off-chain authorization) */
+		readonly authorization?: EIP3009Authorization;
+		/** Transaction hash (for on-chain proof flow) */
+		readonly txHash?: string;
 		/** Amount paid (smallest unit string, e.g. "990000") */
 		readonly amount?: string;
 		/** Asset used (e.g. "USDC") */
@@ -77,6 +99,8 @@ export type X402PaymentPayload = {
 		/** Sender identifier / address */
 		readonly from?: string;
 	};
+	/** Payment requirements that were accepted (echoed back from challenge) */
+	readonly accepted?: PaymentRequirements;
 };
 
 // ---------------------------------------------------------------------------

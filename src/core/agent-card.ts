@@ -12,80 +12,51 @@ import type {
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];
-
-	// Build pricing entries for each product tier
-	const pricingEntries: SkillPricing[] = config.products.map((tier: ProductTier) => ({
-		tierId: tier.tierId,
-		label: tier.label,
-		amount: tier.amount,
-		asset: "USDC" as const,
-		chainId: networkConfig.chainId,
-		walletAddress: config.walletAddress,
-	}));
-
-	// Build tier list for description
-	const tierList = config.products.map((p) => `"${p.tierId}"`).join(", ");
 	const networkName = CHAIN_ID_TO_NETWORK[networkConfig.chainId] ?? `chain-${networkConfig.chainId}`;
 
-	// Define the two standard skills
-	const skills: AgentSkill[] = [
-		{
-			id: "request-access",
-			name: "Request Access",
+	// Build skills - one per product tier
+	const skills: AgentSkill[] = config.products.map((tier: ProductTier) => {
+		const pricingEntry: SkillPricing = {
+			tierId: tier.tierId,
+			label: tier.label,
+			amount: tier.amount,
+			asset: "USDC" as const,
+			chainId: networkConfig.chainId,
+			walletAddress: config.walletAddress,
+		};
+
+		return {
+			id: tier.tierId,
+			name: tier.label,
 			description:
-				"Step 1 of 2: Request paid access to this API. Specify the access tier (tierId) you want. " +
-				"Returns a Task with state 'input-required' and x402 payment requirements in metadata. " +
-				`Payment is on-chain USDC on ${networkName}. ` +
-				"After paying, use the 'submit-proof' skill to submit your transaction hash.",
-			tags: ["payment", "access", "x402"],
+				`Access "${tier.label}" tier for ${tier.amount} USDC on ${networkName}. ` +
+				`This endpoint uses the x402 payment protocol. ` +
+				`Send an AccessRequest with tierId="${tier.tierId}". ` +
+				`If you receive HTTP 402 status, decode the base64 PAYMENT-REQUIRED response header to get payment requirements, ` +
+				`create an EIP-3009 transferWithAuthorization signature off-chain, ` +
+				`encode it as base64, then retry the same request with the PAYMENT-SIGNATURE request header.`,
+			tags: ["x402", "payment", tier.resourceType || "access"],
 			examples: [
-				'Basic request payload: {"type":"AccessRequest","requestId":"<uuid>","tierId":"basic"}',
-				'With optional fields: {"type":"AccessRequest","requestId":"<uuid>","tierId":"premium","clientAgentId":"agent://my-agent"}',
-				JSON.stringify({
-					jsonrpc: "2.0",
-					method: "message/send",
-					params: {
-						message: {
-							messageId: "<uuid>",
-							role: "user",
-							parts: [
-								{
-									kind: "data",
-									data: {
-										type: "AccessRequest",
-										requestId: "<uuid>",
-										tierId: "basic"
-									}
-								}
-							]
-						}
-					},
-					id: 1
-				}, null, 2).replace(/\n/g, ' ')
+				`{"type":"AccessRequest","requestId":"<uuid>","tierId":"${tier.tierId}"}`,
 			],
 			inputSchema: {
 				type: "object",
 				properties: {
 					type: {
 						type: "string",
-						description: "Message type discriminator. Must be 'AccessRequest'",
+						description: "Must be 'AccessRequest'",
 					},
-					requestId: { type: "string", description: "Client-generated UUID for idempotency" },
-					tierId: {
-						type: "string",
-						description: `Access tier to purchase. Available: ${tierList}`,
+					requestId: { 
+						type: "string", 
+						description: "Client-generated UUID for idempotency" 
+					},
+					tierId: { 
+						type: "string", 
+						description: `Must be '${tier.tierId}'` 
 					},
 					resourceId: {
 						type: "string",
 						description: "Optional: Specific resource identifier (defaults to general API access)",
-					},
-					clientAgentId: {
-						type: "string",
-						description: "Optional: Your agent identifier for tracking",
-					},
-					callbackUrl: {
-						type: "string",
-						description: "Optional: Webhook URL for async notifications",
 					},
 				},
 				required: ["type", "requestId", "tierId"],
@@ -93,97 +64,19 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			outputSchema: {
 				type: "object",
 				properties: {
-					type: { type: "string", description: "X402Challenge" },
-					challengeId: { type: "string" },
-					requestId: { type: "string" },
-					tierId: { type: "string" },
-					amount: { type: "string" },
-					asset: { type: "string" },
-					chainId: { type: "number" },
-					destination: { type: "string" },
-					expiresAt: { type: "string" },
+					accessToken: { type: "string", description: "JWT token for API access" },
+					tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+					expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
+					resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
+					resourceId: { type: "string", description: "Resource identifier" },
+					tierId: { type: "string", description: "Tier ID that was purchased" },
+					txHash: { type: "string", description: "On-chain transaction hash" },
+					explorerUrl: { type: "string", description: "Blockchain explorer URL for the transaction" },
 				},
 			},
-			pricing: pricingEntries,
-		},
-		{
-			id: "submit-proof",
-			name: "Submit Payment Proof",
-			description:
-				"Step 2 of 2: After making the on-chain USDC payment from Step 1, submit the transaction hash. " +
-				"You can submit proof via message metadata (x402.payment.payload) or as a data part with type 'PaymentProof'. " +
-				"On success, returns a Task with state 'completed' and an access token.",
-			tags: ["payment", "proof", "verification"],
-			examples: [
-				'Payment proof payload: {"type":"PaymentProof","challengeId":"<from challenge>","requestId":"<from challenge>","chainId":84532,"txHash":"0x...","amount":"$0.99","asset":"USDC","fromAgentId":"agent://your-agent"}',
-				JSON.stringify({
-					jsonrpc: "2.0",
-					method: "message/send",
-					params: {
-						message: {
-							messageId: "<uuid>",
-							role: "user",
-							parts: [
-								{
-									kind: "data",
-									data: {
-										type: "PaymentProof",
-										challengeId: "<from challenge>",
-										requestId: "<from challenge>",
-										chainId: networkConfig.chainId,
-										txHash: "0x...",
-										amount: "$0.99",
-										asset: "USDC",
-										fromAgentId: "agent://your-agent"
-									}
-								}
-							]
-						}
-					},
-					id: 1
-				}, null, 2).replace(/\n/g, ' ')
-			],
-			inputSchema: {
-				type: "object",
-				properties: {
-					type: { type: "string", description: "Message type discriminator. Must be 'PaymentProof'" },
-					challengeId: { type: "string", description: "Challenge ID from the X402Challenge response" },
-					requestId: { type: "string", description: "Request ID from the X402Challenge response" },
-					chainId: { type: "number", description: "Blockchain chain ID where payment was made" },
-					txHash: { type: "string", description: "Transaction hash of the payment" },
-					amount: { type: "string", description: "Amount paid (e.g., '$0.99')" },
-					asset: { type: "string", description: "Asset used for payment (e.g., 'USDC')" },
-					fromAgentId: { type: "string", description: "DID or URL of the paying agent" },
-				},
-				required: [
-					"type",
-					"challengeId",
-					"requestId",
-					"chainId",
-					"txHash",
-					"amount",
-					"asset",
-					"fromAgentId",
-				],
-			},
-			outputSchema: {
-				type: "object",
-				properties: {
-					type: { type: "string", description: "AccessGrant" },
-					challengeId: { type: "string" },
-					requestId: { type: "string" },
-					accessToken: { type: "string" },
-					tokenType: { type: "string" },
-					expiresAt: { type: "string" },
-					resourceEndpoint: { type: "string" },
-					resourceId: { type: "string" },
-					tierId: { type: "string" },
-					txHash: { type: "string" },
-					explorerUrl: { type: "string" },
-				},
-			},
-		},
-	];
+			pricing: [pricingEntry],
+		};
+	});
 
 	const basePath = config.basePath ?? "/a2a";
 	// Ensure no double slashes if agentUrl ends with /
@@ -193,8 +86,10 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	const x402Extension: AgentExtension = {
 		uri: X402_EXTENSION_URI,
 		description:
-			"Supports payments using the x402 protocol for on-chain USDC settlement. " +
-			"Payment requirements are sent in task metadata with x402.payment.status and x402.payment.required keys.",
+			"Supports x402 protocol for on-chain USDC payments. " +
+			"On HTTP 402 response, decode the base64 PAYMENT-REQUIRED header, sign an EIP-3009 authorization, " +
+			"then retry with base64-encoded payment in the PAYMENT-SIGNATURE header. " +
+			"Server settles the payment on-chain and returns an access token on success.",
 		required: true,
 	};
 
@@ -202,10 +97,9 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		name: config.agentName,
 		description:
 			config.agentDescription +
-			" | WORKFLOW: 2-step x402 payment protocol. " +
-			"Step 1: Call 'request-access' with desired tierId → receive Task with 'input-required' state and payment instructions in x402 metadata. " +
-			"Step 2: Pay on-chain, then call 'submit-proof' with txHash → receive Task with 'completed' state and access token. " +
-			"Requires a crypto wallet capable of sending USDC.",
+			" | Uses x402 payment protocol with USDC on " + networkName + ". " +
+			"Call any skill endpoint - if payment is required you'll receive HTTP 402 with payment details. " +
+			"Sign the payment off-chain and retry with the signature to complete access.",
 		url: `${endpointUrl}/jsonrpc`,
 		version: config.version ?? "1.0.0",
 		protocolVersion: "0.3.0",
@@ -216,7 +110,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			stateTransitionHistory: false,
 		},
 		defaultInputModes: ["text"],
-		defaultOutputModes: ["text"],
+		defaultOutputModes: ["application/json"],
 		skills,
 		provider: {
 			organization: config.providerName,
@@ -229,6 +123,10 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			},
 			{
 				url: `${endpointUrl}/rest`,
+				transport: "HTTP+JSON",
+			},
+			{
+				url: `${endpointUrl}/access`,
 				transport: "HTTP+JSON",
 			},
 		],

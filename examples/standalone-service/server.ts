@@ -39,6 +39,15 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
 
+// Gas wallet configuration for facilitation
+const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY || "0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
+const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
+
+if (USE_GAS_WALLET) {
+	console.log("🔐 Gas Wallet Mode: ENABLED");
+	console.log(`   Gas wallet will handle payment settlement directly`);
+}
+
 // Validate required environment variables
 if (!SECRET || SECRET.length < 32) {
 	console.error("ERROR: AGENTGATE_ACCESS_TOKEN_SECRET must be at least 32 characters");
@@ -190,6 +199,8 @@ app.use(
 				}
 			},
 			resourceEndpointTemplate: `${BACKEND_API_URL}/api/{resourceId}`,
+			// Gas wallet mode: provide private key to enable self-contained settlement
+			...(USE_GAS_WALLET ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY as `0x${string}` } : {}),
 		},
 		adapter,
 		store,
@@ -222,6 +233,7 @@ app.listen(PORT, () => {
 	console.log(`   Port: ${PORT}`);
 	console.log(`   Network: ${NETWORK}`);
 	console.log(`   Token Mode: ${tokenMode}`);
+	console.log(`   Facilitation Mode: ${USE_GAS_WALLET ? "Gas Wallet" : "Standard"}`);
 	console.log(`   Backend URL: ${BACKEND_API_URL}`);
 	console.log(`   Agent Card: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`);
 	console.log(`   A2A Endpoint: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`);
