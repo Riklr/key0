@@ -10,8 +10,17 @@ import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
-import type { AccessRequest, X402PaymentRequiredResponse, X402SettleResponse } from "../types/index.js";
-import { createX402HttpMiddleware, buildHttpPaymentRequirements, settleViaGasWallet, settleViaFacilitator } from "./x402-http-middleware.js";
+import type {
+	AccessRequest,
+	X402PaymentRequiredResponse,
+	X402SettleResponse,
+} from "../types/index.js";
+import {
+	buildHttpPaymentRequirements,
+	createX402HttpMiddleware,
+	settleViaFacilitator,
+	settleViaGasWallet,
+} from "./x402-http-middleware.js";
 
 /**
  * Create an Express router that serves the agent card and A2A endpoint.
@@ -40,7 +49,10 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 		createX402HttpMiddleware(engine, opts.config), // x402 HTTP middleware (before A2A handler)
 		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
 	);
-	router.use(`${basePath}/rest`, restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
+	router.use(
+		`${basePath}/rest`,
+		restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
+	);
 
 	// Simple x402 HTTP endpoint (no JSON-RPC wrapping)
 	router.post(`${basePath}/access`, async (req: Request, res: Response) => {
@@ -49,24 +61,24 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			console.log("[x402-access] Body:", JSON.stringify(req.body, null, 2));
 			console.log("[x402-access] Headers:", JSON.stringify(req.headers, null, 2));
 
-		// Parse AccessRequest from body
-		const body = req.body;
-		if (!body || typeof body !== "object") {
-			return res.status(400).json({
-				error: "INVALID_REQUEST",
-				message: "Body must be a valid JSON object",
-			});
-		}
+			// Parse AccessRequest from body
+			const body = req.body;
+			if (!body || typeof body !== "object") {
+				return res.status(400).json({
+					error: "INVALID_REQUEST",
+					message: "Body must be a valid JSON object",
+				});
+			}
 
-		const { tierId, requestId, resourceId = "default" } = body;
+			const { tierId, requestId, resourceId = "default" } = body;
 
-		const accessRequest: AccessRequest = {
-			tierId,
-			requestId,
-			resourceId,
-			clientAgentId: body.clientAgentId || "anonymous",
-			callbackUrl: body.callbackUrl,
-		};
+			const accessRequest: AccessRequest = {
+				tierId,
+				requestId,
+				resourceId,
+				clientAgentId: body.clientAgentId || "anonymous",
+				callbackUrl: body.callbackUrl,
+			};
 			if (!tierId || !requestId) {
 				return res.status(400).json({
 					error: "INVALID_REQUEST",
@@ -104,52 +116,51 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 					challengeId,
 					error: "PAYMENT-SIGNATURE header is required",
 				});
-			} else {
-				// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
-				console.log("[x402-access] → STEP 2: Processing payment");
-
-				// Settle payment
-				let txHash: `0x${string}`;
-				let settleResponse: X402SettleResponse;
-				let payer: string | undefined;
-
-				if (opts.config.gasWalletPrivateKey) {
-					console.log("[x402-access] Using gas wallet settlement");
-					const result = await settleViaGasWallet(
-						paymentSignature,
-						opts.config.gasWalletPrivateKey,
-						networkConfig,
-					);
-					txHash = result.txHash;
-					settleResponse = result.settleResponse;
-					payer = result.payer;
-				} else {
-					const facilitatorUrl = opts.config.facilitatorUrl ?? networkConfig.facilitatorUrl;
-					console.log(`[x402-access] Using facilitator: ${facilitatorUrl}`);
-					const result = await settleViaFacilitator(paymentSignature, facilitatorUrl);
-					txHash = result.txHash;
-					settleResponse = result.settleResponse;
-					payer = result.payer;
-				}
-
-				console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
-
-				// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
-				const grant = await engine.processHttpPayment(
-					requestId,
-					tierId,
-					resourceId,
-					txHash,
-					payer as `0x${string}` | undefined,
-				);
-				console.log("[x402-access] ✓ Access grant issued");
-
-				// Set PAYMENT-RESPONSE header
-				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
-				res.setHeader("PAYMENT-RESPONSE", paymentResponse);
-
-				return res.status(200).json(grant);
 			}
+			// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
+			console.log("[x402-access] → STEP 2: Processing payment");
+
+			// Settle payment
+			let txHash: `0x${string}`;
+			let settleResponse: X402SettleResponse;
+			let payer: string | undefined;
+
+			if (opts.config.gasWalletPrivateKey) {
+				console.log("[x402-access] Using gas wallet settlement");
+				const result = await settleViaGasWallet(
+					paymentSignature,
+					opts.config.gasWalletPrivateKey,
+					networkConfig,
+				);
+				txHash = result.txHash;
+				settleResponse = result.settleResponse;
+				payer = result.payer;
+			} else {
+				const facilitatorUrl = opts.config.facilitatorUrl ?? networkConfig.facilitatorUrl;
+				console.log(`[x402-access] Using facilitator: ${facilitatorUrl}`);
+				const result = await settleViaFacilitator(paymentSignature, facilitatorUrl);
+				txHash = result.txHash;
+				settleResponse = result.settleResponse;
+				payer = result.payer;
+			}
+
+			console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
+
+			// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
+			const grant = await engine.processHttpPayment(
+				requestId,
+				tierId,
+				resourceId,
+				txHash,
+				payer as `0x${string}` | undefined,
+			);
+			console.log("[x402-access] ✓ Access grant issued");
+
+			// Set PAYMENT-RESPONSE header
+			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
+			res.setHeader("PAYMENT-RESPONSE", paymentResponse);
+
+			return res.status(200).json(grant);
 		} catch (err: unknown) {
 			console.error("[x402-access] ✗ Error:", err);
 			if (err instanceof AgentGateError) {

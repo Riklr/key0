@@ -1,4 +1,4 @@
-import { CHAIN_CONFIGS, X402_EXTENSION_URI, CHAIN_ID_TO_NETWORK } from "../types/index.js";
+import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
 import type {
 	AgentCard,
 	AgentExtension,
@@ -12,7 +12,8 @@ import type {
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];
-	const networkName = CHAIN_ID_TO_NETWORK[networkConfig.chainId] ?? `chain-${networkConfig.chainId}`;
+	const networkName =
+		CHAIN_ID_TO_NETWORK[networkConfig.chainId] ?? `chain-${networkConfig.chainId}`;
 
 	// Build skills - one per product tier (minimal, reference-style)
 	const skills: AgentSkill[] = config.products.map((tier: ProductTier) => {
@@ -28,46 +29,48 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		return {
 			id: tier.tierId,
 			name: tier.label,
-		description: `${tier.label} — ${tier.amount} USDC on ${networkName}. Send via JSON-RPC method 'message/send' with a data part containing type "AccessRequest". The server responds with a 402 payment challenge; reply with the x402 payment payload in message metadata to complete payment.`,
-		tags: ["x402", "payment"],
-		examples: [
-			JSON.stringify({
-				messageId: "<uuid>",
-				role: "user",
-				parts: [{
-					kind: "data",
-					data: {
-						type: "AccessRequest",
-						tierId: tier.tierId,
-						requestId: "<uuid>",
-						resourceId: "photo-1",
+			description: `${tier.label} — ${tier.amount} USDC on ${networkName}. Send via JSON-RPC method 'message/send' with a data part containing type "AccessRequest". The server responds with a 402 payment challenge; reply with the x402 payment payload in message metadata to complete payment.`,
+			tags: ["x402", "payment"],
+			examples: [
+				JSON.stringify({
+					messageId: "<uuid>",
+					role: "user",
+					parts: [
+						{
+							kind: "data",
+							data: {
+								type: "AccessRequest",
+								tierId: tier.tierId,
+								requestId: "<uuid>",
+								resourceId: "photo-1",
+							},
+						},
+					],
+				}),
+			],
+			inputSchema: {
+				type: "object",
+				properties: {
+					type: {
+						type: "string",
+						const: "AccessRequest",
+						description: "Must be 'AccessRequest'",
 					},
-				}],
-			}),
-		],
-		inputSchema: {
-			type: "object",
-			properties: {
-				type: {
-					type: "string",
-					const: "AccessRequest",
-					description: "Must be 'AccessRequest'",
+					tierId: {
+						type: "string",
+						description: `Tier to purchase. Must be '${tier.tierId}'`,
+					},
+					requestId: {
+						type: "string",
+						description: "Client-generated UUID for idempotency",
+					},
+					resourceId: {
+						type: "string",
+						description: "Optional: Specific resource identifier (defaults to 'default')",
+					},
 				},
-				tierId: {
-					type: "string",
-					description: `Tier to purchase. Must be '${tier.tierId}'`,
-				},
-				requestId: {
-					type: "string",
-					description: "Client-generated UUID for idempotency",
-				},
-				resourceId: {
-					type: "string",
-					description: "Optional: Specific resource identifier (defaults to 'default')",
-				},
+				required: ["type", "tierId", "requestId"],
 			},
-			required: ["type", "tierId", "requestId"],
-		},
 			outputSchema: {
 				type: "object",
 				properties: {

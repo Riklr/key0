@@ -43,7 +43,6 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 	const agentCard = buildAgentCard(opts.config);
 
 	const requestHandler = new DefaultRequestHandler(
-		// biome-ignore lint/suspicious/noExplicitAny: our AgentCard type has extra fields vs the SDK's strict type
 		agentCard as any,
 		new InMemoryTaskStore(),
 		executor,

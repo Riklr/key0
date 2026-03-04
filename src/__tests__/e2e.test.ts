@@ -119,7 +119,11 @@ function extractChallengeData(events: any[]): any {
 		// Fall back to text parts
 		const textPart = task.status?.message?.parts?.find((p: any) => p.kind === "text");
 		if (textPart) {
-			try { return JSON.parse(textPart.text); } catch { /* ignore */ }
+			try {
+				return JSON.parse(textPart.text);
+			} catch {
+				/* ignore */
+			}
 		}
 	}
 	// Fall back to old message format

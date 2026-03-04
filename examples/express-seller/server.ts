@@ -1,4 +1,4 @@
-import { X402Adapter, AccessTokenIssuer, RedisSeenTxStore } from "@agentgate/sdk";
+import { AccessTokenIssuer, RedisSeenTxStore, X402Adapter } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
 import express from "express";
