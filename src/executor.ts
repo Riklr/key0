@@ -1,9 +1,9 @@
 import type { Message, Task, Artifact } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
+import { v4 as uuidv4 } from "uuid";
 import type { ChallengeEngine } from "./core/index.js";
 import type { AccessRequest, PaymentProof, X402PaymentPayload } from "./types/index.js";
 import { AgentGateError, X402_METADATA_KEYS, NETWORK_TO_CHAIN_ID } from "./types/index.js";
-import { v4 as uuidv4 } from "uuid";
 
 export class AgentGateExecutor implements AgentExecutor {
 	constructor(private engine: ChallengeEngine) {}

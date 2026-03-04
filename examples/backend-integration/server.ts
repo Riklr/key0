@@ -10,9 +10,9 @@
  *   bun run start
  */
 
-import express from "express";
 import { validateAgentGateToken } from "@agentgate/sdk";
 import type { AccessTokenPayload } from "@agentgate/sdk";
+import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const AGENTGATE_SECRET = process.env.AGENTGATE_ACCESS_TOKEN_SECRET!;
@@ -36,7 +36,11 @@ const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; tierId: s
 // ============================================================================
 
 // Middleware to verify internal auth
-function verifyInternalAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+function verifyInternalAuth(
+	req: express.Request,
+	res: express.Response,
+	next: express.NextFunction,
+) {
 	const authHeader = req.headers["x-internal-auth"];
 	if (authHeader !== INTERNAL_AUTH_SECRET) {
 		return res.status(401).json({ error: "Unauthorized" });
@@ -107,8 +111,7 @@ async function validateToken(
 		});
 
 		// Attach token to request
-		(req as express.Request & { agentGateToken: AccessTokenPayload }).agentGateToken =
-			payload;
+		(req as express.Request & { agentGateToken: AccessTokenPayload }).agentGateToken = payload;
 		next();
 	} catch (err) {
 		// If native token validation fails, check for custom API key (Remote Mode)
@@ -118,7 +121,11 @@ async function validateToken(
 			const keyData = apiKeys.get(apiKey);
 			if (keyData && keyData.expiresAt > new Date()) {
 				// Valid API key
-				(req as express.Request & { agentGateToken: any }).agentGateToken = {
+				(
+					req as express.Request & {
+						agentGateToken: { resourceId: string; tierId: string; type: string };
+					}
+				).agentGateToken = {
 					resourceId: keyData.resourceId,
 					tierId: keyData.tierId,
 					type: "api-key",
@@ -184,8 +191,8 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
-	console.log(`\n📦 Backend Service`);
+	console.log("\n📦 Backend Service");
 	console.log(`   Port: ${PORT}`);
-	console.log(`   Protected APIs: /api/*`);
-	console.log(`   Internal endpoints: /internal/*\n`);
+	console.log("   Protected APIs: /api/*");
+	console.log("   Internal endpoints: /internal/*\n");
 });

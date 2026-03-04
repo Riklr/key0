@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import type { Message, Task } from "@a2a-js/sdk";
+import type {
+	AgentExecutionEvent,
+	ExecutionEventBus,
+	ExecutionEventName,
+	RequestContext,
+} from "@a2a-js/sdk/server";
+import { v4 as uuidv4 } from "uuid";
+import { createAgentGate } from "../factory.js";
+import { validateToken } from "../middleware.js";
 import { MockPaymentAdapter } from "../test-utils";
 import type { SellerConfig } from "../types";
 import { X402_METADATA_KEYS } from "../types";
-import { validateToken } from "../middleware.js";
-import { createAgentGate } from "../factory.js";
-import { v4 as uuidv4 } from "uuid";
-import type { ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
-import type { Message, Task } from "@a2a-js/sdk";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
@@ -47,31 +52,31 @@ function makeConfig(): SellerConfig {
 }
 
 class MockEventBus implements ExecutionEventBus {
-	public events: any[] = [];
-	
-	publish(event: any): void {
+	public events: AgentExecutionEvent[] = [];
+
+	publish(event: AgentExecutionEvent): void {
 		this.events.push(event);
 	}
-	
+
 	finished(): void {}
-	
+
 	send(message: any): void {
 		this.events.push(message);
 	}
 
-	on(eventName: any, listener: any): this {
+	on(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	off(eventName: any, listener: any): this {
+	off(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	once(eventName: any, listener: any): this {
+	once(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	removeAllListeners(eventName?: any): this {
+	removeAllListeners(eventName?: ExecutionEventName): this {
 		return this;
 	}
 }
@@ -80,7 +85,7 @@ async function runTask(executor: any, payload: any, metadata?: Record<string, un
 	const eventBus = new MockEventBus();
 	const taskId = uuidv4();
 	const contextId = uuidv4();
-	
+
 	const userMessage: any = {
 		kind: "message",
 		messageId: uuidv4(),
@@ -91,13 +96,13 @@ async function runTask(executor: any, payload: any, metadata?: Record<string, un
 	if (metadata) {
 		userMessage.metadata = metadata;
 	}
-	
+
 	const context: RequestContext = {
 		taskId,
 		contextId,
 		userMessage,
 	};
-	
+
 	await executor.execute(context, eventBus);
 	return eventBus.events;
 }
@@ -169,7 +174,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		// Agent card check
 		expect(agentCard.name).toBe("E2E Test Agent");
 		expect(agentCard.skills).toHaveLength(2);
-		expect(agentCard.skills[0]!.pricing).toHaveLength(2);
+		expect(agentCard.skills[0]!.pricing).toHaveLength(1);
 
 		// Verify x402 extension is declared
 		expect(agentCard.capabilities.extensions).toBeDefined();
@@ -304,7 +309,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
-		
+
 		const requestId = uuidv4();
 		const reqData = {
 			type: "AccessRequest",
@@ -326,7 +331,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
-		
+
 		const events = await runTask(executor, {
 			type: "AccessRequest",
 			requestId: uuidv4(),
@@ -334,11 +339,11 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 			tierId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
-		
+
 		expect(extractTaskState(events)).toBe("failed");
 		const task = events.find((e: any) => e.kind === "task");
 		expect(task).toBeDefined();
-		const textPart = task.status.message.parts.find((p: any) => p.kind === "text");
+		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
 		expect(textPart.text).toContain("not found");
 	});
 
@@ -390,10 +395,10 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 			asset: "USDC",
 			fromAgentId: "agent://e2e-test",
 		});
-		
+
 		expect(extractTaskState(doubleSpendEvents)).toBe("failed");
 		const task = doubleSpendEvents.find((e: any) => e.kind === "task");
-		const textPart = task.status.message.parts.find((p: any) => p.kind === "text");
+		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
 		expect(textPart.text).toContain("already been redeemed");
 	});
 

@@ -55,7 +55,7 @@ export type {
 } from "./adapter.js";
 export type { IPaymentAdapter } from "./adapter.js";
 
-export type { IChallengeStore, ISeenTxStore } from "./storage.js";
+export type { IChallengeStore, ISeenTxStore, ChallengeTransitionUpdates } from "./storage.js";
 
 export { AgentGateError } from "./errors.js";
 export type { AgentGateErrorCode } from "./errors.js";

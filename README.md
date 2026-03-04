@@ -304,9 +304,133 @@ fastify.listen({ port: 3000 });
 | `tierId` | `string` | Purchased tier |
 | `txHash` | `0x${string}` | On-chain transaction hash |
 
-### Token Issuance
+### Environment Variables
 
-Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
+```bash
+AGENTGATE_NETWORK=testnet                          # "testnet" or "mainnet"
+AGENTGATE_WALLET_ADDRESS=0xYourWalletAddress        # Receive-only wallet (no private key needed)
+ACCESS_TOKEN_SECRET=your-secret-min-32-chars        # JWT signing secret for AccessTokenIssuer
+PORT=3000                                           # Server port
+
+# Required for x402 HTTP flow with CDP facilitator (alternative to gas wallet)
+CDP_API_KEY_ID=your-cdp-api-key-id
+CDP_API_KEY_SECRET=your-cdp-api-key-secret
+
+# Optional: self-contained settlement without a facilitator
+AGENTGATE_GAS_WALLET_KEY=0xYourPrivateKey
+```
+
+## How It Works
+
+AgentGate supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
+
+### A2A Flow (Agent-to-Agent)
+
+```
+Client Agent                          Seller Server
+     |                                      |
+     |  1. GET /.well-known/agent.json      |
+     |------------------------------------->|
+     |  <-- Agent card (skills, pricing)    |
+     |                                      |
+     |  2. POST /a2a/jsonrpc (AccessRequest)|
+     |------------------------------------->|
+     |  <-- X402Challenge (amount, chain,   |
+     |       destination, challengeId)      |
+     |                                      |
+     |  3. Pay USDC on Base (on-chain)      |
+     |----> Blockchain                      |
+     |  <-- txHash                          |
+     |                                      |
+     |  4. POST /a2a/jsonrpc (PaymentProof) |
+     |------------------------------------->|
+     |      Server verifies tx on-chain --> |
+     |  <-- AccessGrant (JWT + endpoint)    |
+     |                                      |
+     |  5. GET /api/resource/:id            |
+     |     Authorization: Bearer <JWT>      |
+     |------------------------------------->|
+     |  <-- Protected content               |
+```
+
+1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available products and pricing
+2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired tier
+3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
+4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
+5. **Proof** — Client submits a `PaymentProof` with the transaction hash
+6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
+7. **Grant** — Server calls `onIssueToken`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
+8. **Access** — Client uses the token as a Bearer header to access the protected resource
+
+### HTTP x402 Flow (Gas Wallet / Facilitator)
+
+```
+Client                                Seller Server
+     |                                      |
+     |  1. POST /a2a/jsonrpc                |
+     |     (AccessRequest, no payment)      |
+     |------------------------------------->|
+     |  <-- HTTP 402 + PaymentRequirements  |
+     |       + challengeId                  |
+     |                                      |
+     |  2. POST /a2a/jsonrpc                |
+     |     (AccessRequest + PAYMENT-        |
+     |      SIGNATURE header with signed    |
+     |      EIP-3009 authorization)         |
+     |------------------------------------->|
+     |      Gas wallet / facilitator        |
+     |      settles on-chain -------------> |
+     |  <-- AccessGrant (JWT + endpoint)    |
+     |                                      |
+     |  3. GET /api/resource/:id            |
+     |     Authorization: Bearer <JWT>      |
+     |------------------------------------->|
+     |  <-- Protected content               |
+```
+
+1. **Challenge (402)** — Client sends an `AccessRequest` without a payment header. Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` and the `challengeId`
+2. **Payment + Settlement** — Client sends the same request with a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles the payment on-chain, then the server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`
+3. **Access** — Client uses the token as a Bearer header to access the protected resource
+
+If `onIssueToken` fails in either flow, the record stays `PAID` and the [refund cron](#refund-flow) picks it up automatically.
+
+## Storage
+
+By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
+
+```typescript
+import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/sdk";
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL);
+
+app.use(
+  agentGateRouter({
+    config: { /* ... */ },
+    adapter,
+    store: new RedisChallengeStore({ redis, challengeTTLSeconds: 900 }),
+    seenTxStore: new RedisSeenTxStore({ redis }),
+  })
+);
+```
+
+Redis storage provides:
+- Atomic state transitions via Lua scripts (safe for concurrent requests)
+- Automatic TTL-based cleanup
+- Double-spend prevention with `SET NX`
+
+## Security
+
+- **Double-spend prevention** — Each transaction hash can only be redeemed once (enforced atomically)
+- **Idempotent requests** — Same `requestId` returns the same challenge (safe to retry)
+- **On-chain verification** — Payments are verified against the actual blockchain (recipient, amount, timing)
+- **Challenge expiry** — Challenges expire after `challengeTTLSeconds` (default 15 minutes)
+- **Secret rotation** — `AccessTokenIssuer.verifyWithFallback()` supports rotating secrets with zero downtime
+- **Resource verification timeout** — `onVerifyResource` has a configurable timeout (default 5s) to prevent hanging
+
+## Token Issuance
+
+The `onIssueToken` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
 import { AccessTokenIssuer } from "@agentgate/sdk";
@@ -327,26 +451,6 @@ onIssueToken: async (params) => {
 const decoded = await issuer.verifyWithFallback(token, [process.env.PREVIOUS_SECRET!]);
 ```
 
-### Storage
-
-In-memory by default. For multi-process production deployments, use Redis:
-
-```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/sdk";
-import Redis from "ioredis";
-
-const redis = new Redis(process.env.REDIS_URL);
-
-agentGateRouter({
-  config: { /* ... */ },
-  adapter,
-  store: new RedisChallengeStore({ redis, challengeTTLSeconds: 900 }),
-  seenTxStore: new RedisSeenTxStore({ redis }),
-});
-```
-
-Redis storage uses atomic Lua scripts for state transitions and `SET NX` for double-spend prevention.
-
 ### Settlement Strategies
 
 **Facilitator (default)** — Coinbase CDP executes an EIP-3009 `transferWithAuthorization` on-chain:
@@ -364,56 +468,79 @@ CDP_API_KEY_SECRET=your-key-secret
 
 The gas wallet must hold ETH on Base to pay transaction fees.
 
----
+## Refund Flow
 
-## How It Works
-
-Both modes implement the same underlying protocol:
+Every payment — whether via the A2A protocol or the HTTP x402 flow — is tracked through a single `ChallengeRecord` with the following lifecycle:
 
 ```
-Client Agent                          AgentGate
-     │                                    │
-     │  1. GET /.well-known/agent.json    │
-     │──────────────────────────────────▶ │
-     │  ◀── agent card (skills, pricing)  │
-     │                                    │
-     │  2. POST /a2a/access               │
-     │──────────────────────────────────▶ │
-     │  ◀── 402 + payment requirements    │
-     │       (amount, asset, payTo, chain)│
-     │                                    │
-     │  3. Sign EIP-3009 authorization    │
-     │     [off-chain, no broadcast yet]  │
-     │                                    │
-     │  4. POST /a2a/access + signature   │
-     │──────────────────────────────────▶ │
-     │                         settle ──▶ Base
-     │                         verify ◀── tx confirmed
-     │                         issue token
-     │  ◀── AccessGrant (token + endpoint)│
-     │                                    │
-     │  5. GET /api/resource              │
-     │     Authorization: Bearer <token>  │
-     │──────────────────────────────────▶ │
-     │  ◀── protected content             │
+PENDING ─── payment verified ──────────────► PAID
+PENDING ─── challenge TTL exceeded ────────► EXPIRED
+PENDING ─── seller cancels ────────────────► CANCELLED
+
+PAID ────── onIssueToken() succeeds ───────► DELIVERED       ← happy path
+PAID ────── cron picks up after grace ─────► REFUND_PENDING
+REFUND_PENDING ── refund succeeds ─────────► REFUNDED
+REFUND_PENDING ── refund fails ────────────► REFUND_FAILED   ← needs operator
 ```
 
-1. **Discovery** — Client reads the agent card to learn products and pricing
-2. **Request** — Client POSTs an access request; server returns 402 with payment terms
-3. **Sign** — Client creates an EIP-3009 `transferWithAuthorization` signature off-chain
-4. **Settle** — Client sends the signature; AgentGate broadcasts and confirms on-chain
-5. **Grant** — Server calls `onIssueToken`, returns `AccessGrant` with the credential
-6. **Access** — Client uses the credential to call the protected resource
+In the happy path, `PAID` lasts milliseconds — the SDK transitions to `DELIVERED` immediately after `onIssueToken` succeeds. The refund cron is a safety net for when `onIssueToken` throws or the server crashes between payment and delivery.
 
----
+### How It Works
 
-## Security
+1. Payment is verified (on-chain for A2A, via gas wallet/facilitator for HTTP x402)
+2. Record transitions `PENDING → PAID` with `txHash`, `paidAt`, and `fromAddress` (buyer's wallet)
+3. SDK calls `onIssueToken` to generate the access token
+4. On success: `PAID → DELIVERED` with `accessGrant` and `deliveredAt`
+5. On failure: record stays `PAID` — the refund cron finds it after the grace period
 
-- **Double-spend prevention** — Each `txHash` is redeemable exactly once (atomic `SET NX`)
-- **On-chain verification** — Recipient, amount, and timing are verified against the blockchain
-- **Challenge expiry** — Challenges expire after `challengeTTLSeconds` (default 15 min)
-- **Idempotent requests** — Same `requestId` always returns the same challenge (safe to retry)
-- **Secret rotation** — `verifyWithFallback()` rotates secrets with zero downtime
+The `fromAddress` is captured automatically: from the on-chain `Transfer` event in A2A, or from the settlement `payer` field in HTTP x402.
+
+### Wiring Up the Refund Cron
+
+Use `processRefunds` with a job scheduler like BullMQ to periodically scan for stuck `PAID` records and refund them:
+
+```typescript
+import { Queue, Worker } from "bullmq";
+import { processRefunds, RedisChallengeStore } from "@agentgate/sdk";
+
+const store = new RedisChallengeStore({ redis });
+
+// Worker processes refund jobs
+new Worker("refund-cron", async () => {
+  const results = await processRefunds({
+    store,
+    sellerPrivateKey: process.env.AGENTGATE_SELLER_PRIVATE_KEY as `0x${string}`,
+    network: "testnet",
+    minAgeMs: 5 * 60 * 1000, // 5-minute grace period
+  });
+
+  for (const r of results) {
+    if (r.success) {
+      console.log(`Refunded ${r.amount} to ${r.toAddress} — tx: ${r.refundTxHash}`);
+    } else {
+      console.error(`Refund failed for ${r.challengeId}: ${r.error}`);
+    }
+  }
+}, { connection: redis });
+
+// Schedule to run every 60 seconds
+const queue = new Queue("refund-cron", { connection: redis });
+await queue.add("process", {}, { repeat: { every: 60_000 } });
+```
+
+### processRefunds Config
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `store` | `IChallengeStore` | required | The same store passed to `createAgentGate` |
+| `sellerPrivateKey` | `0x${string}` | required | Seller wallet used to send USDC refunds |
+| `network` | `"mainnet" \| "testnet"` | required | Determines USDC contract and RPC endpoint |
+| `minAgeMs` | `number` | `300_000` (5 min) | Grace period before a `PAID` record is eligible for refund |
+| `sendUsdc` | `function` | built-in | Override for testing or custom routing |
+
+### Double-Refund Prevention
+
+The `PAID → REFUND_PENDING` transition is atomic in both store implementations. In Redis, a Lua script ensures only one worker can claim a record — if two cron instances fire simultaneously, only one USDC transfer is broadcast. See [Refund_flow.md](./docs/Refund_flow.md) for full details on the state machine, store TTLs, and failure handling.
 
 ---
 
@@ -453,7 +580,8 @@ bun run start
 |---|---|
 | [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing tiers |
 | [`examples/hono-seller`](./examples/hono-seller) | Same features using Hono |
-| [`examples/standalone-service`](./examples/standalone-service) | AgentGate as a separate service with Redis |
+| [`examples/standalone-service`](./examples/standalone-service) | AgentGate as a separate service with Redis + gas wallet |
+| [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
 | [`examples/backend-integration`](./examples/backend-integration) | AgentGate service + backend API coordination |
 | [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
 
@@ -495,3 +623,4 @@ docker/
 
 - [TECH.md](./TECH.md) — Technical architecture reference
 - [SPEC.md](./SPEC.md) — Protocol specification
+- [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling

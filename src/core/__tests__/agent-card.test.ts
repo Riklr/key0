@@ -36,11 +36,9 @@ describe("buildAgentCard", () => {
 		expect(card.description).toContain("A test agent");
 	});
 
-	test("description includes workflow explanation", () => {
+	test("description includes agent description", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.description).toContain("WORKFLOW");
-		expect(card.description).toContain("2-step");
-		expect(card.description).toContain("x402");
+		expect(card.description).toContain("A test agent");
 	});
 
 	test("returns card with correct url and version", () => {
@@ -72,36 +70,30 @@ describe("buildAgentCard", () => {
 		expect(ext.description).toContain("x402");
 	});
 
-	test("has two skills: request-access and submit-proof", () => {
+	test("has one skill per product tier", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.skills).toHaveLength(2);
-		expect(card.skills[0]!.id).toBe("request-access");
-		expect(card.skills[1]!.id).toBe("submit-proof");
+		expect(card.skills).toHaveLength(1);
+		expect(card.skills[0]!.id).toBe("single");
+		expect(card.skills[0]!.name).toBe("Single Photo");
 	});
 
-	test("request-access skill mentions 'Step 1' and 'input-required'", () => {
+	test("skill description mentions x402 payment and 402 challenge", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.skills[0]!.description).toContain("Step 1");
-		expect(card.skills[0]!.description).toContain("input-required");
+		expect(card.skills[0]!.description).toContain("x402 payment");
+		expect(card.skills[0]!.description).toContain("402 payment challenge");
 	});
 
-	test("submit-proof skill mentions 'Step 2' and metadata option", () => {
+	test("skill has pricing from its product tier", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.skills[1]!.description).toContain("Step 2");
-		expect(card.skills[1]!.description).toContain("metadata");
+		const skill = card.skills[0]!;
+		expect(skill.pricing).toHaveLength(1);
+		expect(skill.pricing![0]!.tierId).toBe("single");
+		expect(skill.pricing![0]!.amount).toBe("$0.10");
+		expect(skill.pricing![0]!.asset).toBe("USDC");
+		expect(skill.pricing![0]!.chainId).toBe(84532); // testnet
 	});
 
-	test("request-access skill has pricing from product tiers", () => {
-		const card = buildAgentCard(makeConfig());
-		const requestSkill = card.skills[0]!;
-		expect(requestSkill.pricing).toHaveLength(1);
-		expect(requestSkill.pricing![0]!.tierId).toBe("single");
-		expect(requestSkill.pricing![0]!.amount).toBe("$0.10");
-		expect(requestSkill.pricing![0]!.asset).toBe("USDC");
-		expect(requestSkill.pricing![0]!.chainId).toBe(84532); // testnet
-	});
-
-	test("multiple tiers produce multiple pricing entries", () => {
+	test("multiple tiers produce multiple skills with one pricing each", () => {
 		const config = makeConfig({
 			products: [
 				{ tierId: "basic", label: "Basic", amount: "$0.10", resourceType: "photo" },
@@ -110,18 +102,21 @@ describe("buildAgentCard", () => {
 			],
 		});
 		const card = buildAgentCard(config);
-		const requestSkill = card.skills[0]!;
-		expect(requestSkill.pricing).toHaveLength(3);
-		expect(requestSkill.pricing![0]!.tierId).toBe("basic");
-		expect(requestSkill.pricing![1]!.tierId).toBe("premium");
-		expect(requestSkill.pricing![2]!.tierId).toBe("bulk");
+		expect(card.skills).toHaveLength(3);
+		expect(card.skills[0]!.id).toBe("basic");
+		expect(card.skills[0]!.pricing).toHaveLength(1);
+		expect(card.skills[0]!.pricing![0]!.tierId).toBe("basic");
+		expect(card.skills[1]!.id).toBe("premium");
+		expect(card.skills[1]!.pricing![0]!.tierId).toBe("premium");
+		expect(card.skills[2]!.id).toBe("bulk");
+		expect(card.skills[2]!.pricing![0]!.tierId).toBe("bulk");
 	});
 
 	test("mainnet uses correct chainId", () => {
 		const config = makeConfig({ network: "mainnet" });
 		const card = buildAgentCard(config);
-		const requestSkill = card.skills[0]!;
-		expect(requestSkill.pricing![0]!.chainId).toBe(8453);
+		const skill = card.skills[0]!;
+		expect(skill.pricing![0]!.chainId).toBe(8453);
 	});
 
 	test("provider info is correct", () => {
@@ -135,9 +130,9 @@ describe("buildAgentCard", () => {
 		expect(card.protocolVersion).toBe("0.3.0");
 	});
 
-	test("default modes are text (A2A standard)", () => {
+	test("default input modes are text, output modes are application/json", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.defaultInputModes).toContain("text");
-		expect(card.defaultOutputModes).toContain("text");
+		expect(card.defaultOutputModes).toContain("application/json");
 	});
 });

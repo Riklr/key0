@@ -20,11 +20,7 @@ import {
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import { CHAIN_CONFIGS } from "../types/index.js";
 import { validateSellerConfig } from "./config-validation.js";
-import {
-	validateNonEmpty,
-	validateTxHash,
-	validateUUID,
-} from "./validation.js";
+import { validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 
 export type ChallengeEngineConfig = {
 	readonly config: SellerConfig;
@@ -191,7 +187,7 @@ export class ChallengeEngine {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
 				return this.challengeToResponse(existing);
 			}
-			if (existing.state === "PAID" && existing.accessGrant) {
+			if (existing.state === "DELIVERED" && existing.accessGrant) {
 				throw new AgentGateError(
 					"PROOF_ALREADY_REDEEMED",
 					"This request has already been paid. Returning existing access grant.",
@@ -254,7 +250,7 @@ export class ChallengeEngine {
 		}
 
 		// 3. Check state
-		if (challenge.state === "PAID" && challenge.accessGrant) {
+		if (challenge.state === "DELIVERED" && challenge.accessGrant) {
 			throw new AgentGateError(
 				"PROOF_ALREADY_REDEEMED",
 				"This challenge has already been paid. Returning existing access grant.",
@@ -346,11 +342,12 @@ export class ChallengeEngine {
 		const transitioned = await this.store.transition(challenge.challengeId, "PENDING", "PAID", {
 			txHash: proof.txHash,
 			paidAt: new Date(this.now()),
+			...(result.fromAddress ? { fromAddress: result.fromAddress } : {}),
 		});
 		if (!transitioned) {
 			// Another concurrent request already transitioned — reload and return
 			const updated = await this.store.get(challenge.challengeId);
-			if (updated?.accessGrant) {
+			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
 				throw new AgentGateError(
 					"PROOF_ALREADY_REDEEMED",
 					"This challenge has already been paid. Returning existing access grant.",
@@ -403,9 +400,10 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 12. Store grant on challenge record
-		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
+		// 12. Store grant and mark as delivered — SDK auto-transitions to DELIVERED
+		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
 			accessGrant: grant,
+			deliveredAt: new Date(this.now()),
 		});
 
 		// 13. Fire hook
@@ -447,20 +445,104 @@ export class ChallengeEngine {
 	}
 
 	/**
-	 * Process an HTTP x402 payment (stateless flow - no challenge lifecycle).
-	 * Used by the x402 HTTP middleware when a client sends X-Payment header with
-	 * an EIP-3009 signed authorization that has been settled via the facilitator.
-	 * 
-	 * Unlike the standard A2A flow, this:
-	 * - Does NOT use IChallengeStore (no pending challenge)
-	 * - Does NOT call adapter.verifyProof() (facilitator already verified)
-	 * - Auto-generates requestId
-	 * - Issues token immediately
+	 * Create a PENDING challenge record for the HTTP x402 flow (step 1: 402 response).
+	 * Analogous to requestAccess() but skips adapter.issueChallenge() since x402
+	 * payment requirements are built separately by the middleware.
+	 */
+	async requestHttpAccess(
+		requestId: string,
+		tierId: string,
+		resourceId: string,
+	): Promise<{ challengeId: string }> {
+		// 1. Validate tier
+		const tier = this.findTier(tierId);
+		if (!tier) {
+			throw new AgentGateError(
+				"TIER_NOT_FOUND",
+				`Tier "${tierId}" not found in product catalog`,
+				400,
+			);
+		}
+
+		// 2. Verify resource exists
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(resourceId, tierId),
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() =>
+						reject(
+							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				),
+			),
+		]);
+		if (!exists) {
+			throw new AgentGateError(
+				"RESOURCE_NOT_FOUND",
+				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				404,
+			);
+		}
+
+		// 3. Idempotency — same logic as requestAccess
+		const existing = await this.store.findActiveByRequestId(requestId);
+		if (existing) {
+			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
+				return { challengeId: existing.challengeId };
+			}
+			if (existing.state === "DELIVERED" && existing.accessGrant) {
+				throw new AgentGateError(
+					"PROOF_ALREADY_REDEEMED",
+					"This request has already been paid. Returning existing access grant.",
+					200,
+					{ grant: existing.accessGrant },
+				);
+			}
+			// EXPIRED or CANCELLED → fall through to create new record
+		}
+
+		// 4. Create PENDING record
+		const challengeId = `http-${crypto.randomUUID()}`;
+		const expiresAt = new Date(this.now() + this.challengeTTL);
+
+		const record: ChallengeRecord = {
+			challengeId,
+			requestId,
+			clientAgentId: "x402-http",
+			resourceId,
+			tierId,
+			amount: tier.amount,
+			amountRaw: parseDollarToUsdcMicro(tier.amount),
+			asset: "USDC",
+			chainId: this.networkConfig.chainId,
+			destination: this.config.walletAddress,
+			state: "PENDING",
+			expiresAt,
+			createdAt: new Date(this.now()),
+		};
+
+		await this.store.create(record);
+		return { challengeId };
+	}
+
+	/**
+	 * Process an HTTP x402 payment with full lifecycle tracking.
+	 * Used by the x402 HTTP middleware when a client sends PAYMENT-SIGNATURE header
+	 * with an EIP-3009 signed authorization that has been settled via the gas wallet
+	 * or facilitator.
+	 *
+	 * Lifecycle: looks up PENDING record (or auto-creates one if step 1 was skipped),
+	 * transitions PENDING → PAID → DELIVERED. If onIssueToken throws, record stays
+	 * PAID and the refund cron can pick it up.
 	 */
 	async processHttpPayment(
+		requestId: string,
 		tierId: string,
 		resourceId: string,
 		txHash: `0x${string}`,
+		fromAddress?: `0x${string}`,
 	): Promise<AccessGrant> {
 		// 1. Validate tier
 		const tier = this.findTier(tierId);
@@ -505,13 +587,62 @@ export class ChallengeEngine {
 			);
 		}
 
-		// 4. Generate IDs for tracking
-		const requestId = `http-${crypto.randomUUID()}`;
-		const challengeId = `http-${crypto.randomUUID()}`;
+		// 4. Look up PENDING record created by requestHttpAccess (step 1).
+		//    If client skipped step 1 or record expired, auto-create one.
+		let challenge = await this.store.findActiveByRequestId(requestId);
+		if (challenge?.state === "DELIVERED" && challenge.accessGrant) {
+			throw new AgentGateError(
+				"PROOF_ALREADY_REDEEMED",
+				"This request has already been paid. Returning existing access grant.",
+				200,
+				{ grant: challenge.accessGrant },
+			);
+		}
+		if (!challenge || challenge.state !== "PENDING") {
+			const challengeId = `http-${crypto.randomUUID()}`;
+			const expiresAt = new Date(this.now() + this.challengeTTL);
+			const record: ChallengeRecord = {
+				challengeId,
+				requestId,
+				clientAgentId: "x402-http",
+				resourceId,
+				tierId,
+				amount: tier.amount,
+				amountRaw: parseDollarToUsdcMicro(tier.amount),
+				asset: "USDC",
+				chainId: this.networkConfig.chainId,
+				destination: this.config.walletAddress,
+				state: "PENDING",
+				expiresAt,
+				createdAt: new Date(this.now()),
+			};
+			await this.store.create(record);
+			challenge = record;
+		}
 
-		// 5. Mark txHash as used
-		const marked = await this.seenTxStore.markUsed(txHash, challengeId);
+		// 5. Transition PENDING → PAID
+		const transitioned = await this.store.transition(challenge.challengeId, "PENDING", "PAID", {
+			txHash,
+			paidAt: new Date(this.now()),
+			...(fromAddress ? { fromAddress } : {}),
+		});
+		if (!transitioned) {
+			const updated = await this.store.get(challenge.challengeId);
+			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
+				throw new AgentGateError(
+					"PROOF_ALREADY_REDEEMED",
+					"This request has already been paid. Returning existing access grant.",
+					200,
+					{ grant: updated.accessGrant },
+				);
+			}
+			throw new AgentGateError("INTERNAL_ERROR", "Concurrent state transition", 500);
+		}
+
+		// 6. Mark txHash as used
+		const marked = await this.seenTxStore.markUsed(txHash, challenge.challengeId);
 		if (!marked) {
+			await this.store.transition(challenge.challengeId, "PAID", "PENDING");
 			throw new AgentGateError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed (race condition)",
@@ -519,13 +650,13 @@ export class ChallengeEngine {
 			);
 		}
 
-		// 6. Issue access token
+		// 7. Issue access token
 		const resourceEndpoint = this.buildResourceEndpoint(resourceId);
 		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${txHash}`;
 
 		const tokenResult = await this.config.onIssueToken({
-			requestId,
-			challengeId,
+			requestId: challenge.requestId,
+			challengeId: challenge.challengeId,
 			resourceId,
 			tierId,
 			txHash,
@@ -535,11 +666,11 @@ export class ChallengeEngine {
 		const expiresAt = tokenResult.expiresAt;
 		const tokenType = tokenResult.tokenType || "Bearer";
 
-		// 7. Build and return access grant
+		// 8. Build access grant
 		const grant: AccessGrant = {
 			type: "AccessGrant",
-			challengeId,
-			requestId,
+			challengeId: challenge.challengeId,
+			requestId: challenge.requestId,
 			accessToken,
 			tokenType: tokenType as "Bearer",
 			expiresAt: expiresAt.toISOString(),
@@ -550,7 +681,13 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 8. Fire hook if configured
+		// 9. Transition PAID → DELIVERED
+		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
+			accessGrant: grant,
+			deliveredAt: new Date(this.now()),
+		});
+
+		// 10. Fire hook if configured
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
 				console.error("[AgentGate] onPaymentReceived hook error:", err);

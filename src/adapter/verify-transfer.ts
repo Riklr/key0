@@ -1,5 +1,5 @@
-import type { NetworkConfig, VerificationResult } from "../types/index.js";
 import { type PublicClient, decodeEventLog } from "viem";
+import type { NetworkConfig, VerificationResult } from "../types/index.js";
 import { USDC_ABI, USDC_TRANSFER_EVENT_SIGNATURE } from "./usdc.js";
 
 export type VerifyTransferParams = {
@@ -51,6 +51,7 @@ export async function verifyTransfer(params: VerifyTransferParams): Promise<Veri
 	// 3. Find USDC Transfer event(s) to the expected destination
 	const usdcAddress = networkConfig.usdcAddress.toLowerCase();
 	let totalTransferred = 0n;
+	let matchedFrom: `0x${string}` | undefined;
 	const blockNumber = receipt.blockNumber;
 
 	for (const log of receipt.logs) {
@@ -66,11 +67,16 @@ export async function verifyTransfer(params: VerifyTransferParams): Promise<Veri
 
 			if (decoded.eventName !== "Transfer") continue;
 
-			const to = (decoded.args as { to: string }).to.toLowerCase();
-			const value = (decoded.args as { value: bigint }).value;
+			const args = decoded.args as { from: string; to: string; value: bigint };
+			const to = args.to.toLowerCase();
+			const value = args.value;
 
 			if (to === expectedTo.toLowerCase()) {
 				totalTransferred += value;
+				// Capture the first matching sender as the payer
+				if (!matchedFrom) {
+					matchedFrom = args.from as `0x${string}`;
+				}
 			}
 		} catch {
 			// Skip logs that don't decode as Transfer
@@ -120,6 +126,7 @@ export async function verifyTransfer(params: VerifyTransferParams): Promise<Veri
 	return {
 		verified: true,
 		txHash,
+		...(matchedFrom ? { fromAddress: matchedFrom } : {}),
 		confirmedAmount: totalTransferred,
 		confirmedChainId: networkConfig.chainId,
 		confirmedAt: blockTime,
