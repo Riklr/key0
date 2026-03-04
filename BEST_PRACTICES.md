@@ -68,6 +68,22 @@ Claude cannot force-push under any circumstances. Prevents accidental history de
 
 After every file edit, Biome automatically fixes formatting. You never need to manually run `bunx biome check --write` — it happens silently in the background. The `|| true` means a Biome failure never blocks Claude's work.
 
+### Pre-Push README Guard
+
+```json
+"PreToolUse": [{
+  "matcher": "Bash",
+  "hooks": [{
+    "type": "command",
+    "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-push-readme.sh\""
+  }]
+}]
+```
+
+Implemented in `.claude/hooks/pre-push-readme.sh`. Before any `git push`, the hook compares pending commits against `origin/<branch>` and checks whether `src/`, `docker/`, `.github/`, or `Dockerfile` changed without a corresponding `README.md` update. If so, it exits 2 (blocking the push) and tells Claude which files need README attention. Once Claude updates and commits `README.md`, the next push is allowed through automatically.
+
+Use `/push` as an explicit alternative — it prompts Claude to review the diff, update README if needed, commit, then push.
+
 ### `settings.local.json` (personal, gitignored)
 
 Each developer's personal file for allow-listing tools they're comfortable with (e.g. auto-approving `bun install`, `gh pr`, etc.). Not shared because tool trust is a personal decision.
