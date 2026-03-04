@@ -98,6 +98,9 @@ Build from source: `docker build -t riklr/agentgate .`
 | `ISSUE_TOKEN_API_SECRET` | | — | Adds `Authorization: Bearer` to token API requests |
 | `REDIS_URL` | | — | Redis URL (required for multi-instance) |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key for self-contained settlement |
+| `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — enables automatic refunds |
+| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron scans for eligible records |
+| `REFUND_MIN_AGE_MS` | | `300000` | Grace period before a `PAID` record is eligible for refund |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
@@ -132,6 +135,40 @@ Your endpoint can return any credential shape — the response is passed through
 ```
 
 If the response has a `token` string field it is used directly. Otherwise the full response body is JSON-serialized into `token` with `tokenType: "custom"`, so the client can parse it.
+
+### Automatic Refunds (Standalone)
+
+When `AGENTGATE_WALLET_PRIVATE_KEY` is set, the Docker server runs a BullMQ refund cron automatically — no extra setup needed. It scans for `PAID` challenges that were never delivered (e.g. because `ISSUE_TOKEN_API` returned an error) and sends USDC back to the payer.
+
+```
+┌──────────────┐   ┌───────────────────────────┐   ┌──────────────────┐
+│ Client Agent │   │    AgentGate (Docker)     │   │   Blockchain     │
+│              │   │                           │   │                  │
+│  pays USDC   │──▶│  verify on-chain          │──▶│                  │
+│              │   │  PENDING ──────────────▶ PAID │◀─ Transfer event │
+│              │   │                           │   │                  │
+│              │   │  POST ISSUE_TOKEN_API ────│──▶│  500 / timeout   │
+│              │◀──│  (token issuance fails)   │   │                  │
+│              │   │  record stays PAID        │   │                  │
+│              │   │                           │   │                  │
+│              │   │  ┌─ BullMQ cron (Redis) ─┐│   │                  │
+│              │   │  │ every REFUND_INTERVAL  ││   │                  │
+│              │   │  │ findPendingForRefund() ││   │                  │
+│              │   │  │ PAID → REFUND_PENDING  ││   │                  │
+│              │   │  │ sendUsdc() ────────────┼┼──▶│  USDC transfer   │
+│  [refunded]  │   │  │ REFUND_PENDING→REFUNDED││◀──│  txHash          │
+│              │   │  └───────────────────────┘│   │                  │
+└──────────────┘   └───────────────────────────┘   └──────────────────┘
+```
+
+```bash
+# docker/.env — add to enable refunds
+AGENTGATE_WALLET_PRIVATE_KEY=0xYourWalletPrivateKeyHere
+REFUND_INTERVAL_MS=60000   # scan every 60s
+REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
+```
+
+> Redis is required for refund cron when running multiple replicas — BullMQ ensures only one worker broadcasts each refund transaction.
 
 ---
 
@@ -303,6 +340,56 @@ fastify.listen({ port: 3000 });
 | `resourceId` | `string` | Purchased resource |
 | `tierId` | `string` | Purchased tier |
 | `txHash` | `0x${string}` | On-chain transaction hash |
+
+### Refund Cron (Embedded)
+
+When `onIssueToken` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
+
+```
+┌──────────────┐   ┌──────────────────────────────────────────────────┐   ┌──────────┐
+│ Client Agent │   │                 Your Application                  │   │Blockchain│
+│              │   │  ┌────────────────────────────────────────────┐  │   │          │
+│  pays USDC   │──▶│  │  AgentGate Middleware                       │  │──▶│          │
+│              │   │  │  verify on-chain                            │  │◀──│          │
+│              │   │  │  PENDING ──────────────────────────▶ PAID   │  │   │          │
+│              │   │  │  onIssueToken() throws                      │  │   │          │
+│              │◀──│  │  record stays PAID                          │  │   │          │
+│              │   │  └────────────────────────────────────────────┘  │   │          │
+│              │   │                                                   │   │          │
+│              │   │  ┌─ Your refund cron (BullMQ / setInterval) ───┐  │   │          │
+│              │   │  │ processRefunds({ store, walletPrivateKey })  │  │   │          │
+│              │   │  │ PAID → REFUND_PENDING                        │  │   │          │
+│              │   │  │ sendUsdc() ─────────────────────────────────┼──┼──▶│ USDC tx  │
+│  [refunded]  │   │  │ REFUND_PENDING → REFUNDED                   │  │◀──│ txHash   │
+│              │   │  └─────────────────────────────────────────────┘  │   │          │
+└──────────────┘   └──────────────────────────────────────────────────┘   └──────────┘
+```
+
+```typescript
+import { Queue, Worker } from "bullmq";
+import { processRefunds } from "@agentgate/sdk";
+
+// Uses the same `store` passed to agentGateRouter
+const worker = new Worker("refund-cron", async () => {
+  const results = await processRefunds({
+    store,
+    walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}`,
+    network: "testnet",
+    minAgeMs: 5 * 60 * 1000, // 5-min grace period
+  });
+
+  for (const r of results) {
+    if (r.success) console.log(`Refunded ${r.amount} → ${r.toAddress}  tx=${r.refundTxHash}`);
+    else console.error(`Refund failed ${r.challengeId}: ${r.error}`);
+  }
+}, { connection: redis });
+
+const queue = new Queue("refund-cron", { connection: redis });
+await queue.add("process", {}, { repeat: { every: 60_000 } });
+```
+
+> The `walletPrivateKey` must correspond to `walletAddress` — the wallet that received the USDC payments.
+> Without Redis, a plain `setInterval` works for single-instance deployments (the atomic `PAID → REFUND_PENDING` CAS transition prevents double-refunds even with multiple overlapping ticks).
 
 ### Environment Variables
 
@@ -509,7 +596,7 @@ const store = new RedisChallengeStore({ redis });
 new Worker("refund-cron", async () => {
   const results = await processRefunds({
     store,
-    sellerPrivateKey: process.env.AGENTGATE_SELLER_PRIVATE_KEY as `0x${string}`,
+    walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}`,
     network: "testnet",
     minAgeMs: 5 * 60 * 1000, // 5-minute grace period
   });
@@ -532,8 +619,8 @@ await queue.add("process", {}, { repeat: { every: 60_000 } });
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `store` | `IChallengeStore` | required | The same store passed to `createAgentGate` |
-| `sellerPrivateKey` | `0x${string}` | required | Seller wallet used to send USDC refunds |
+| `store` | `IChallengeStore` | required | The same store passed to `agentGateRouter` |
+| `walletPrivateKey` | `0x${string}` | required | Private key of `walletAddress` — used to send USDC refunds |
 | `network` | `"mainnet" \| "testnet"` | required | Determines USDC contract and RPC endpoint |
 | `minAgeMs` | `number` | `300_000` (5 min) | Grace period before a `PAID` record is eligible for refund |
 | `sendUsdc` | `function` | built-in | Override for testing or custom routing |
