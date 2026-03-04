@@ -238,6 +238,10 @@ AGENTGATE_GAS_WALLET_KEY=0xYourPrivateKey
 
 ## How It Works
 
+AgentGate supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
+
+### A2A Flow (Agent-to-Agent)
+
 ```
 Client Agent                          Seller Server
      |                                      |
@@ -267,12 +271,44 @@ Client Agent                          Seller Server
 
 1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available products and pricing
 2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired tier
-3. **Challenge** — Server returns an `X402Challenge` with payment details (amount, USDC destination, chain ID)
+3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
 4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
 5. **Proof** — Client submits a `PaymentProof` with the transaction hash
-6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent)
-7. **Grant** — Server calls `onIssueToken`, returns an `AccessGrant` with the token and resource endpoint URL
+6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
+7. **Grant** — Server calls `onIssueToken`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
 8. **Access** — Client uses the token as a Bearer header to access the protected resource
+
+### HTTP x402 Flow (Gas Wallet / Facilitator)
+
+```
+Client                                Seller Server
+     |                                      |
+     |  1. POST /a2a/jsonrpc                |
+     |     (AccessRequest, no payment)      |
+     |------------------------------------->|
+     |  <-- HTTP 402 + PaymentRequirements  |
+     |       + challengeId                  |
+     |                                      |
+     |  2. POST /a2a/jsonrpc                |
+     |     (AccessRequest + PAYMENT-        |
+     |      SIGNATURE header with signed    |
+     |      EIP-3009 authorization)         |
+     |------------------------------------->|
+     |      Gas wallet / facilitator        |
+     |      settles on-chain -------------> |
+     |  <-- AccessGrant (JWT + endpoint)    |
+     |                                      |
+     |  3. GET /api/resource/:id            |
+     |     Authorization: Bearer <JWT>      |
+     |------------------------------------->|
+     |  <-- Protected content               |
+```
+
+1. **Challenge (402)** — Client sends an `AccessRequest` without a payment header. Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` and the `challengeId`
+2. **Payment + Settlement** — Client sends the same request with a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles the payment on-chain, then the server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`
+3. **Access** — Client uses the token as a Bearer header to access the protected resource
+
+If `onIssueToken` fails in either flow, the record stays `PAID` and the [refund cron](#refund-flow) picks it up automatically.
 
 ## Storage
 
@@ -370,6 +406,80 @@ Settle payments directly without an external service. Provide a wallet private k
 ```
 
 The gas wallet must hold ETH on Base to pay transaction fees. No CDP credentials needed.
+
+## Refund Flow
+
+Every payment — whether via the A2A protocol or the HTTP x402 flow — is tracked through a single `ChallengeRecord` with the following lifecycle:
+
+```
+PENDING ─── payment verified ──────────────► PAID
+PENDING ─── challenge TTL exceeded ────────► EXPIRED
+PENDING ─── seller cancels ────────────────► CANCELLED
+
+PAID ────── onIssueToken() succeeds ───────► DELIVERED       ← happy path
+PAID ────── cron picks up after grace ─────► REFUND_PENDING
+REFUND_PENDING ── refund succeeds ─────────► REFUNDED
+REFUND_PENDING ── refund fails ────────────► REFUND_FAILED   ← needs operator
+```
+
+In the happy path, `PAID` lasts milliseconds — the SDK transitions to `DELIVERED` immediately after `onIssueToken` succeeds. The refund cron is a safety net for when `onIssueToken` throws or the server crashes between payment and delivery.
+
+### How It Works
+
+1. Payment is verified (on-chain for A2A, via gas wallet/facilitator for HTTP x402)
+2. Record transitions `PENDING → PAID` with `txHash`, `paidAt`, and `fromAddress` (buyer's wallet)
+3. SDK calls `onIssueToken` to generate the access token
+4. On success: `PAID → DELIVERED` with `accessGrant` and `deliveredAt`
+5. On failure: record stays `PAID` — the refund cron finds it after the grace period
+
+The `fromAddress` is captured automatically: from the on-chain `Transfer` event in A2A, or from the settlement `payer` field in HTTP x402.
+
+### Wiring Up the Refund Cron
+
+Use `processRefunds` with a job scheduler like BullMQ to periodically scan for stuck `PAID` records and refund them:
+
+```typescript
+import { Queue, Worker } from "bullmq";
+import { processRefunds, RedisChallengeStore } from "@agentgate/sdk";
+
+const store = new RedisChallengeStore({ redis });
+
+// Worker processes refund jobs
+new Worker("refund-cron", async () => {
+  const results = await processRefunds({
+    store,
+    sellerPrivateKey: process.env.AGENTGATE_SELLER_PRIVATE_KEY as `0x${string}`,
+    network: "testnet",
+    minAgeMs: 5 * 60 * 1000, // 5-minute grace period
+  });
+
+  for (const r of results) {
+    if (r.success) {
+      console.log(`Refunded ${r.amount} to ${r.toAddress} — tx: ${r.refundTxHash}`);
+    } else {
+      console.error(`Refund failed for ${r.challengeId}: ${r.error}`);
+    }
+  }
+}, { connection: redis });
+
+// Schedule to run every 60 seconds
+const queue = new Queue("refund-cron", { connection: redis });
+await queue.add("process", {}, { repeat: { every: 60_000 } });
+```
+
+### processRefunds Config
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `store` | `IChallengeStore` | required | The same store passed to `createAgentGate` |
+| `sellerPrivateKey` | `0x${string}` | required | Seller wallet used to send USDC refunds |
+| `network` | `"mainnet" \| "testnet"` | required | Determines USDC contract and RPC endpoint |
+| `minAgeMs` | `number` | `300_000` (5 min) | Grace period before a `PAID` record is eligible for refund |
+| `sendUsdc` | `function` | built-in | Override for testing or custom routing |
+
+### Double-Refund Prevention
+
+The `PAID → REFUND_PENDING` transition is atomic in both store implementations. In Redis, a Lua script ensures only one worker can claim a record — if two cron instances fire simultaneously, only one USDC transfer is broadcast. See [Refund_flow.md](./docs/Refund_flow.md) for full details on the state machine, store TTLs, and failure handling.
 
 ## Customizing the Agent Card
 
@@ -718,3 +828,4 @@ examples/
 
 - [TECH.md](./TECH.md) — Technical architecture reference
 - [SPEC.md](./SPEC.md) — Protocol specification
+- [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
