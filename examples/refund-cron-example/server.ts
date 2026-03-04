@@ -75,20 +75,16 @@ app.use(
 				return ["item-1", "item-2", "item-3"].includes(resourceId);
 			},
 			onIssueToken: async (params) => {
-				console.log("New token issued", params);
-				throw new Error("No Token Issued"); // NOTE: This is for testing the refund cron
-
-				// NOTE: This is the original code that issues a token
-				// return tokenIssuer.sign(
-				// 	{
-				// 		sub: params.requestId,
-				// 		jti: params.challengeId,
-				// 		resourceId: params.resourceId,
-				// 		tierId: params.tierId,
-				// 		txHash: params.txHash,
-				// 	},
-				// 	3600,
-				// );
+				return tokenIssuer.sign(
+					{
+						sub: params.requestId,
+						jti: params.challengeId,
+						resourceId: params.resourceId,
+						tierId: params.tierId,
+						txHash: params.txHash,
+					},
+					3600,
+				);
 			},
 			onPaymentReceived: async (grant) => {
 				console.log(`[Payment] Received payment for ${grant.resourceId}`);
