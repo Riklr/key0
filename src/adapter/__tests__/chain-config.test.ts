@@ -33,5 +33,4 @@ describe("CHAIN_CONFIGS", () => {
 	test("mainnet explorer URL", () => {
 		expect(CHAIN_CONFIGS.mainnet.explorerBaseUrl).toBe("https://basescan.org");
 	});
-
 });
