@@ -1,0 +1,21 @@
+{
+	"permissions": {
+		"deny": [
+			"Bash(git push --force*)",
+			"Bash(git push -f*)"
+		]
+	},
+	"hooks": {
+		"PostToolUse": [
+			{
+				"matcher": "Edit|Write|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "cd \"$CLAUDE_PROJECT_DIR\" && bunx biome check --write --unsafe \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+					}
+				]
+			}
+		]
+	}
+}

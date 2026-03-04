@@ -1,23 +1,23 @@
-# AgentGate — Product Requirements Specification
+# AgentGate — Protocol Specification
 
-**Version**: 0.1 (Draft)
-**Status**: Open for Review
-**Date**: 2026-02-28
+**Version**: 0.2
+**Status**: Implemented
+**Date**: 2026-03-04
 **Working Repo**: `api-agentic-commerce`
 
 ---
 
 ## 1. Problem Statement
 
-SaaS products today are designed for human users: they require browser-based signups, OAuth flows, password managers, and credit-card checkout pages. AI agents cannot navigate these flows autonomously.
+SaaS products today are designed for human users: browser signups, OAuth flows, credit-card checkouts. AI agents cannot navigate these flows autonomously.
 
-As the agent economy grows, SaaS companies need a way to:
+As the agent economy grows, API providers need a way to:
 
-1. **Expose** their services to autonomous agents without requiring human-in-the-loop authentication.
+1. **Expose** their services to autonomous agents without human-in-the-loop authentication.
 2. **Monetize** agent access without credit-card processors, subscription billing portals, or KYC friction.
 3. **Control** access at the resource level — per-call, per-album, per-report — not just per-account.
 
-**AgentGate** is an open-source framework that lets any SaaS company publish an A2A-compliant agent, define its priced capabilities, and accept crypto payments from client agents — all without changing their existing product backend.
+**AgentGate** is an open-source SDK that lets any API provider publish an A2A-compliant agent, define priced capabilities, and accept crypto payments from client agents — without changing their existing backend.
 
 ---
 
@@ -26,13 +26,13 @@ As the agent economy grows, SaaS companies need a way to:
 > **One Agent Card. Zero Signup. Instant Access.**
 
 AgentGate provides:
-- A **seller SDK** to publish a payment-gated A2A agent for any SaaS product.
-- A **payment adapter interface** starting with x402 (Base Chain USDC), extensible to any payment rail.
+- A **seller SDK** to publish a payment-gated A2A agent for any API or SaaS product.
+- A **payment adapter interface** implemented with x402 (Base Chain USDC), extensible to any payment rail.
 - A **challenge/access-token lifecycle** engine with idempotency, replay protection, and expiration handling.
 
 Client agents are **out of scope** — any A2A-compatible agent that can discover an agent card, hold a USDC wallet, and submit a transaction hash can interact with AgentGate. No buyer SDK is provided or required.
 
-**Out of scope v0.1**: Buyer SDKs, multi-tenant SaaS dashboards, refund UIs, subscription recurring billing, fiat rails.
+**Out of scope**: Buyer SDKs, multi-tenant SaaS dashboards, refund UIs, subscription recurring billing, fiat rails.
 
 ---
 
@@ -40,38 +40,36 @@ Client agents are **out of scope** — any A2A-compatible agent that can discove
 
 | Persona | Role | Pain Today |
 |---|---|---|
-| **SaaS Provider** (e.g. Riklr) | Owns the product, deploys AgentGate alongside their API | No way to monetize agent traffic; signup walls block autonomous clients |
-| **Client Agent** (external, not our concern) | Any A2A agent that discovers the card, pays on-chain, consumes the service | Treated as a black-box external caller — assumed capable of wallet management and payment |
+| **API Provider** | Owns the product, deploys AgentGate alongside their API | No way to monetize agent traffic; signup walls block autonomous clients |
+| **Client Agent** (external, out of scope) | Any A2A agent that discovers the card, pays on-chain, consumes the service | Treated as a black-box caller — assumed capable of wallet management and payment |
 | **Open Source Contributor** | Developer adding new payment adapters or integrating AgentGate | Needs clear adapter interfaces and well-typed contracts |
 
 ---
 
 ## 4. Core User Stories
 
-### 4.1 Provider (Seller) Journey
-
 ```
-As a SaaS provider,
+As an API provider,
 I want to publish an agent card that describes my priced services,
 So that any client agent can discover and pay for access without human signup.
 ```
 
 ```
-As a SaaS provider,
+As an API provider,
 I want to receive USDC payments on-chain for each access grant,
 So that I get paid instantly without invoicing, chargebacks, or card processing fees.
 ```
 
 ```
-As a SaaS provider,
-I want to define product tiers (e.g. single photo access vs. full album),
+As an API provider,
+I want to define product tiers (e.g. single photo vs. full album),
 So that agents pay the right price for the right level of access.
 ```
 
 ```
-As a SaaS provider,
+As an API provider,
 I want payment challenges to be idempotent and replay-protected,
-So that I never double-bill or accept underpayment from a different chain.
+So that I never double-bill or accept payment from the wrong chain.
 ```
 
 ---
@@ -94,9 +92,9 @@ So that I never double-bill or accept underpayment from a different chain.
 │                      (deployed by seller)                            │
 │                                                                      │
 │  ┌─────────────────┐  ┌──────────────────────┐  ┌────────────────┐  │
-│  │  Agent Card     │  │   Challenge Engine    │  │  Access Token  │  │
-│  │  /.well-known/  │  │  - Idempotency        │  │  Store         │  │
-│  │  agent.json     │  │  - Expiry tracking    │  │  (JWT, 1hr TTL)│  │
+│  │  Agent Card     │  │   Challenge Engine    │  │ AccessToken    │  │
+│  │  /.well-known/  │  │  - Idempotency        │  │ Issuer (JWT)   │  │
+│  │  agent.json     │  │  - Expiry tracking    │  │ HS256 / RS256  │  │
 │  │  (auto-served)  │  │  - State machine      │  └────────────────┘  │
 │  └─────────────────┘  └──────────┬───────────┘                      │
 │                                  │                                   │
@@ -106,13 +104,13 @@ So that I never double-bill or accept underpayment from a different chain.
 │  │   interface IPaymentAdapter { issueChallenge, verifyProof }   │  │
 │  │                                                                │  │
 │  │   ┌──────────────────┐    ┌─────────────────────────────┐    │  │
-│  │   │  x402Adapter ✓   │    │  StripeAdapter (future)     │    │  │
-│  │   │  Base USDC       │    │  LightningAdapter (future)  │    │  │
+│  │   │  X402Adapter ✓   │    │  Future adapters             │    │  │
+│  │   │  Base USDC       │    │  (Stripe, Lightning, etc.)   │    │  │
 │  │   └──────────────────┘    └─────────────────────────────┘    │  │
 │  └───────────────────────────────┬───────────────────────────────┘  │
 │                                  │                                   │
 │  ┌───────────────────────────────▼───────────────────────────────┐  │
-│  │              On-Chain Verification (x402Adapter)               │  │
+│  │              On-Chain Verification (X402Adapter)               │  │
 │  │   viem publicClient.getTransactionReceipt(txHash)              │  │
 │  │   Validates: to address, USDC amount, chainId, block.timestamp │  │
 │  └────────────────────────────────────────────────────────────────┘  │
@@ -121,7 +119,7 @@ So that I never double-bill or accept underpayment from a different chain.
          │  validateAccessToken() middleware (one import)
          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                  SELLER'S EXISTING API (e.g. Riklr)                  │
+│                  SELLER'S EXISTING API                               │
 │         Unchanged — AgentGate sits in front, injects token check     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -132,58 +130,58 @@ So that I never double-bill or accept underpayment from a different chain.
 
 ### 6.1 Agent Card (A2A Standard Extension)
 
-Published at `GET /.well-known/agent.json` on the seller's domain.
+Published at `GET /.well-known/agent.json` on the seller's domain. Auto-generated from `SellerConfig` by `buildAgentCard()`.
 
 ```typescript
 type AgentCard = {
-  name: string;                    // "Riklr Agent"
+  name: string;
   description: string;
-  url: string;                     // Base URL of this agent
-  version: string;                 // "1.0.0"
+  url: string;
+  version: string;
   capabilities: {
-    a2a: true;
-    paymentProtocols: PaymentProtocol[];   // ["x402"]
+    streaming: false;
+    pushNotifications: false;
+    stateTransitionHistory: false;
   };
-  defaultInputModes: string[];     // ["application/json"]
-  defaultOutputModes: string[];    // ["application/json"]
+  defaultInputModes: ["application/json"];
+  defaultOutputModes: ["application/json"];
   skills: AgentSkill[];
   provider: {
-    name: string;                  // "Riklr Inc."
-    url: string;                   // "https://riklr.com"
+    name: string;
+    url: string;
   };
+  extensions: AgentExtension[];
 };
 
-type PaymentProtocol = "x402" | "stripe" | "lightning";  // extensible
-
 type AgentSkill = {
-  id: string;                      // "request-access"
-  name: string;                    // "Request Photo Access"
+  id: string;
+  name: string;
   description: string;
   tags: string[];
-  inputSchema: JSONSchema;         // defines expected request body
-  outputSchema: JSONSchema;        // defines response shape
-  pricing?: SkillPricing[];       // optional — some skills are free
+  inputSchema: JSONSchema;
+  outputSchema: JSONSchema;
+  pricing?: SkillPricing[];
 };
 
 type SkillPricing = {
-  tierId: string;                  // "single-photo" | "full-album"
+  tierId: string;
   label: string;
-  amount: string;                  // "$0.10" (USD, settled as USDC)
+  amount: string;          // "$0.10" (USD, settled as USDC)
   asset: "USDC";
-  chainId: number;                 // 8453 (Base mainnet) | 84532 (testnet)
-  walletAddress: `0x${string}`;   // seller's receive wallet
+  chainId: number;         // 8453 (Base mainnet) | 84532 (Base Sepolia)
+  walletAddress: `0x${string}`;
 };
 ```
 
 ### 6.2 Access Request (Client → Seller Agent)
 
-Sent via A2A `tasks/send` to skill `request-access`.
+Sent as an A2A task message.
 
 ```typescript
 type AccessRequest = {
   requestId: string;      // UUID, client-generated, used for idempotency
   resourceId: string;     // e.g. albumId, reportId, datasetId
-  tierId: string;         // "single-photo" | "full-album"
+  tierId: string;         // must match a ProductTier.tierId
   clientAgentId: string;  // DID or URL identifying the client agent
   callbackUrl?: string;   // optional webhook for async fulfillment
 };
@@ -196,22 +194,20 @@ Returned as the A2A task result when the resource is paywalled.
 ```typescript
 type X402Challenge = {
   type: "X402Challenge";
-  challengeId: string;      // server-generated UUID, stable for same requestId
-  requestId: string;        // echoed from AccessRequest (idempotency key)
+  challengeId: string;       // server-generated UUID, stable for same requestId
+  requestId: string;         // echoed from AccessRequest (idempotency key)
   tierId: string;
-  amount: string;           // "$0.10"
+  amount: string;            // "$0.10"
   asset: "USDC";
-  chainId: number;          // 8453 or 84532 — MUST be validated on submission
-  destination: `0x${string}`;  // seller's wallet
-  expiresAt: string;        // ISO-8601, default: now + 15 minutes
-  description: string;      // human-readable e.g. "Access to Album #42"
+  chainId: number;           // 8453 or 84532 — MUST be validated on submission
+  destination: `0x${string}`; // seller's wallet
+  expiresAt: string;         // ISO-8601, default: now + 15 minutes
+  description: string;
   resourceVerified: boolean; // true = seller confirmed resource exists pre-flight
 };
 ```
 
 ### 6.4 Payment Proof (Client → Seller Agent)
-
-Sent via A2A `tasks/send` to skill `submit-proof`.
 
 ```typescript
 type PaymentProof = {
@@ -222,7 +218,7 @@ type PaymentProof = {
   txHash: `0x${string}`;
   amount: string;            // must match challenge.amount
   asset: "USDC";
-  fromAgentId: string;       // client agent DID / URL
+  fromAgentId: string;
 };
 ```
 
@@ -235,13 +231,13 @@ type AccessGrant = {
   type: "AccessGrant";
   challengeId: string;
   requestId: string;
-  accessToken: string;         // short-lived JWT or opaque token
+  accessToken: string;       // JWT or custom token from onIssueToken callback
   tokenType: "Bearer";
-  expiresAt: string;           // ISO-8601, default: now + 1 hour
-  resourceEndpoint: string;    // actual API endpoint to call
+  expiresAt: string;         // ISO-8601
+  resourceEndpoint: string;  // actual API endpoint to call
   resourceId: string;
   tierId: string;
-  txHash: `0x${string}`;       // on-chain receipt reference
+  txHash: `0x${string}`;
   explorerUrl: string;
 };
 ```
@@ -255,34 +251,46 @@ EXPIRED   → expiresAt passed without valid proof
 CANCELLED → seller cancelled (resource unavailable)
 ```
 
-### 6.7 Seller Configuration (Environment / Config File)
+All state changes go through `IChallengeStore.transition(id, fromState, toState, updates)` — never direct writes. This is the atomic compare-and-swap guard that prevents race conditions.
+
+### 6.7 Seller Configuration
 
 ```typescript
 type SellerConfig = {
   // Identity
   agentName: string;
-  agentUrl: string;            // public URL of this agent
+  agentDescription: string;
+  agentUrl: string;
+  providerName: string;
+  providerUrl: string;
+  version?: string;           // default: "1.0.0"
 
   // Payment
   walletAddress: `0x${string}`;  // public receive address (in agent card)
-  // SELLER_PRIVATE_KEY in .env — NEVER in config file
-
-  // Network
   network: "mainnet" | "testnet";
 
   // Product catalog
-  products: ProductTier[];
-
-  // Access token
-  accessTokenTTLSeconds: number;    // default: 3600
-  accessTokenSecret: string;        // in .env
+  products: readonly ProductTier[];
 
   // Challenge
-  challengeTTLSeconds: number;      // default: 900 (15 min)
+  challengeTTLSeconds?: number;         // default: 900 (15 min)
 
-  // Callbacks
+  // Callbacks (mandatory)
+  onVerifyResource: (resourceId: string, tierId: string) => Promise<boolean>;
+  onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+
+  // Callbacks (optional)
   onPaymentReceived?: (grant: AccessGrant) => Promise<void>;
   onChallengeExpired?: (challengeId: string) => Promise<void>;
+
+  // Customization
+  basePath?: string;                    // default: "/a2a"
+  resourceEndpointTemplate?: string;    // use {resourceId} placeholder
+  resourceVerifyTimeoutMs?: number;     // default: 5000
+
+  // Settlement strategy
+  gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (no facilitator)
+  facilitatorUrl?: string;             // override default CDP facilitator URL
 };
 
 type ProductTier = {
@@ -290,7 +298,23 @@ type ProductTier = {
   label: string;
   amount: string;           // "$0.10"
   resourceType: string;     // "photo" | "report" | "api-call"
-  accessDurationSeconds?: number;  // null = single-use
+  accessDurationSeconds?: number;
+};
+
+type IssueTokenParams = {
+  challengeId: string;      // use as JWT jti for replay prevention
+  requestId: string;        // use as JWT sub
+  resourceId: string;
+  tierId: string;
+  txHash: `0x${string}`;
+  accessDurationSeconds: number;
+  clientAgentId: string;
+};
+
+type TokenIssuanceResult = {
+  token: string;
+  expiresAt: Date;
+  tokenType: "Bearer";
 };
 ```
 
@@ -298,9 +322,9 @@ type ProductTier = {
 
 ## 7. API Specification
 
-### 7.1 A2A Endpoints (Seller Agent)
+### 7.1 A2A Endpoints
 
-All endpoints follow the [A2A protocol](https://google.github.io/A2A/) `tasks/send` pattern.
+All A2A communication follows the A2A protocol JSON-RPC pattern.
 
 ---
 
@@ -315,56 +339,84 @@ Returns the agent card. No auth required.
 #### Skill: `request-access`
 
 **Input**: `AccessRequest`
-**Output (no existing active challenge)**: `X402Challenge` — resource exists, challenge issued
-**Output (active challenge exists for requestId)**: Same `X402Challenge` — idempotent, same `challengeId` returned
-**Output (resource not found)**: `{ type: "Error", code: "RESOURCE_NOT_FOUND", message: "..." }`
 
-**Pre-flight checks before issuing challenge**:
+**Output (no existing active challenge)**: `X402Challenge` — resource exists, challenge issued
+
+**Output (active challenge exists for requestId)**: Same `X402Challenge` — idempotent, same `challengeId`
+
+**Output (resource not found)**: `AgentGateError` with `code: "RESOURCE_NOT_FOUND"`
+
+**Pre-flight checks**:
 1. Validate `tierId` is a known product tier.
-2. Verify `resourceId` actually exists and is deliverable (preflight).
-3. Check if an active (non-expired, non-paid) challenge already exists for `requestId` → return it (idempotency).
-4. Validate `clientAgentId` format.
+2. Verify `resourceId` exists via `onVerifyResource` (with timeout).
+3. Check for active challenge for `requestId` → return it (idempotency).
 
 ---
 
 #### Skill: `submit-proof`
 
 **Input**: `PaymentProof`
-**Output (success)**: `AccessGrant`
-**Output (challenge not found)**: `{ type: "Error", code: "CHALLENGE_NOT_FOUND" }`
-**Output (challenge expired)**: `{ type: "Error", code: "CHALLENGE_EXPIRED", message: "Re-request access to get a new challenge." }`
-**Output (chain mismatch)**: `{ type: "Error", code: "CHAIN_MISMATCH", message: "Payment was on wrong chain." }`
-**Output (amount mismatch)**: `{ type: "Error", code: "AMOUNT_MISMATCH" }`
-**Output (tx not confirmed)**: `{ type: "Error", code: "TX_UNCONFIRMED", message: "Transaction not yet confirmed. Retry in 30s." }`
-**Output (already redeemed)**: `{ type: "Error", code: "PROOF_ALREADY_REDEEMED", grant: AccessGrant }`
 
-**On-chain verification steps**:
-1. Look up challenge by `challengeId`. Assert it exists and is `PENDING`.
-2. Assert `proof.chainId === challenge.chainId` (replay attack guard).
-3. Assert `proof.amount === challenge.amount` (underpayment guard).
-4. Call `publicClient.getTransactionReceipt(txHash)`.
-5. Decode ERC-20 `Transfer` event: assert `to === challenge.destination`.
-6. Assert `value >= challenge.amountRaw` (USDC units with decimals).
-7. Assert `block.timestamp <= challenge.expiresAt` (payment must land before expiry).
-8. Mark challenge as `PAID`. Issue `AccessGrant`. Store txHash to prevent double-spend.
+**Output (success)**: `AccessGrant`
+
+**Output (challenge not found)**: `AgentGateError` `CHALLENGE_NOT_FOUND`
+
+**Output (challenge expired)**: `AgentGateError` `CHALLENGE_EXPIRED`
+
+**Output (chain mismatch)**: `AgentGateError` `CHAIN_MISMATCH`
+
+**Output (amount mismatch)**: `AgentGateError` `AMOUNT_MISMATCH`
+
+**Output (tx not confirmed)**: `AgentGateError` `TX_UNCONFIRMED`
+
+**Output (already redeemed)**: `AgentGateError` `TX_ALREADY_REDEEMED`
+
+**On-chain verification steps** (all six must pass):
+1. Transaction receipt `status === "success"` (not just existence).
+2. ERC-20 Transfer event present in logs.
+3. `to` address matches the seller's `walletAddress`.
+4. `value >= challenge.amountRaw` (USDC micro-units, 6 decimals).
+5. `chainId` matches the challenge's `chainId` (replay guard).
+6. `block.timestamp <= challenge.expiresAt` (payment must land before expiry).
+
+After verification: mark challenge as `PAID`, call `onIssueToken`, fire `onPaymentReceived`, return `AccessGrant`.
 
 ---
 
-### 7.2 Access Token Validation (Seller Backend Middleware)
+### 7.2 x402 HTTP Endpoint
 
-AgentGate provides a middleware helper for the seller's existing API:
+In addition to A2A, AgentGate mounts a standard x402 HTTP endpoint at `POST /a2a/access`:
 
-```typescript
-import { validateAccessToken } from "@agentgate/sdk";
-
-app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
+```
+Client POST /a2a/access (no PAYMENT-SIGNATURE)
+  → Server responds HTTP 402 with x402 PaymentRequirements
+Client signs EIP-3009 authorization off-chain
+Client POST /a2a/access (with PAYMENT-SIGNATURE header)
+  → Server settles payment (facilitator or gas wallet)
+  → Server responds 200 with AccessGrant
 ```
 
-The JWT payload contains:
+---
+
+### 7.3 Access Token Validation
+
+AgentGate provides middleware for protecting seller API routes:
+
+```typescript
+// Express
+import { validateAccessToken } from "@agentgate/sdk/express";
+app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
+
+// Standalone (no framework dependency)
+import { validateAgentGateToken } from "@agentgate/sdk";
+const payload = await validateAgentGateToken(authHeader, { secret });
+```
+
+The JWT payload (when using `AccessTokenIssuer`):
 ```typescript
 {
   sub: requestId,
-  jti: challengeId,
+  jti: challengeId,     // replay detection — each token redeemable once
   resourceId: string,
   tierId: string,
   txHash: string,
@@ -381,46 +433,16 @@ All payment adapters implement a single interface, making the system extensible 
 
 ```typescript
 interface IPaymentAdapter {
-  readonly protocol: string;           // "x402" | "stripe" | "lightning"
+  readonly protocol: string;
 
-  /**
-   * Issue a payment challenge/invoice for a given access request.
-   * Returns adapter-specific challenge data.
-   */
   issueChallenge(params: IssueChallengeParams): Promise<ChallengePayload>;
 
-  /**
-   * Verify a submitted payment proof.
-   * Returns verified amount, sender, and on-chain receipt if applicable.
-   */
   verifyProof(params: VerifyProofParams): Promise<VerificationResult>;
 }
 
-type IssueChallengeParams = {
-  requestId: string;
-  resourceId: string;
-  tierId: string;
-  amount: string;            // "$0.10"
-  destination: string;       // wallet address, IBAN, or payment identifier
-  expiresAt: Date;
-  metadata: Record<string, unknown>;
-};
-
-type ChallengePayload = {
-  challengeId: string;
-  protocol: string;
-  raw: unknown;              // protocol-specific fields exposed to client
-  expiresAt: Date;
-};
-
-type VerifyProofParams = {
-  challengeId: string;
-  proof: unknown;            // protocol-specific proof object
-};
-
 type VerificationResult = {
   success: boolean;
-  txHash?: string;
+  txHash?: `0x${string}`;
   confirmedAmount?: string;
   confirmedChainId?: number;
   confirmedAt?: Date;
@@ -428,21 +450,12 @@ type VerificationResult = {
 };
 ```
 
-### 8.1 x402Adapter (v0.1 — implemented)
+### X402Adapter (Implemented)
 
-- Uses `viem` + Base Chain (mainnet or testnet based on `NETWORK` env).
-- Challenge: issues `X402Challenge` with USDC amount, destination wallet, chainId.
-- Verify: calls `publicClient.getTransactionReceipt`, decodes ERC-20 `Transfer` event, validates recipient and amount.
-- Chain: Base Sepolia (84532) for testnet, Base (8453) for mainnet.
-- Asset: USDC only.
-
-### 8.2 Future Adapters (Interface Contract Only)
-
-| Adapter | Protocol | Notes |
-|---|---|---|
-| `StripeAdapter` | Stripe Payment Intents | For fiat-paying agents with Stripe delegation |
-| `LightningAdapter` | BOLT11 invoices | Micropayments over Lightning Network |
-| `SolanaAdapter` | SPL USDC on Solana | Cross-chain expansion |
+- **Chain**: Base Sepolia (84532) for testnet, Base (8453) for mainnet
+- **Asset**: USDC only
+- **Verification**: `viem` `getTransactionReceipt` + ERC-20 Transfer event decode
+- **Settlement**: Coinbase CDP facilitator (default) or gas wallet (`gasWalletPrivateKey`)
 
 ---
 
@@ -452,90 +465,88 @@ type VerificationResult = {
 
 - **Key**: `requestId` (client-generated UUID).
 - Before issuing a challenge, query existing challenges by `requestId`.
-- If an active (non-expired) challenge exists → return it unchanged with the original `challengeId`.
-- This prevents double-billing when a client retries after a network timeout.
-- If the existing challenge is `PAID` → return `PROOF_ALREADY_REDEEMED` with the existing `AccessGrant`.
-- If expired → issue a new challenge with a new `challengeId`.
+- Active challenge exists → return it unchanged (same `challengeId`).
+- Prevents double-billing when a client retries after a network timeout.
+- Expired challenge → issue a new one with a new `challengeId`.
 
 ### 9.2 Replay Attack Prevention
 
 - Every challenge stores `chainId` at issuance.
 - `submit-proof` asserts `proof.chainId === challenge.chainId`.
-- A payment on Base Sepolia (testnet, cheap) cannot satisfy a challenge issued for Base mainnet.
-- Verified `txHash` values are stored in a seen-set to prevent the same tx being redeemed for two different challenges.
+- A testnet payment cannot satisfy a mainnet challenge.
+- Verified `txHash` values are stored in `ISeenTxStore` (atomic `SET NX`) — the same tx cannot be redeemed for two different challenges.
 
 ### 9.3 Pre-flight Resource Check
 
-- Before issuing a challenge (the invoice), the seller agent MUST verify:
-  - The `resourceId` exists.
-  - The `tierId` grants access to that resource.
-  - The resource is not deleted or paused.
-- If the check fails → return `RESOURCE_NOT_FOUND` (no challenge issued, no billing risk).
+Before issuing a challenge, `onVerifyResource` confirms the resource exists and the tier grants access. If it fails → return `RESOURCE_NOT_FOUND` (no challenge issued, no billing risk). The callback has a configurable timeout (default 5s) via `resourceVerifyTimeoutMs`.
 
 ### 9.4 Payment Expiration
 
 - Challenge has `expiresAt` (default: 15 minutes from issuance).
-- On `submit-proof`, if `challenge.expiresAt < now` → return `CHALLENGE_EXPIRED`.
-- The on-chain `block.timestamp` of the payment tx must also be ≤ `expiresAt`.
-  - A tx mined after expiry is rejected even if it was broadcast before.
-- **No automatic refund in v0.1** — the on-chain transfer already happened. Handling:
-  - Return `CHALLENGE_EXPIRED` with a message: "Your payment landed after the challenge expired. Please contact [seller support URL] with txHash [0x...] for a manual refund."
-  - The seller config `onChallengeExpired` hook fires so they can automate refund logic.
-- **v0.2 roadmap**: Escrow pattern using EIP-3009 `transferWithAuthorization` — funds only settle after seller countersigns. Expired = authorization never used = no transfer.
+- On `submit-proof`, if `challenge.expiresAt < now` → `CHALLENGE_EXPIRED`.
+- The on-chain `block.timestamp` must also be ≤ `expiresAt`.
+  - A tx mined after expiry is rejected even if broadcast before.
+- No automatic refund — the `onChallengeExpired` hook fires so sellers can automate refund logic.
 
 ### 9.5 Amount Underpayment
 
-- `verifyProof` decodes the ERC-20 `Transfer` log and asserts `value >= challenge.amountRaw`.
-- Partial payments are rejected. The client must pay the full amount in a single transaction.
-- Overpayments are accepted (seller keeps the difference — no auto-refund in v0.1).
+- `verifyProof` decodes the ERC-20 Transfer log and asserts `value >= challenge.amountRaw`.
+- Partial payments are rejected. Full amount must be in a single transaction.
+- Overpayments are accepted (seller keeps the difference).
 
 ### 9.6 Access Token Security
 
-- Tokens are short-lived JWTs (default 1 hour, configurable per tier).
-- Signed with `ACCESS_TOKEN_SECRET` from `.env` — never in the agent card or config file.
-- Token payload includes `txHash` and `challengeId` for audit trails.
-- Seller middleware validates expiry and signature on every request.
+- Tokens are issued by the seller's `onIssueToken` callback — full control over format and lifetime.
+- The built-in `AccessTokenIssuer` issues HS256 JWTs. Secret must be ≥ 32 characters.
+- `jti` = `challengeId` for replay detection in the token validation middleware.
+- `verifyWithFallback()` supports zero-downtime secret rotation.
+- RS256 (public/private key pair) is also supported for asymmetric verification.
+
+### 9.7 Concurrency Safety
+
+- `IChallengeStore.transition(id, fromState, toState)` is the only path to update state. It is a compare-and-swap: if the current state doesn't match `fromState`, it returns `false` and no write occurs.
+- For in-memory storage: uses a synchronous compare-and-swap on a JS Map.
+- For Redis storage: uses a Lua script that atomically checks and sets in one round-trip.
+- `ISeenTxStore.markUsed(txHash, challengeId)` is atomic `SET NX` — only the first caller succeeds.
 
 ---
 
 ## 10. Seller Onboarding Flow
 
-### 10.1 Steps to Go Live
-
 ```
 Step 1: Install SDK
-  npm install @agentgate/sdk
+  bun add @agentgate/sdk
 
 Step 2: Configure
-  - Set SELLER_WALLET_ADDRESS (public, goes in agent card)
-  - Set SELLER_PRIVATE_KEY in .env (signs nothing in v0.1 — reserved for escrow)
-  - Set ACCESS_TOKEN_SECRET in .env
+  - Set walletAddress (public, goes in agent card)
+  - Set ACCESS_TOKEN_SECRET in .env (minimum 32 chars)
   - Set NETWORK=mainnet|testnet
 
 Step 3: Define product catalog
-  - List product tiers (tierId, label, price, resourceType)
+  products: [{ tierId, label, amount, resourceType, accessDurationSeconds }]
 
-Step 4: Implement resource callbacks
-  - onVerifyResource(resourceId, tierId): Promise<boolean>
-  - onGrantAccess(grant: AccessGrant): Promise<void>
+Step 4: Implement callbacks
+  onVerifyResource(resourceId, tierId): Promise<boolean>
+  onIssueToken(params): Promise<TokenIssuanceResult>
+  onPaymentReceived?(grant): Promise<void>   // optional
 
 Step 5: Mount the agent router
-  app.use("/agent", agentGateRouter(config))
-  // This auto-serves:
+  app.use(agentGateRouter({ config, adapter }))
+  // Auto-serves:
   //   GET  /.well-known/agent.json
-  //   POST /agent (A2A tasks/send)
+  //   POST /a2a/jsonrpc  (A2A JSON-RPC)
+  //   POST /a2a/rest     (A2A REST)
+  //   POST /a2a/access   (x402 HTTP)
 
 Step 6: Protect your API
-  app.use("/api", validateAccessToken({ secret: ... }))
+  app.use("/api", validateAccessToken({ secret: ACCESS_TOKEN_SECRET }))
 
-Step 7: Publish your agent card URL
-  - Submit to A2A agent registries
-  - Add to README / developer docs
+Step 7: For production — switch to Redis storage and mainnet
 ```
 
-### 10.2 No Platform Signup Required
+### No Platform Signup Required
 
-AgentGate is a **self-hosted open-source SDK**. There is no central registry or SaaS dashboard in v0.1. The seller runs the agent runtime inside their own infrastructure alongside their existing API.
+AgentGate is a **self-hosted open-source SDK**. There is no central registry or SaaS dashboard. The seller runs the agent runtime inside their own infrastructure alongside their existing API.
 
 ---
 
@@ -543,26 +554,26 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 
 | Concern | Recommendation |
 |---|---|
-| **Receive wallet** | Use a dedicated hot wallet per product. Address goes in the agent card (public). |
-| **Private key** | Store in `.env` or a secrets manager (Vault, AWS Secrets Manager). Never in code or config files. |
-| **Key rotation** | Update wallet address in agent card + re-deploy. Old challenges still point to old address (they complete normally). |
+| **Receive wallet** | Use a dedicated hot wallet. Address goes in the agent card (public). |
+| **Gas wallet** | If using gas wallet mode, keep the private key in `.env` or a secrets manager. Never in code. |
+| **Key rotation** | Update wallet address in config + re-deploy. Old challenges still point to old address (they complete normally). |
 | **Funds management** | Implement an off-ramp sweep job: periodically move USDC from receive wallet to cold storage. |
-| **Multi-product** | Each product tier can have a separate `walletAddress` in its `SkillPricing` entry. |
 
 ---
 
-## 12. Technical Stack (Reference Implementation)
+## 12. Technical Stack
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Runtime | Bun | Fast, native TypeScript, auto-loads `.env` |
-| Chain interaction | viem | Type-safe, tree-shakeable, best-in-class |
-| A2A transport | Express + JSON-RPC | Minimal, widely understood |
-| Payment protocol v1 | x402 (`@x402/express`, `@x402/fetch`) | Fits A2A agent pattern naturally |
-| Chain | Base (mainnet) / Base Sepolia (testnet) | Low fees, USDC native, x402 facilitator support |
-| Token standard | USDC ERC-20 | Stable, widely held, facilitator-settled |
-| Access tokens | JWT (jsonwebtoken) | Stateless, standard, short-lived |
-| Challenge store | In-memory Map (v0.1) → Redis (v0.2) | Simple to start, swap for production |
+| Runtime | Bun (primary), Node.js 18+ | Fast, native TypeScript, auto-loads `.env` |
+| Chain interaction | viem | Type-safe, tree-shakeable, best-in-class EVM client |
+| A2A protocol | `@a2a-js/sdk` | Standard A2A agent SDK |
+| Payment protocol | x402 (`@x402/evm`) | Fits A2A agent pattern naturally, EIP-3009 compatible |
+| Chain | Base mainnet (8453) / Base Sepolia (84532) | Low fees, USDC native, x402 facilitator support |
+| Token standard | USDC ERC-20 | Stable, widely held |
+| Access tokens | `jose` (JWT, HS256/RS256) | Standards-compliant, supports both symmetric and asymmetric keys |
+| Challenge store | In-memory (default) or Redis via ioredis | Simple to start, swap for production |
+| Package | Single package `@agentgate/sdk` with framework subpath exports | Simple install, tree-shakeable |
 
 ---
 
@@ -573,76 +584,23 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 | Challenge issuance latency | < 200ms (no on-chain call needed) |
 | Proof verification latency | < 5s (one RPC call + receipt decode) |
 | Idempotency window | Lifetime of challenge (default 15 min) |
-| Access token TTL | 1 hour default, configurable per tier |
-| Replay attack surface | Zero — txHash + chainId double-key uniqueness |
-| Test coverage | ≥ 80% for core challenge/verify pipeline |
-| TypeScript | Strict mode, exported types for all public contracts |
+| Replay attack surface | Zero — txHash uniqueness enforced atomically |
+| TypeScript | Strict mode, no `any`, exported types for all public contracts |
 | Zero external state dependencies | In-memory store works out of the box |
 
 ---
 
-## 14. Open Questions & v0.2 Roadmap
+## 14. Open Questions
 
-### Open Questions
-
-| # | Question | Owner |
+| # | Question | Status |
 |---|---|---|
-| OQ-1 | Should `requestId` be scoped per `clientAgentId` to prevent one agent reusing another agent's idempotency key? | Protocol design |
-| OQ-2 | What is the seller's refund SLA for expired challenges where payment landed late on-chain? Manual hook vs auto-sweep? | Product |
-| OQ-3 | Is seller-local challenge state (in-memory / Redis) sufficient, or do we need a shared challenge registry for multi-seller discovery? | Architecture |
-| OQ-4 | Should the access token JWT bind to the submitting wallet address to prevent bearer token theft between agents? | Security |
-| OQ-5 | For multi-page / paginated resources, does one payment cover the full session or does each page require a new challenge? | Product |
-| OQ-6 | Should `onVerifyResource` be async with a timeout? What is the failure mode if the seller's backend is slow? | Reliability |
-
-### v0.2 Roadmap
-
-- **Escrow model**: EIP-3009 `transferWithAuthorization` — payment only settles on delivery, expired challenges cost nothing on-chain.
-- **Redis-backed challenge store**: Replace in-memory Map for multi-instance deployments.
-- **Webhook delivery**: `callbackUrl` support — push `AccessGrant` asynchronously for slow-to-verify resources.
-- **Stripe adapter**: Fiat payments via Stripe Payment Intents for agents with delegated card access.
-- **Rate limiting**: Per-`clientAgentId` request throttling.
-- **Dashboard**: Read-only web UI for sellers to view payment history and active grants.
-- **A2A agent registry integration**: Auto-register agent card with public registries on startup.
+| OQ-1 | Should `requestId` be scoped per `clientAgentId`? | Open |
+| OQ-2 | Refund SLA for late-landed payments after challenge expiry? | Open — `onChallengeExpired` hook enables custom logic |
+| OQ-3 | Shared challenge registry for multi-seller discovery? | Out of scope |
+| OQ-4 | Bind access token to submitting wallet address to prevent bearer theft? | Open |
+| OQ-5 | Multi-page resources: one payment per session or per page? | Open — left to seller's `onVerifyResource` logic |
+| OQ-6 | `onVerifyResource` async timeout? | **Resolved** — `resourceVerifyTimeoutMs` (default 5s) |
 
 ---
 
-## 15. Example: Riklr End-to-End Flow
-
-```
-[Riklr Agent Card at https://riklr.com/.well-known/agent.json]
-  skills: [request-access, submit-proof]
-  pricing: { tierId: "single-photo", amount: "$0.10", chainId: 8453, destination: "0xRIKLR..." }
-
-[Client Agent wants photo from album-42]
-
-1. Client → Riklr Agent (request-access)
-   { requestId: "uuid-1", resourceId: "album-42", tierId: "single-photo" }
-
-   [AgentGate checks: album-42 exists? YES. Active challenge for uuid-1? NO.]
-
-2. Riklr Agent → Client (X402Challenge)
-   { challengeId: "chall-abc", amount: "$0.10", chainId: 8453,
-     destination: "0xRIKLR...", expiresAt: "2026-02-28T10:15:00Z" }
-
-3. Client (using any wallet/tool it chooses) sends 0.10 USDC to 0xRIKLR... on Base mainnet.
-   Receives txHash "0xTX..." from the chain.
-
-4. Client → Riklr Agent (submit-proof)
-   { challengeId: "chall-abc", txHash: "0xTX...", chainId: 8453, amount: "$0.10" }
-
-   [AgentGate: getTransactionReceipt("0xTX...") → Transfer log:
-    to=0xRIKLR, value=100000 (0.10 USDC), block.timestamp < expiresAt ✓]
-
-5. Riklr Agent → Client (AccessGrant)
-   { accessToken: "eyJ...", resourceEndpoint: "https://api.riklr.com/photos/album-42/photo-1",
-     expiresAt: "2026-02-28T11:00:00Z" }
-
-6. Client → Riklr API
-   GET /photos/album-42/photo-1
-   Authorization: Bearer eyJ...
-   → 200 OK { photoUrl: "..." }
-```
-
----
-
-*End of Specification v0.1*
+*End of Specification v0.2*
