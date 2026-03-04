@@ -214,6 +214,7 @@ app.use(
 		adapter,
 		store,
 		seenTxStore,
+		mcp: true,
 	}),
 );
 
