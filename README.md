@@ -23,9 +23,9 @@ bun install
 ### 2. Verify the setup
 
 ```bash
-bun run typecheck    # Type-check all packages
+bun run typecheck    # Type-check
 bun run lint         # Lint with Biome
-bun test --recursive # Run all 200+ tests
+bun test             # Run all tests
 ```
 
 ### 3. Run an example
@@ -44,40 +44,36 @@ bun run start
 
 The seller starts a server at `http://localhost:3000` that serves:
 - `GET /.well-known/agent.json` — Agent card for A2A discovery
-- `POST /agent` — A2A endpoint for challenge/proof flow
+- `POST /a2a/jsonrpc` — A2A JSON-RPC endpoint for challenge/proof flow
 - `GET /api/photos/:id` — Protected resource (requires access token)
 
-The client agent discovers the seller, requests access, simulates payment, and calls the protected API.
+The client agent discovers the seller, requests access, pays on-chain, and calls the protected API.
 
-## Packages
-
-| Package | Description |
-|---------|-------------|
-| [`@agentgate/types`](./packages/types) | Shared TypeScript types, interfaces, and error classes |
-| [`@agentgate/core`](./packages/core) | Challenge engine, access tokens, storage (in-memory + Redis) |
-| [`@agentgate/x402-adapter`](./packages/x402-adapter) | On-chain USDC payment verification via viem |
-| [`@agentgate/sdk`](./packages/sdk) | Framework adapters for Express, Hono, and Fastify |
-| [`@agentgate/test-utils`](./packages/test-utils) | Mock adapter and test fixtures (dev only) |
-
-## Adding AgentGate to Your App
-
-### Install
+## Install
 
 ```bash
-bun add @agentgate/sdk @agentgate/x402-adapter
+bun add @agentgate/sdk
 ```
+
+Optional peer dependencies:
+```bash
+bun add ioredis          # For Redis-backed storage in production
+```
+
+## Adding AgentGate to Your App
 
 ### Express
 
 ```typescript
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
-import { X402Adapter } from "@agentgate/x402-adapter";
+import { X402Adapter, AccessTokenIssuer } from "@agentgate/sdk";
 
 const app = express();
 app.use(express.json());
 
 const adapter = new X402Adapter({ network: "testnet" });
+const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
 app.use(
   agentGateRouter({
@@ -89,7 +85,6 @@ app.use(
       providerUrl: "https://example.com",
       walletAddress: "0xYourWalletAddress" as `0x${string}`,
       network: "testnet",
-      accessTokenSecret: process.env.AGENTGATE_ACCESS_TOKEN_SECRET!,
       products: [
         {
           tierId: "basic",
@@ -99,9 +94,22 @@ app.use(
           accessDurationSeconds: 3600,
         },
       ],
-      onVerifyResource: async (resourceId) => {
-        // Check if the resource exists in your database
+      onVerifyResource: async (resourceId, tierId) => {
+        // Check if the resource exists and the tier is valid
         return true;
+      },
+      onIssueToken: async (params) => {
+        const result = await tokenIssuer.sign(
+          {
+            sub: params.requestId,
+            jti: params.challengeId,
+            resourceId: params.resourceId,
+            tierId: params.tierId,
+            txHash: params.txHash,
+          },
+          params.accessDurationSeconds,
+        );
+        return { ...result, tokenType: "Bearer" };
       },
       onPaymentReceived: async (grant) => {
         console.log(`Payment received for ${grant.resourceId}: ${grant.explorerUrl}`);
@@ -112,7 +120,7 @@ app.use(
 );
 
 // Protect your existing API routes with the access token middleware
-app.use("/api", validateAccessToken({ secret: process.env.AGENTGATE_ACCESS_TOKEN_SECRET! }));
+app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 
 app.get("/api/data/:id", (req, res) => {
   // req.agentGateToken contains decoded JWT claims (resourceId, tierId, txHash)
@@ -127,7 +135,7 @@ app.listen(3000);
 ```typescript
 import { Hono } from "hono";
 import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
-import { X402Adapter } from "@agentgate/x402-adapter";
+import { X402Adapter } from "@agentgate/sdk";
 
 const adapter = new X402Adapter({ network: "testnet" });
 const gate = agentGateApp({ config: { /* same config as above */ }, adapter });
@@ -136,7 +144,7 @@ const app = new Hono();
 app.route("/", gate);
 
 const api = new Hono();
-api.use("/*", honoValidateAccessToken({ secret: process.env.AGENTGATE_ACCESS_TOKEN_SECRET! }));
+api.use("/*", honoValidateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 api.get("/data/:id", (c) => c.json({ data: "premium content" }));
 app.route("/api", api);
 
@@ -148,16 +156,15 @@ export default { port: 3000, fetch: app.fetch };
 ```typescript
 import Fastify from "fastify";
 import { agentGatePlugin, fastifyValidateAccessToken } from "@agentgate/sdk/fastify";
-import { X402Adapter } from "@agentgate/x402-adapter";
+import { X402Adapter } from "@agentgate/sdk";
 
 const fastify = Fastify();
 const adapter = new X402Adapter({ network: "testnet" });
 
 await fastify.register(agentGatePlugin, { config: { /* same config */ }, adapter });
 
-// Protect routes
 fastify.addHook("onRequest", fastifyValidateAccessToken({
-  secret: process.env.AGENTGATE_ACCESS_TOKEN_SECRET!,
+  secret: process.env.ACCESS_TOKEN_SECRET!,
 }));
 
 fastify.listen({ port: 3000 });
@@ -177,15 +184,16 @@ fastify.listen({ port: 3000 });
 | `walletAddress` | `0x${string}` | Yes | — | Wallet address to receive USDC payments |
 | `network` | `"testnet" \| "mainnet"` | Yes | — | Base Sepolia (testnet) or Base (mainnet) |
 | `products` | `ProductTier[]` | Yes | — | Array of product tiers with pricing |
-| `accessTokenSecret` | `string` | Yes | — | Secret for signing JWTs (min 32 chars) |
-| `onVerifyResource` | `(resourceId, tierId) => Promise<boolean>` | Yes | — | Callback to verify resource exists |
-| `accessTokenTTLSeconds` | `number` | No | `3600` | JWT expiration time |
-| `challengeTTLSeconds` | `number` | No | `900` | How long a payment challenge is valid |
-| `resourceVerifyTimeoutMs` | `number` | No | `5000` | Timeout for onVerifyResource callback |
-| `basePath` | `string` | No | `"/agent"` | A2A endpoint path |
+| `onVerifyResource` | `(resourceId, tierId) => Promise<boolean>` | Yes | — | Callback to verify the resource exists and the tier is valid |
+| `onIssueToken` | `(params: IssueTokenParams) => Promise<TokenIssuanceResult>` | Yes | — | Callback to generate the access token after payment is verified |
+| `challengeTTLSeconds` | `number` | No | `900` | How long a payment challenge is valid (15 min) |
+| `resourceVerifyTimeoutMs` | `number` | No | `5000` | Timeout for `onVerifyResource` callback |
+| `basePath` | `string` | No | `"/a2a"` | A2A endpoint path prefix |
 | `resourceEndpointTemplate` | `string` | No | auto | URL template for protected resources (use `{resourceId}`) |
-| `onPaymentReceived` | `(grant) => Promise<void>` | No | — | Hook fired after successful payment |
-| `onChallengeExpired` | `(challengeId) => Promise<void>` | No | — | Hook fired when a challenge expires |
+| `gasWalletPrivateKey` | `0x${string}` | No | — | Private key for direct on-chain settlement (no facilitator needed) |
+| `facilitatorUrl` | `string` | No | CDP default | Override the x402 facilitator URL |
+| `onPaymentReceived` | `(grant: AccessGrant) => Promise<void>` | No | — | Hook fired after successful payment (fire-and-forget) |
+| `onChallengeExpired` | `(challengeId: string) => Promise<void>` | No | — | Hook fired when a challenge expires |
 | `version` | `string` | No | `"1.0.0"` | Agent card version |
 
 ### ProductTier
@@ -196,23 +204,37 @@ fastify.listen({ port: 3000 });
 | `label` | `string` | Yes | — | Display name |
 | `amount` | `string` | Yes | — | Price in dollars (e.g., `"$0.10"`, `"$1.00"`) |
 | `resourceType` | `string` | Yes | — | Resource category (e.g., `"photo"`, `"api-call"`) |
-| `accessDurationSeconds` | `number` | No | — | Token validity per-tier (overrides `accessTokenTTLSeconds`) |
+| `accessDurationSeconds` | `number` | No | — | Token validity for this tier |
+
+### IssueTokenParams
+
+Passed to the `onIssueToken` callback:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `challengeId` | `string` | Unique challenge ID (use as JWT `jti` for replay prevention) |
+| `requestId` | `string` | Client's request ID (use as JWT `sub`) |
+| `resourceId` | `string` | The purchased resource |
+| `tierId` | `string` | The purchased tier |
+| `txHash` | `0x${string}` | On-chain transaction hash |
+| `accessDurationSeconds` | `number` | How long the token should be valid |
+| `clientAgentId` | `string` | Identifier of the paying agent |
 
 ### Environment Variables
 
 ```bash
 AGENTGATE_NETWORK=testnet                          # "testnet" or "mainnet"
 AGENTGATE_WALLET_ADDRESS=0xYourWalletAddress        # Receive-only wallet (no private key needed)
-AGENTGATE_ACCESS_TOKEN_SECRET=your-secret-min-32ch  # JWT signing secret
-AGENTGATE_RPC_URL=https://sepolia.base.org          # Optional: custom RPC URL
+ACCESS_TOKEN_SECRET=your-secret-min-32-chars        # JWT signing secret for AccessTokenIssuer
 PORT=3000                                           # Server port
 
-# Required for x402 HTTP flow with CDP facilitator
-CDP_API_KEY_ID=your-cdp-api-key-id                  # Get from Coinbase Developer Platform
-CDP_API_KEY_SECRET=your-cdp-api-key-secret          # Get from Coinbase Developer Platform
-```
+# Required for x402 HTTP flow with CDP facilitator (alternative to gas wallet)
+CDP_API_KEY_ID=your-cdp-api-key-id
+CDP_API_KEY_SECRET=your-cdp-api-key-secret
 
-**Note:** The CDP API credentials are required when using the Coinbase CDP facilitator for x402 HTTP payments. You can obtain these from the [Coinbase Developer Platform](https://portal.cdp.coinbase.com/). The facilitator handles EIP-3009 payment settlements and supports both EOA and smart contract wallets (ERC-6492).
+# Optional: self-contained settlement without a facilitator
+AGENTGATE_GAS_WALLET_KEY=0xYourPrivateKey
+```
 
 ## How It Works
 
@@ -223,7 +245,7 @@ Client Agent                          Seller Server
      |------------------------------------->|
      |  <-- Agent card (skills, pricing)    |
      |                                      |
-     |  2. POST /agent (AccessRequest)      |
+     |  2. POST /a2a/jsonrpc (AccessRequest)|
      |------------------------------------->|
      |  <-- X402Challenge (amount, chain,   |
      |       destination, challengeId)      |
@@ -232,7 +254,7 @@ Client Agent                          Seller Server
      |----> Blockchain                      |
      |  <-- txHash                          |
      |                                      |
-     |  4. POST /agent (PaymentProof)       |
+     |  4. POST /a2a/jsonrpc (PaymentProof) |
      |------------------------------------->|
      |      Server verifies tx on-chain --> |
      |  <-- AccessGrant (JWT + endpoint)    |
@@ -246,18 +268,18 @@ Client Agent                          Seller Server
 1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available products and pricing
 2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired tier
 3. **Challenge** — Server returns an `X402Challenge` with payment details (amount, USDC destination, chain ID)
-4. **Payment** — Client pays on-chain USDC on Base. The buyer doesn't need to deploy anything — just a standard ERC-20 transfer
+4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
 5. **Proof** — Client submits a `PaymentProof` with the transaction hash
 6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent)
-7. **Grant** — Server returns an `AccessGrant` with a signed JWT and the resource endpoint URL
-8. **Access** — Client uses the JWT as a Bearer token to access the protected resource
+7. **Grant** — Server calls `onIssueToken`, returns an `AccessGrant` with the token and resource endpoint URL
+8. **Access** — Client uses the token as a Bearer header to access the protected resource
 
 ## Storage
 
 By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
 
 ```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/core";
+import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/sdk";
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL);
@@ -277,8 +299,6 @@ Redis storage provides:
 - Automatic TTL-based cleanup
 - Double-spend prevention with `SET NX`
 
-Install Redis peer dependency: `bun add ioredis`
-
 ## Security
 
 - **Double-spend prevention** — Each transaction hash can only be redeemed once (enforced atomically)
@@ -288,13 +308,74 @@ Install Redis peer dependency: `bun add ioredis`
 - **Secret rotation** — `AccessTokenIssuer.verifyWithFallback()` supports rotating secrets with zero downtime
 - **Resource verification timeout** — `onVerifyResource` has a configurable timeout (default 5s) to prevent hanging
 
+## Token Issuance
+
+The `onIssueToken` callback gives you full control over what token is issued after a verified payment. The simplest setup uses the built-in `AccessTokenIssuer`:
+
+```typescript
+import { AccessTokenIssuer } from "@agentgate/sdk";
+
+const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+// In SellerConfig:
+onIssueToken: async (params) => {
+  const result = await tokenIssuer.sign(
+    {
+      sub: params.requestId,
+      jti: params.challengeId,      // Required for replay prevention
+      resourceId: params.resourceId,
+      tierId: params.tierId,
+      txHash: params.txHash,
+    },
+    params.accessDurationSeconds,
+  );
+  return { ...result, tokenType: "Bearer" };
+},
+```
+
+You can also issue custom tokens (API keys, opaque tokens, etc.) — return any string as `token`.
+
+### Secret Rotation
+
+For zero-downtime secret rotation:
+
+```typescript
+const issuer = new AccessTokenIssuer(process.env.CURRENT_SECRET!);
+
+// During rotation, verify with both old and new secrets:
+const decoded = await issuer.verifyWithFallback(token, [
+  process.env.PREVIOUS_SECRET!,
+]);
+```
+
+## Settlement Strategies
+
+### Facilitator Mode (Default)
+
+Payments are settled via the Coinbase CDP facilitator, which executes an EIP-3009 `transferWithAuthorization` on-chain. Requires CDP API credentials:
+
+```bash
+CDP_API_KEY_ID=your-key-id
+CDP_API_KEY_SECRET=your-key-secret
+```
+
+### Gas Wallet Mode
+
+Settle payments directly without an external service. Provide a wallet private key in config:
+
+```typescript
+{
+  gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}`,
+}
+```
+
+The gas wallet must hold ETH on Base to pay transaction fees. No CDP credentials needed.
+
 ## Customizing the Agent Card
 
 The agent card at `/.well-known/agent.json` is auto-generated from your `SellerConfig`. No manual JSON needed.
 
-### Adding Product Tiers
-
-Each entry in `products` becomes a pricing option in the agent card. Clients discover your pricing automatically:
+Each entry in `products` becomes a pricing option discoverable by clients:
 
 ```typescript
 products: [
@@ -312,49 +393,18 @@ products: [
     resourceType: "album",
     accessDurationSeconds: 86400,     // 24 hour access
   },
-  {
-    tierId: "api-unlimited",
-    label: "Unlimited API (24h)",
-    amount: "$5.00",
-    resourceType: "api-call",
-    accessDurationSeconds: 86400,
-  },
 ],
 ```
 
-This generates an agent card with skills like:
-
-```json
-{
-  "skills": [
-    {
-      "id": "request-access",
-      "name": "Request Access",
-      "pricing": [
-        { "tierId": "single-photo", "label": "Single Photo", "amount": "$0.10", "asset": "USDC", "chainId": 84532 },
-        { "tierId": "full-album", "label": "Full Album Access", "amount": "$1.00", "asset": "USDC", "chainId": 84532 },
-        { "tierId": "api-unlimited", "label": "Unlimited API (24h)", "amount": "$5.00", "asset": "USDC", "chainId": 84532 }
-      ]
-    },
-    {
-      "id": "submit-proof",
-      "name": "Submit Payment Proof"
-    }
-  ]
-}
-```
-
-### Customizing Paths and Endpoints
+### Customizing Paths
 
 ```typescript
 {
-  basePath: "/api/v1/agent",                    // Default: "/agent"
+  basePath: "/api/v1/agent",                    // Default: "/a2a"
   resourceEndpointTemplate: "https://api.myapp.com/v1/resources/{resourceId}",
-  version: "2.0.0",                             // Default: "1.0.0"
+  version: "2.0.0",
 }
 ```
-
-The `{resourceId}` placeholder in `resourceEndpointTemplate` is replaced with the actual resource ID in the `AccessGrant`.
 
 ## Running Examples with Real Payments
 
@@ -363,11 +413,7 @@ The examples use Base Sepolia testnet by default. Testnet USDC is free — no re
 ### Prerequisites
 
 1. **Two wallets** — one for the seller (receive-only address), one for the client (private key needed)
-2. **Testnet USDC** — Get free testnet USDC for your client wallet:
-   - Go to [Circle Faucet](https://faucet.circle.com/)
-   - Select "Base Sepolia" and "USDC"
-   - Enter your client wallet address
-   - You'll receive testnet USDC within a few seconds
+2. **Testnet USDC** — Get free testnet USDC from the [Circle Faucet](https://faucet.circle.com/) (select Base Sepolia)
 
 ### Configure the Seller
 
@@ -379,8 +425,8 @@ cp .env.example .env
 Edit `.env`:
 ```bash
 AGENTGATE_NETWORK=testnet
-AGENTGATE_WALLET_ADDRESS=0xYourSellerWalletAddress    # Receive-only, no private key needed
-AGENTGATE_ACCESS_TOKEN_SECRET=change-me-to-a-random-string-at-least-32-chars
+AGENTGATE_WALLET_ADDRESS=0xYourSellerWalletAddress
+ACCESS_TOKEN_SECRET=change-me-to-a-random-string-at-least-32-chars
 PORT=3000
 ```
 
@@ -394,31 +440,19 @@ cp .env.example .env
 Edit `.env`:
 ```bash
 SELLER_URL=http://localhost:3000
-WALLET_PRIVATE_KEY=0xYourClientPrivateKey    # Needs testnet USDC
+WALLET_PRIVATE_KEY=0xYourClientPrivateKey
 AGENTGATE_NETWORK=testnet
 ```
 
 ### Run It
 
 ```bash
-# Terminal 1: Start the seller
-cd examples/express-seller
-bun run start
+# Terminal 1
+cd examples/express-seller && bun run start
 
-# Terminal 2: Run the client agent
-cd examples/client-agent
-bun run start
+# Terminal 2
+cd examples/client-agent && bun run start
 ```
-
-The client agent will:
-1. Discover the seller's agent card and pricing
-2. Request access to `photo-1` at the `single-photo` tier ($0.10)
-3. Send a real USDC transfer on Base Sepolia
-4. Wait for on-chain confirmation
-5. Submit the txHash as proof
-6. Receive a JWT access token
-7. Call the protected API endpoint
-8. Print USDC balance before and after
 
 You'll see the transaction on [Base Sepolia Explorer](https://sepolia.basescan.org).
 
@@ -426,42 +460,23 @@ You'll see the transaction on [Base Sepolia Explorer](https://sepolia.basescan.o
 
 ### Checklist
 
-**Storage** — Switch from in-memory to Redis for multi-process deployments:
+**Storage** — Switch to Redis for multi-process deployments:
 
 ```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/core";
+import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/sdk";
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL);
-
-app.use(
-  agentGateRouter({
-    config: { /* ... */ },
-    adapter,
-    store: new RedisChallengeStore({ redis, challengeTTLSeconds: 900 }),
-    seenTxStore: new RedisSeenTxStore({ redis }),
-  })
-);
+// pass store and seenTxStore to agentGateRouter(...)
 ```
 
 **Network** — Switch to mainnet for real USDC:
 
 ```typescript
 {
-  network: "mainnet",           // Base (chain ID 8453)
-  walletAddress: "0x...",       // Your production wallet
+  network: "mainnet",     // Base (chain ID 8453)
+  walletAddress: "0x...",
 }
-```
-
-**Secrets** — Use a strong, randomly generated `accessTokenSecret` (minimum 32 characters). For zero-downtime secret rotation, verify tokens with fallback secrets:
-
-```typescript
-import { AccessTokenIssuer } from "@agentgate/core";
-
-const issuer = new AccessTokenIssuer(process.env.CURRENT_SECRET);
-const decoded = await issuer.verifyWithFallback(token, [
-  process.env.PREVIOUS_SECRET,  // Old secret still accepted during rotation
-]);
 ```
 
 **Resource verification** — Connect `onVerifyResource` to your real database:
@@ -470,43 +485,24 @@ const decoded = await issuer.verifyWithFallback(token, [
 {
   onVerifyResource: async (resourceId, tierId) => {
     const resource = await db.resources.findById(resourceId);
-    if (!resource) return false;
-    if (resource.restricted && tierId !== "premium") return false;
-    return true;
+    return resource !== null && resource.isActive;
   },
-  resourceVerifyTimeoutMs: 3000,  // Fail fast if DB is slow
+  resourceVerifyTimeoutMs: 3000,
 }
 ```
 
-**Lifecycle hooks** — Use `onPaymentReceived` for logging, webhooks, or analytics:
+**Lifecycle hooks** — Use `onPaymentReceived` for logging and webhooks:
 
 ```typescript
 {
   onPaymentReceived: async (grant) => {
-    await analytics.track("payment", {
-      resourceId: grant.resourceId,
-      tierId: grant.tierId,
-      txHash: grant.txHash,
-      amount: grant.tierId,
-    });
+    await analytics.track("payment", { resourceId: grant.resourceId, txHash: grant.txHash });
     await webhooks.send("payment.received", grant);
-  },
-  onChallengeExpired: async (challengeId) => {
-    logger.warn(`Challenge expired: ${challengeId}`);
   },
 }
 ```
 
-**Timing** — Tune TTLs for your use case:
-
-| Setting | Default | Recommendation |
-|---------|---------|----------------|
-| `challengeTTLSeconds` | 900 (15 min) | Lower for high-value resources, higher for slow networks |
-| `accessTokenTTLSeconds` | 3600 (1 hour) | Match your billing cycle or session duration |
-| `accessDurationSeconds` (per tier) | — | Override token TTL per tier for granular control |
-| `resourceVerifyTimeoutMs` | 5000 | Set based on your database latency |
-
-**HTTPS** — Always use HTTPS for `agentUrl` in production. The agent card advertises this URL to clients.
+**HTTPS** — Always use HTTPS for `agentUrl` in production.
 
 ### Docker Compose Example
 
@@ -520,7 +516,7 @@ services:
     environment:
       AGENTGATE_NETWORK: mainnet
       AGENTGATE_WALLET_ADDRESS: "0xYourProductionWallet"
-      AGENTGATE_ACCESS_TOKEN_SECRET: "${ACCESS_TOKEN_SECRET}"
+      ACCESS_TOKEN_SECRET: "${ACCESS_TOKEN_SECRET}"
       REDIS_URL: "redis://redis:6379"
       PORT: 3000
     depends_on:
@@ -528,8 +524,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
 
@@ -537,54 +531,11 @@ volumes:
   redis-data:
 ```
 
-## Examples
-
-| Example | Framework | Description |
-|---------|-----------|-------------|
-| [`examples/express-seller`](./examples/express-seller) | Express | Photo gallery agent with two pricing tiers |
-| [`examples/hono-seller`](./examples/hono-seller) | Hono | Same features as Express example, using Hono |
-| [`examples/client-agent`](./examples/client-agent) | viem | Buyer agent with real on-chain USDC payments |
-
-## Development
-
-```bash
-bun install              # Install all workspace dependencies
-bun run typecheck        # Type-check all packages (via Turborepo)
-bun run lint             # Lint with Biome
-bun test --recursive     # Run all 200+ tests
-```
-
-### Project Structure
-
-```
-packages/
-  types/          # Shared TypeScript types (no runtime code)
-  core/           # Challenge engine, tokens, storage
-  x402-adapter/   # On-chain USDC verification
-  sdk/            # Express, Hono, Fastify adapters
-  test-utils/     # Mock adapter and fixtures
-examples/
-  express-seller/ # Express example server
-  hono-seller/    # Hono example server
-  client-agent/   # Client agent example
-```
-
-## Networks
-
-| Network | Chain | Chain ID | USDC Contract |
-|---------|-------|----------|---------------|
-| Testnet | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Mainnet | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-
-Start with `testnet` for development. Switch to `mainnet` when ready for real payments — just change the `network` config field.
-
 ## Architecture: Embedded vs Standalone Service
-
-AgentGate can be deployed in two ways:
 
 ### Embedded Mode (Default)
 
-AgentGate runs as middleware within your existing application. This is the simplest setup and works great for single-service deployments.
+AgentGate runs as middleware within your existing application:
 
 ```typescript
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
@@ -593,162 +544,120 @@ app.use(agentGateRouter({ config, adapter }));
 app.use("/api", validateAccessToken({ secret }));
 ```
 
-**Pros:**
-- Simple setup — just add middleware
-- No network overhead
-- Direct access to your database/services
-
-**Cons:**
-- Scales with your app
-- Coupled deployment
-
 ### Standalone Service Mode
 
-AgentGate runs as a separate service that communicates with your backend via HTTP. This enables independent scaling and deployment.
-
-**Setup:**
-
-1. **Deploy AgentGate Service** (see `examples/standalone-service/`):
-   ```typescript
-   import { agentGateRouter, createRemoteResourceVerifier } from "@agentgate/sdk/express";
-   
-   app.use(agentGateRouter({
-     config: {
-       onVerifyResource: createRemoteResourceVerifier({
-         url: "https://api.myapp.com/internal/verify",
-         secret: process.env.INTERNAL_AUTH_SECRET
-       }),
-       // ...
-     }
-   }));
-   ```
-
-2. **Your Backend Validates Tokens**:
-   ```typescript
-   import { validateAgentGateToken } from "@agentgate/sdk";
-   
-   app.use("/api", async (req, res, next) => {
-     const payload = await validateAgentGateToken(
-       req.headers.authorization,
-       { secret: process.env.AGENTGATE_SECRET }
-     );
-     req.agentGateToken = payload;
-     next();
-   });
-   ```
-
-**Pros:**
-- Independent scaling
-- Separate deployments
-- Technology flexibility
-
-**Cons:**
-- Network latency for token validation
-- Requires service-to-service auth
-
-### Token Issuance Modes
-
-When using standalone service mode, you can choose how tokens are generated:
-
-#### Native Mode (Default)
-
-AgentGate issues its own JWT tokens. Your backend validates them using `validateAgentGateToken`.
+AgentGate runs as a separate service that communicates with your backend via HTTP. Use `createRemoteResourceVerifier` and `createRemoteTokenIssuer` to delegate verification and token issuance:
 
 ```typescript
 // AgentGate Service
-const config = {
-  tokenMode: "native", // or omit (default)
-  // ...
-};
-
-// Backend
-const payload = await validateAgentGateToken(authHeader, {
-  secret: process.env.AGENTGATE_SECRET
-});
-```
-
-#### Remote Mode
-
-Your backend issues custom tokens (API keys, session IDs, etc.). AgentGate calls your backend to get the token.
-
-```typescript
-// AgentGate Service
-import { createRemoteTokenIssuer } from "@agentgate/sdk";
+import { createRemoteResourceVerifier, createRemoteTokenIssuer } from "@agentgate/sdk";
 
 const config = {
-  tokenMode: "remote",
+  onVerifyResource: createRemoteResourceVerifier({
+    url: "https://api.myapp.com/internal/verify",
+    auth: sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET!),
+  }),
   onIssueToken: createRemoteTokenIssuer({
     url: "https://api.myapp.com/internal/issue-token",
-    secret: process.env.INTERNAL_AUTH_SECRET
+    auth: sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET!),
   }),
   // ...
 };
+```
 
-// Backend endpoint
-app.post("/internal/issue-token", (req, res) => {
-  const { resourceId, tierId, txHash } = req.body;
-  const apiKey = generateApiKey(); // Your logic
-  res.json({ token: apiKey, expiresAt: new Date(...) });
+Your backend validates tokens using the standalone validator:
+
+```typescript
+import { validateAgentGateToken } from "@agentgate/sdk";
+
+app.use("/api", async (req, res, next) => {
+  const payload = await validateAgentGateToken(req.headers.authorization, {
+    secret: process.env.ACCESS_TOKEN_SECRET!,
+  });
+  req.agentGateToken = payload;
+  next();
 });
 ```
 
-#### Remote Mode (Service-to-Service Auth)
+### Service-to-Service Authentication
 
-When AgentGate calls your backend (to verify resources or issue tokens), it needs to authenticate itself. You can choose from several strategies:
+When AgentGate calls your backend, it can authenticate using:
 
 **1. Shared Secret (Simplest)**
-AgentGate sends a secret in a header (e.g. `X-Internal-Auth`).
-
 ```typescript
-// AgentGate Service
 import { sharedSecretAuth } from "@agentgate/sdk";
-
-const config = {
-  onVerifyResource: createRemoteResourceVerifier({
-    url: "...",
-    auth: sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET)
-  })
-};
+auth: sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET!)
 ```
 
-**2. Signed JWT (Secure)**
-AgentGate signs a short-lived JWT using its private key (RS256). Your backend verifies it using the public key.
-
+**2. Signed JWT**
 ```typescript
-// AgentGate Service
 import { signedJwtAuth } from "@agentgate/sdk";
-
-const config = {
-  onVerifyResource: createRemoteResourceVerifier({
-    url: "...",
-    auth: signedJwtAuth(tokenIssuer, "backend-service")
-  })
-};
+auth: signedJwtAuth(tokenIssuer, "backend-service")
 ```
 
-**3. OAuth 2.0 Client Credentials (Standard)**
-AgentGate fetches an access token from an OAuth provider (e.g. Auth0) using client ID and secret.
-
+**3. OAuth 2.0 Client Credentials**
 ```typescript
-// AgentGate Service
 import { oauthClientCredentialsAuth } from "@agentgate/sdk";
-
-const config = {
-  onVerifyResource: createRemoteResourceVerifier({
-    url: "...",
-    auth: oauthClientCredentialsAuth({
-      tokenUrl: "https://auth.example.com/token",
-      clientId: process.env.CLIENT_ID,
-      clientSecret: process.env.CLIENT_SECRET,
-      audience: "my-backend-api"
-    })
-  })
-};
+auth: oauthClientCredentialsAuth({
+  tokenUrl: "https://auth.example.com/token",
+  clientId: process.env.CLIENT_ID!,
+  clientSecret: process.env.CLIENT_SECRET!,
+  audience: "my-backend-api",
+})
 ```
 
 See `examples/standalone-service/` for a complete implementation.
 
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing tiers |
+| [`examples/hono-seller`](./examples/hono-seller) | Same features using Hono |
+| [`examples/standalone-service`](./examples/standalone-service) | AgentGate as a separate service with Redis + gas wallet |
+| [`examples/backend-integration`](./examples/backend-integration) | Coordinating AgentGate service + backend API |
+| [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
+
+## Networks
+
+| Network | Chain | Chain ID | USDC Contract |
+|---------|-------|----------|---------------|
+| Testnet | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Mainnet | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+
+## Development
+
+```bash
+bun install          # Install dependencies
+bun run typecheck    # Type-check
+bun run lint         # Lint with Biome
+bun test             # Run all tests
+bun run build        # Compile to ./dist
+```
+
+### Project Structure
+
+```
+src/
+  index.ts             # Main entry point (exports everything)
+  factory.ts           # createAgentGate() — wires all layers together
+  executor.ts          # AgentGateExecutor — A2A protocol handler
+  middleware.ts        # validateToken() — framework-agnostic token validation
+  types/               # Protocol types and interfaces
+  core/                # Challenge engine, access tokens, storage, agent card
+  adapter/             # X402Adapter — on-chain USDC verification via viem
+  integrations/        # Express, Hono, Fastify adapters + x402 HTTP middleware
+  helpers/             # Auth strategies, remote verifier/issuer helpers
+  validator/           # Standalone validateAgentGateToken (no full SDK init needed)
+examples/
+  express-seller/
+  hono-seller/
+  standalone-service/
+  backend-integration/
+  client-agent/
+```
+
 ## Documentation
 
-- [TECH.md](./TECH.md) — Detailed technical implementation blueprint
+- [TECH.md](./TECH.md) — Technical architecture reference
 - [SPEC.md](./SPEC.md) — Protocol specification
