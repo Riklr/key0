@@ -29,7 +29,7 @@ Please take a few minutes to read this guide before opening an issue or pull req
 
 If you have a question about how to use AgentGate, join our community:
 
-- **GitHub Discussions:** [github.com/Riklr/api-agentic-commerce/discussions](https://github.com/Riklr/api-agentic-commerce/discussions)
+- **GitHub Discussions:** [github.com/Riklr/agentgate/discussions](https://github.com/Riklr/agentgate/discussions)
 
 Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps the issue tracker actionable for maintainers.
 
@@ -87,8 +87,8 @@ If you are unsure whether something qualifies as large, open a Discussion first 
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/Riklr/api-agentic-commerce.git
-cd api-agentic-commerce
+git clone https://github.com/Riklr/agentgate.git
+cd agentgate
 
 # 2. Install dependencies
 bun install
