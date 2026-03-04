@@ -19,11 +19,10 @@ import {
 } from "./x402-http-middleware.js";
 
 /**
- * Create an Express router that serves the agent card, A2A endpoint,
- * and optionally an MCP endpoint (when `mcp: true`).
+ * Create an Express router that serves the agent card and A2A endpoint.
  *
  * Usage:
- *   app.use(agentGateRouter({ config, adapter, mcp: true }));
+ *   app.use(agentGateRouter({ config, adapter }));
  *
  * This auto-serves:
  *   GET  /.well-known/agent.json
@@ -31,7 +30,7 @@ import {
  *   POST {config.basePath}/access (Simple x402 HTTP)
  */
 export function agentGateRouter(opts: AgentGateConfig): Router {
-	const { requestHandler, engine, mcpServer } = createAgentGate(opts);
+	const { requestHandler, engine } = createAgentGate(opts);
 	const router = Router();
 	const networkConfig = CHAIN_CONFIGS[opts.config.network];
 
@@ -155,43 +154,6 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			console.log("[x402-access] ========== REQUEST COMPLETE ==========\n");
 		}
 	});
-
-	// MCP endpoint (Streamable HTTP transport on /mcp) + discovery
-	if (mcpServer) {
-		const { StreamableHTTPServerTransport } = require(
-			"@modelcontextprotocol/sdk/server/streamableHttp.js",
-		) as typeof import("@modelcontextprotocol/sdk/server/streamableHttp.js");
-		const { buildMcpServerCard } = require(
-			"../mcp/server.js",
-		) as typeof import("../mcp/server.js");
-
-		const transport = new StreamableHTTPServerTransport();
-		// biome-ignore lint/suspicious/noExplicitAny: MCP SDK's Transport type has exactOptionalPropertyTypes mismatch
-		mcpServer.connect(transport as any);
-
-		// SEP-1649: MCP Server Card discovery
-		const serverCard = buildMcpServerCard(opts.config);
-		router.get("/.well-known/mcp.json", (_req: Request, res: Response) => {
-			res.setHeader("Content-Type", "application/json");
-			res.setHeader("X-Content-Type-Options", "nosniff");
-			res.setHeader("Cache-Control", "max-age=3600");
-			res.setHeader("Access-Control-Allow-Origin", "*");
-			res.json(serverCard);
-		});
-
-		router.all("/mcp", async (req: Request, res: Response) => {
-			try {
-				await transport.handleRequest(req, res, req.body);
-			} catch (err: unknown) {
-				if (!res.headersSent) {
-					res.status(500).json({
-						error: "MCP_TRANSPORT_ERROR",
-						message: err instanceof Error ? err.message : "Internal MCP error",
-					});
-				}
-			}
-		});
-	}
 
 	return router;
 }
