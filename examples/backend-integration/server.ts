@@ -75,7 +75,7 @@ app.post("/internal/issue-token", (req, res) => {
 	apiKeys.set(apiKey, { expiresAt, resourceId, tierId });
 
 	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${tierId}`);
-	
+
 	res.json({
 		token: apiKey,
 		expiresAt: expiresAt.toISOString(),
