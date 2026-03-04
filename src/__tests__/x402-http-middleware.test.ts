@@ -56,6 +56,7 @@ function createMockResponse(): {
 	statusCode: number;
 	jsonData: any;
 	nextCalled: boolean;
+	headers: Record<string, string>;
 } {
 	let statusCode = 200;
 	let jsonData: any = null;
@@ -122,9 +123,9 @@ describe("x402-http-middleware", () => {
 		
 		// EIP-712 domain parameters in extra field
 		expect(requirements.accepts[0]?.extra).toBeDefined();
-		expect(requirements.accepts[0]?.extra?.name).toBe("USDC");
-		expect(requirements.accepts[0]?.extra?.version).toBe("2");
-		expect(requirements.accepts[0]?.extra?.description).toBe("Basic Access — $0.99 USDC");
+		expect(requirements.accepts[0]?.extra?.["name"]).toBe("USDC");
+		expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
+		expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
 		});
 
 		test("should throw for invalid tier", () => {
@@ -251,7 +252,7 @@ describe("x402-http-middleware", () => {
 		
 		// Check PAYMENT-REQUIRED header is set
 		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
-		const decodedHeader = JSON.parse(Buffer.from(mockRes.headers['PAYMENT-REQUIRED'], 'base64').toString());
+		const decodedHeader = JSON.parse(Buffer.from(mockRes.headers['PAYMENT-REQUIRED']!, 'base64').toString());
 		expect(decodedHeader.x402Version).toBe(2);
 	});
 
@@ -389,7 +390,7 @@ describe("x402-http-middleware", () => {
 			const originalFetch = globalThis.fetch;
 			const fetchCalls: Array<{ url: string; body: any }> = [];
 
-			globalThis.fetch = async (url: string | URL | Request, options?: any) => {
+			globalThis.fetch = (async (url: string | URL | Request, options?: any) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 				const body = options?.body ? JSON.parse(options.body) : null;
 				fetchCalls.push({ url: urlString, body });
@@ -417,12 +418,12 @@ describe("x402-http-middleware", () => {
 				}
 
 				return new Response("Not found", { status: 404 });
-			};
+			}) as typeof fetch;
 
 			try {
 				const result = await settleViaFacilitator(paymentSignature, "https://facilitator.example.com");
 
-				expect(result.txHash).toBe(mockTxHash);
+				expect(result.txHash).toBe(mockTxHash as `0x${string}`);
 				expect(result.payer).toBe("0x50c773eAC96Fb0A64D437228156b2DA2f5e9e602");
 				expect(result.settleResponse.success).toBe(true);
 
@@ -445,7 +446,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			globalThis.fetch = (async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
@@ -460,7 +461,7 @@ describe("x402-http-middleware", () => {
 				}
 
 				return new Response("Not found", { status: 404 });
-			};
+			}) as typeof fetch;
 
 			try {
 				await expect(
@@ -475,7 +476,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			globalThis.fetch = (async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
@@ -486,7 +487,7 @@ describe("x402-http-middleware", () => {
 				}
 
 				return new Response("Not found", { status: 404 });
-			};
+			}) as typeof fetch;
 
 			try {
 				await expect(
@@ -501,7 +502,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			globalThis.fetch = (async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
@@ -527,7 +528,7 @@ describe("x402-http-middleware", () => {
 				}
 
 				return new Response("Not found", { status: 404 });
-			};
+			}) as typeof fetch;
 
 			try {
 				await expect(
