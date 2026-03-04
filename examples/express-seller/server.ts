@@ -82,7 +82,6 @@ app.use(
 			resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
 		},
 		adapter,
-		mcp: true,
 	}),
 );
 
