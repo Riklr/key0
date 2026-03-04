@@ -1,0 +1,12 @@
+node_modules/
+dist/
+examples/
+src/**/__tests__/
+*.test.ts
+.claude/
+.git/
+*.md
+!package.json
+docker/.env
+docker/.env.*
+!docker/.env.example
