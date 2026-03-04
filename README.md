@@ -498,8 +498,8 @@ Coding agents like [Claude Code](https://claude.ai/code) can discover an AgentGa
 
 ```
 1. Agent reads /.well-known/agent.json → discovers pricing and wallet address
-2. Agent calls payments-mcp to send USDC to the seller wallet on Base
-3. Agent submits the txHash → receives token/API key in the AccessGrant
+2. Agent calls payments-mcp to sign a USDC authorization (EIP-3009)
+3. Agent sends the signed authorization → AgentGate settles on-chain and returns an AccessGrant with the token/API key
 4. Agent uses the token to call the protected resource
 ```
 
