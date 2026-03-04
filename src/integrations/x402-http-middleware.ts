@@ -483,57 +483,20 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			// 5. Provide defaults for optional fields
 			const resourceId = accessRequest.resourceId || "default";
 			const tierId = accessRequest.tierId;
-			console.log(`[x402-http-middleware] AccessRequest: tierId=${tierId}, resourceId=${resourceId}`);
+			const requestId = accessRequest.requestId || `http-${crypto.randomUUID()}`;
+			console.log(`[x402-http-middleware] AccessRequest: tierId=${tierId}, resourceId=${resourceId}, requestId=${requestId}`);
 
 			// 6. Check for PAYMENT-SIGNATURE header (v2)
 			const paymentSignature = req.headers[PAYMENT_SIGNATURE_HEADER] as string | undefined;
 			console.log(`[x402-http-middleware] PAYMENT-SIGNATURE header present: ${!!paymentSignature}`);
 
 			if (!paymentSignature) {
-				// ===== STEP 1: No payment yet -> return HTTP 402 =====
+				// ===== STEP 1: No payment yet -> create PENDING record and return HTTP 402 =====
 				console.log("[x402-http-middleware] → STEP 1: No PAYMENT-SIGNATURE header, issuing 402 challenge");
 
-				// Validate tier exists
-				const tier = config.products.find((t: ProductTier) => t.tierId === tierId);
-				if (!tier) {
-					console.log(`[x402-http-middleware] ✗ Tier "${tierId}" not found`);
-					return res.status(400).json({
-						error: "TIER_NOT_FOUND",
-						message: `Tier "${tierId}" not found in product catalog`,
-					});
-				}
-				console.log(`[x402-http-middleware] ✓ Tier found: ${tier.label} - ${tier.amount}`);
-
-				// Verify resource
-				console.log(`[x402-http-middleware] Verifying resource "${resourceId}"...`);
-				try {
-					const timeoutMs = config.resourceVerifyTimeoutMs ?? 5000;
-					const exists = await Promise.race([
-						config.onVerifyResource(resourceId, tierId),
-						new Promise<never>((_, reject) =>
-							setTimeout(
-								() => reject(new Error("Resource verification timed out")),
-								timeoutMs,
-							),
-						),
-					]);
-
-					if (!exists) {
-						console.log(`[x402-http-middleware] ✗ Resource "${resourceId}" not found`);
-						return res.status(404).json({
-							error: "RESOURCE_NOT_FOUND",
-							message: `Resource "${resourceId}" not found or not available for tier "${tierId}"`,
-						});
-					}
-					console.log(`[x402-http-middleware] ✓ Resource verified`);
-				} catch (err: unknown) {
-					const message = err instanceof Error ? err.message : "Resource verification failed";
-					console.log(`[x402-http-middleware] ✗ Resource verification error: ${message}`);
-					return res.status(504).json({
-						error: "RESOURCE_VERIFY_TIMEOUT",
-						message,
-					});
-				}
+				// Create PENDING record via engine (handles tier/resource validation and idempotency)
+				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
+				console.log(`[x402-http-middleware] ✓ PENDING record created, challengeId=${challengeId}`);
 
 				// Build payment requirements
 				console.log("[x402-http-middleware] Building payment requirements...");
@@ -550,10 +513,11 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				res.setHeader('PAYMENT-REQUIRED', base64Requirements);
 				console.log("[x402-http-middleware] Set PAYMENT-REQUIRED header");
 
-				// Return HTTP 402 with error message in body
+				// Return HTTP 402 with payment requirements + challengeId
 				console.log("[x402-http-middleware] → Returning HTTP 402 with payment requirements");
 				return res.status(402).json({
 					...requirements,
+					challengeId,
 					error: "PAYMENT-SIGNATURE header is required",
 				});
 			} else {
@@ -592,9 +556,15 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 				console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
 
-				// Process payment and issue token
+				// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
 				console.log("[x402-http-middleware] Processing HTTP payment and issuing token...");
-				const grant: AccessGrant = await engine.processHttpPayment(tierId, resourceId, txHash);
+				const grant: AccessGrant = await engine.processHttpPayment(
+					requestId,
+					tierId,
+					resourceId,
+					txHash,
+					payer as `0x${string}` | undefined,
+				);
 				console.log("[x402-http-middleware] ✓ Access grant issued:", JSON.stringify(grant, null, 2));
 
 				// x402 v2: Build settlement response for PAYMENT-RESPONSE header

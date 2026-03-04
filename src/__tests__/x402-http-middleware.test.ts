@@ -244,6 +244,10 @@ describe("x402-http-middleware", () => {
 		expect(mockRes.jsonData.resource).toBeDefined();
 		expect(mockRes.jsonData.accepts).toHaveLength(1);
 		expect(mockRes.jsonData.accepts[0].amount).toBe("990000");
+
+		// challengeId from PENDING record should be in the response
+		expect(mockRes.jsonData.challengeId).toBeDefined();
+		expect(mockRes.jsonData.challengeId).toMatch(/^http-/);
 		
 		// Check PAYMENT-REQUIRED header is set
 		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
@@ -277,7 +281,7 @@ describe("x402-http-middleware", () => {
 			await middleware(req as Request, mockRes.res as Response, next);
 
 			expect(mockRes.statusCode).toBe(404);
-			expect(mockRes.jsonData.error).toBe("RESOURCE_NOT_FOUND");
+			expect(mockRes.jsonData.code).toBe("RESOURCE_NOT_FOUND");
 		});
 
 		test("should return 400 for invalid tier", async () => {
@@ -306,7 +310,7 @@ describe("x402-http-middleware", () => {
 			await middleware(req as Request, mockRes.res as Response, next);
 
 			expect(mockRes.statusCode).toBe(400);
-			expect(mockRes.jsonData.error).toBe("TIER_NOT_FOUND");
+			expect(mockRes.jsonData.code).toBe("TIER_NOT_FOUND");
 		});
 
 		test("should parse AccessRequest from text part", async () => {
@@ -543,14 +547,66 @@ describe("x402-http-middleware", () => {
 		});
 	});
 
+	describe("ChallengeEngine.requestHttpAccess", () => {
+		let engine: ChallengeEngine;
+		let config: SellerConfig;
+		let store: InMemoryChallengeStore;
+
+		beforeEach(() => {
+			config = makeConfig();
+			store = new InMemoryChallengeStore();
+			const seenTxStore = new InMemorySeenTxStore();
+			const adapter = new MockPaymentAdapter();
+
+			engine = new ChallengeEngine({
+				config,
+				store,
+				seenTxStore,
+				adapter,
+			});
+		});
+
+		test("should create PENDING record and return challengeId", async () => {
+			const result = await engine.requestHttpAccess("req-1", "basic", "default");
+
+			expect(result.challengeId).toMatch(/^http-/);
+			const record = await store.get(result.challengeId);
+			expect(record).toBeDefined();
+			expect(record!.state).toBe("PENDING");
+			expect(record!.requestId).toBe("req-1");
+			expect(record!.tierId).toBe("basic");
+			expect(record!.clientAgentId).toBe("x402-http");
+		});
+
+		test("should return same challengeId for idempotent request", async () => {
+			const first = await engine.requestHttpAccess("req-1", "basic", "default");
+			const second = await engine.requestHttpAccess("req-1", "basic", "default");
+
+			expect(second.challengeId).toBe(first.challengeId);
+		});
+
+		test("should reject invalid tier", async () => {
+			await expect(
+				engine.requestHttpAccess("req-1", "invalid-tier", "default"),
+			).rejects.toThrow("Tier \"invalid-tier\" not found");
+		});
+
+		test("should reject nonexistent resource", async () => {
+			await expect(
+				engine.requestHttpAccess("req-1", "basic", "nonexistent"),
+			).rejects.toThrow("Resource \"nonexistent\" not found");
+		});
+	});
+
 	describe("ChallengeEngine.processHttpPayment", () => {
 		let engine: ChallengeEngine;
 		let config: SellerConfig;
+		let store: InMemoryChallengeStore;
 		let seenTxStore: InMemorySeenTxStore;
 
 		beforeEach(() => {
 			config = makeConfig();
-			const store = new InMemoryChallengeStore();
+			store = new InMemoryChallengeStore();
 			seenTxStore = new InMemorySeenTxStore();
 			const adapter = new MockPaymentAdapter();
 
@@ -564,7 +620,7 @@ describe("x402-http-middleware", () => {
 
 		test("should process payment and return AccessGrant", async () => {
 			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
-			const grant = await engine.processHttpPayment("basic", "default", txHash);
+			const grant = await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
 			expect(grant.type).toBe("AccessGrant");
 			expect(grant.tierId).toBe("basic");
@@ -574,11 +630,81 @@ describe("x402-http-middleware", () => {
 			expect(grant.tokenType).toBe("Bearer");
 		});
 
+		test("should create PENDING record, transition to PAID then DELIVERED", async () => {
+			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
+			const payer = `0x${"aa".repeat(20)}` as `0x${string}`;
+
+			const grant = await engine.processHttpPayment("req-1", "basic", "default", txHash, payer);
+
+			const record = await store.get(grant.challengeId);
+			expect(record).toBeDefined();
+			expect(record!.state).toBe("DELIVERED");
+			expect(record!.txHash).toBe(txHash);
+			expect(record!.fromAddress).toBe(payer);
+			expect(record!.paidAt).toBeDefined();
+			expect(record!.deliveredAt).toBeDefined();
+			expect(record!.accessGrant).toBeDefined();
+		});
+
+		test("should use existing PENDING record from requestHttpAccess", async () => {
+			const { challengeId } = await engine.requestHttpAccess("req-1", "basic", "default");
+			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
+			const payer = `0x${"aa".repeat(20)}` as `0x${string}`;
+
+			const grant = await engine.processHttpPayment("req-1", "basic", "default", txHash, payer);
+
+			expect(grant.challengeId).toBe(challengeId);
+			const record = await store.get(challengeId);
+			expect(record!.state).toBe("DELIVERED");
+		});
+
+		test("should auto-create PENDING record if step 1 was skipped", async () => {
+			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
+			const grant = await engine.processHttpPayment("req-skip", "basic", "default", txHash);
+
+			const record = await store.get(grant.challengeId);
+			expect(record).toBeDefined();
+			expect(record!.state).toBe("DELIVERED");
+			expect(record!.requestId).toBe("req-skip");
+		});
+
+		test("should leave record as PAID when onIssueToken throws", async () => {
+			const failConfig: SellerConfig = {
+				...config,
+				onIssueToken: async () => {
+					throw new Error("Token issuance failed");
+				},
+			};
+			const failStore = new InMemoryChallengeStore();
+			const failSeenTx = new InMemorySeenTxStore();
+			const failEngine = new ChallengeEngine({
+				config: failConfig,
+				store: failStore,
+				seenTxStore: failSeenTx,
+				adapter: new MockPaymentAdapter(),
+			});
+
+			const { challengeId } = await failEngine.requestHttpAccess("req-fail", "basic", "default");
+			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
+			const payer = `0x${"bb".repeat(20)}` as `0x${string}`;
+
+			await expect(
+				failEngine.processHttpPayment("req-fail", "basic", "default", txHash, payer),
+			).rejects.toThrow("Token issuance failed");
+
+			const record = await failStore.get(challengeId);
+			expect(record).toBeDefined();
+			expect(record!.state).toBe("PAID");
+			expect(record!.txHash).toBe(txHash);
+			expect(record!.fromAddress).toBe(payer);
+			expect(record!.deliveredAt).toBeUndefined();
+		});
+
 		test("should reject invalid tier", async () => {
 			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
 
 			await expect(
-				engine.processHttpPayment("invalid-tier", "default", txHash),
+				engine.processHttpPayment("req-1", "invalid-tier", "default", txHash),
 			).rejects.toThrow("Tier \"invalid-tier\" not found");
 		});
 
@@ -586,25 +712,23 @@ describe("x402-http-middleware", () => {
 			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
 
 			await expect(
-				engine.processHttpPayment("basic", "nonexistent", txHash),
+				engine.processHttpPayment("req-1", "basic", "nonexistent", txHash),
 			).rejects.toThrow("Resource \"nonexistent\" not found");
 		});
 
 		test("should reject double-spend (same txHash twice)", async () => {
 			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
 
-			// First payment succeeds
-			await engine.processHttpPayment("basic", "default", txHash);
+			await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
-			// Second payment with same txHash should fail
 			await expect(
-				engine.processHttpPayment("basic", "default", txHash),
+				engine.processHttpPayment("req-2", "basic", "default", txHash),
 			).rejects.toThrow("txHash has already been redeemed");
 		});
 
 		test("should mark txHash in seenTxStore", async () => {
 			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
-			await engine.processHttpPayment("basic", "default", txHash);
+			await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
 			const challengeId = await seenTxStore.get(txHash);
 			expect(challengeId).toBeDefined();

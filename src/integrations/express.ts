@@ -79,34 +79,12 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			console.log(`[x402-access] PAYMENT-SIGNATURE present: ${!!paymentSignature}`);
 
 			if (!paymentSignature) {
-				// ===== STEP 1: No payment yet -> return HTTP 402 =====
+				// ===== STEP 1: No payment yet -> create PENDING record and return HTTP 402 =====
 				console.log("[x402-access] → STEP 1: No PAYMENT-SIGNATURE, issuing 402");
 
-				// Verify resource exists
-				try {
-					const timeoutMs = opts.config.resourceVerifyTimeoutMs ?? 5000;
-					const exists = await Promise.race([
-						opts.config.onVerifyResource(resourceId, tierId),
-						new Promise<never>((_, reject) =>
-							setTimeout(() => reject(new Error("Resource verification timed out")), timeoutMs),
-						),
-					]);
-
-					if (!exists) {
-						console.log(`[x402-access] ✗ Resource "${resourceId}" not found`);
-						return res.status(404).json({
-							error: "RESOURCE_NOT_FOUND",
-							message: `Resource "${resourceId}" not found or not available for tier "${tierId}"`,
-						});
-					}
-				} catch (err: unknown) {
-					const message = err instanceof Error ? err.message : "Resource verification failed";
-					console.log(`[x402-access] ✗ Resource verification error: ${message}`);
-					return res.status(504).json({
-						error: "RESOURCE_VERIFY_TIMEOUT",
-						message,
-					});
-				}
+				// Create PENDING record via engine (handles tier/resource validation and idempotency)
+				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
+				console.log(`[x402-access] ✓ PENDING record created, challengeId=${challengeId}`);
 
 				// Build payment requirements
 				const requirements: X402PaymentRequiredResponse = buildHttpPaymentRequirements(
@@ -123,6 +101,7 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 				return res.status(402).json({
 					...requirements,
+					challengeId,
 					error: "PAYMENT-SIGNATURE header is required",
 				});
 			} else {
@@ -155,8 +134,14 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 				console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
 
-				// Issue access token
-				const grant = await engine.processHttpPayment(tierId, resourceId, txHash);
+				// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
+				const grant = await engine.processHttpPayment(
+					requestId,
+					tierId,
+					resourceId,
+					txHash,
+					payer as `0x${string}` | undefined,
+				);
 				console.log("[x402-access] ✓ Access grant issued");
 
 				// Set PAYMENT-RESPONSE header
