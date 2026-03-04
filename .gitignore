@@ -7,3 +7,7 @@ dist/
 bun.lock
 *.tsbuildinfo
 .turbo/
+
+# Claude Code — personal/local files (team config in .claude/ is tracked)
+.claude/settings.local.json
+CLAUDE.local.md
