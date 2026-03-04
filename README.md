@@ -504,32 +504,89 @@ const redis = new Redis(process.env.REDIS_URL);
 
 **HTTPS** — Always use HTTPS for `agentUrl` in production.
 
-### Docker Compose Example
+### Docker — Drop-in Standalone Server
 
-```yaml
-version: "3.8"
-services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      AGENTGATE_NETWORK: mainnet
-      AGENTGATE_WALLET_ADDRESS: "0xYourProductionWallet"
-      ACCESS_TOKEN_SECRET: "${ACCESS_TOKEN_SECRET}"
-      REDIS_URL: "redis://redis:6379"
-      PORT: 3000
-    depends_on:
-      - redis
+A pre-built image is published to Docker Hub on every release. No user code required — configure entirely via environment variables.
 
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis-data:/data
+**Image:** [`agentgate/sdk`](https://hub.docker.com/r/agentgate/sdk)
 
-volumes:
-  redis-data:
+| Tag | When |
+|---|---|
+| `latest` | Latest stable release |
+| `1.2.3` / `1.2` / `1` | Specific version |
+| `canary` | Latest `main` branch build |
+
+**Two required variables:**
+
+| Variable | Description |
+|---|---|
+| `AGENTGATE_WALLET_ADDRESS` | Your USDC-receiving wallet (`0x...`) |
+| `ISSUE_TOKEN_API` | URL AgentGate POSTs to after payment is verified |
+
+**Quick start (published image):**
+
+```bash
+docker run \
+  -e AGENTGATE_WALLET_ADDRESS=0xYourWallet \
+  -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
+  -p 3000:3000 \
+  agentgate/sdk:latest
 ```
+
+**With Docker Compose + Redis:**
+
+```bash
+cp docker/.env.example docker/.env
+# Edit docker/.env: set AGENTGATE_WALLET_ADDRESS and ISSUE_TOKEN_API
+docker compose -f docker/docker-compose.yml up
+```
+
+**Build from source:**
+
+```bash
+docker build -t agentgate .
+docker run \
+  -e AGENTGATE_WALLET_ADDRESS=0xYourWallet \
+  -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
+  -p 3000:3000 \
+  agentgate
+```
+
+**ISSUE_TOKEN_API contract:**
+
+After on-chain payment is verified, AgentGate POSTs to your endpoint:
+
+```json
+{
+  "requestId": "uuid",
+  "challengeId": "uuid",
+  "resourceId": "photo-42",
+  "tierId": "basic",
+  "txHash": "0x...",
+  "label": "Basic",
+  "amount": "$0.10",
+  "resourceType": "api",
+  "accessDurationSeconds": 3600
+}
+```
+
+Any extra fields you add to your `PRODUCTS` tiers are included automatically.
+
+Your endpoint can return any credential shape — the response is passed through to the client:
+
+```json
+{ "token": "eyJ...", "expiresAt": "2025-01-01T00:00:00Z", "tokenType": "Bearer" }
+```
+
+```json
+{ "apiKey": "sk-123", "apiSecret": "secret", "expiresAt": "..." }
+```
+
+If the response has a `token` string field it's used directly. Otherwise the full response is JSON-serialized into the `token` field with `tokenType: "custom"`.
+
+Secure the endpoint with `ISSUE_TOKEN_API_SECRET` — AgentGate sends it as `Authorization: Bearer <secret>`.
+
+See [`docker/.env.example`](docker/.env.example) for all available environment variables.
 
 ## Architecture: Embedded vs Standalone Service
 
