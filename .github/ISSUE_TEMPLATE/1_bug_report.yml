@@ -1,0 +1,159 @@
+name: "\U0001F41B Bug Report"
+description: Report a bug or regression in the AgentGate SDK
+title: "bug: "
+labels: ["bug", "needs triage"]
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out this form as completely as possible.
+
+        Before submitting:
+        - **Search [existing issues](https://github.com/Riklr/agentgate/issues)** to avoid duplicates. If one exists, upvote it instead.
+        - Bugs without a minimal reproduction will be closed. Always test on **testnet (Base Sepolia)** first.
+        - For questions and general help, use [GitHub Discussions](https://github.com/Riklr/agentgate/discussions) or Discord.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/agentgate/blob/master/CONTRIBUTING.md).
+          required: true
+        - label: I agree to the [Code of Conduct](https://github.com/Riklr/agentgate/blob/master/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I tested on **testnet (Base Sepolia)** before reporting.
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is. What did you expect to happen, and what actually happened?
+      placeholder: |
+        Expected: the payment challenge is issued and the JWT token is returned after submitting the transaction hash.
+        Actual: the server responds with 500 and "challenge not found" even though the challenge was just issued.
+    validations:
+      required: true
+
+  - type: input
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: |
+        Link to a **public** GitHub repository or a minimal code snippet that reproduces the issue.
+        Issues without a reproduction are very likely to be closed.
+      placeholder: "https://github.com/your-user/agentgate-repro"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions to trigger the bug.
+      placeholder: |
+        1. Configure AgentGate with Express using the default in-memory storage
+        2. Send a POST /access request with a valid transaction hash
+        3. Observe the 500 response
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Run the commands below and paste the output.
+      render: bash
+      value: |
+        # Run and paste output:
+        # bun --version
+        # node --version
+        # cat package.json | grep -E '"@agentgate|viem|bun"'
+
+        Bun version:
+        Node version:
+        AgentGate version:
+        viem version:
+        OS:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Framework
+      description: Which framework are you using AgentGate with?
+      options:
+        - Express
+        - Hono
+        - Fastify
+        - Standalone (no framework)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      description: Which network does the issue occur on?
+      options:
+        - Testnet (Base Sepolia)
+        - Mainnet (Base)
+        - Not applicable (no on-chain operation involved)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage backend
+      description: Which storage backend are you using?
+      options:
+        - In-memory (default)
+        - Redis
+        - Not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: AgentGate configuration (sanitized)
+      description: Paste your `AgentGate` / `createAgentGate` config. Remove any private keys, secrets, or wallet addresses.
+      render: typescript
+      placeholder: |
+        createAgentGate({
+          network: 'testnet',
+          receiverAddress: '0xREDACTED',
+          pricing: { amount: '0.01', currency: 'USDC' },
+          storage: { type: 'memory' },
+        })
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      description: Paste any error messages, stack traces, or server logs that are relevant.
+      render: bash
+      placeholder: |
+        Error: challenge not found
+            at ChallengeEngine.verify (src/core/challenge.ts:84:11)
+            at ...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help — transaction hashes (testnet only), screenshots, related issues, or workarounds you have tried.
+
+  - type: checkboxes
+    id: contributing
+    attributes:
+      label: Willing to contribute a fix?
+      options:
+        - label: I would be willing to submit a pull request to fix this bug.
