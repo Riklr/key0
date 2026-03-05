@@ -19,10 +19,10 @@ Test Process (Bun)
   │     ← Tests read/write state directly via ioredis for setup and assertions
   │
   └── E2eTestClient (viem, EIP-3009)
-        1. POST /a2a/access (no payment)     → HTTP 402 + challengeId
-        2. signTypedData(TransferWithAuth)   → off-chain EIP-3009 signature
-        3. POST /a2a/access (payment-signature header) → gas wallet settles → AccessGrant (JWT)
-        4. GET  /api/resource/:id (Bearer)   → protected backend API
+        1. POST /x402/access (no payment)     → HTTP 402 + challengeId
+        2. signTypedData(TransferWithAuth)    → off-chain EIP-3009 signature
+        3. POST /x402/access (payment-signature header) → gas wallet settles → AccessGrant (JWT)
+        4. GET  /api/resource/:id (Bearer)    → protected backend API
 ```
 
 ## Prerequisites
@@ -77,9 +77,9 @@ No wallet or on-chain interaction needed.
 The full purchase flow where everything works correctly.
 
 **Main test (purchase → JWT → protected API):**
-1. `POST /a2a/access` with no payment → server returns HTTP 402 with `challengeId` and payment requirements in a base64-encoded `payment-required` header.
+1. `POST /x402/access` with no payment → server returns HTTP 402 with `challengeId` and payment requirements in a base64-encoded `payment-required` header.
 2. Client signs an EIP-3009 `TransferWithAuthorization` off-chain — authorizes the gas wallet to move USDC from the client's address to the AgentGate wallet.
-3. `POST /a2a/access` with `payment-signature` header containing the EIP-3009 signature → gas wallet executes the on-chain transfer → server issues an `AccessGrant` (JWT).
+3. `POST /x402/access` with `payment-signature` header containing the EIP-3009 signature → gas wallet executes the on-chain transfer → server issues an `AccessGrant` (JWT).
 4. `GET /api/resource/resource-1` with `Authorization: Bearer <jwt>` → backend returns 200 with resource data.
 
 **Also tests:**
@@ -120,11 +120,31 @@ Signs an EIP-3009 authorization with the `to` field set to a random address inst
 
 ---
 
-### `invalid-tier.test.ts` — Invalid Tier (1 test)
+### `invalid-tier.test.ts` — Invalid Tier (2 tests)
 
-Verifies that requesting an unknown tier fails immediately — before any payment requirements are issued.
+Verifies tier validation on `POST /x402/access`.
 
-Calls `requestAccess` with `tierId: "nonexistent-tier"`. The server returns an error during challenge creation (`TIER_NOT_FOUND`). No payment is required and no challenge record is written.
+- **Nonexistent tierId**: returns `400 TIER_NOT_FOUND` — challenge creation fails before any PENDING record is written.
+- **Missing tierId**: returns `402` discovery response with all available tiers — this is the discovery mode (no PENDING record, just a list of tiers to choose from).
+
+---
+
+### `x402-discovery.test.ts` — x402 Discovery (3 tests)
+
+Verifies the discovery flow: `POST /x402/access` with no `tierId`.
+
+The `/x402/access` endpoint has three modes:
+1. **No tierId** → discovery 402: returns all tiers in the `accepts` array with `tierId` in each tier's `extra`. No PENDING record is created. Also validates the `payment-required` header, `www-authenticate` header, and `agentgate` extensions (inputSchema, outputSchema).
+2. **tierId, no signature** → challenge 402 (covered by happy-path)
+3. **tierId + signature** → settle and grant (covered by happy-path)
+
+---
+
+### `expired-authorization.test.ts` — Expired Authorization (1 test)
+
+Verifies that an EIP-3009 authorization with a `validBefore` timestamp in the past is rejected.
+
+Signs a `TransferWithAuthorization` with `validBeforeOverride: 1n` (Unix epoch + 1 second — far in the past). The settlement layer's `verify()` checks `block.timestamp <= validBefore` and rejects the authorization before any on-chain call. No gas is spent.
 
 ---
 

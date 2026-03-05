@@ -2,10 +2,10 @@
  * E2eTestClient: drives the AgentGate Docker payment flow.
  *
  * Payment flow (EIP-3009 off-chain authorization, gas wallet settlement):
- *   1. POST /a2a/access                    → HTTP 402 with challengeId + payment requirements
- *   2. signTypedData(TransferWithAuth)      → EIP-3009 off-chain authorization signature
- *   3. POST /a2a/access + PAYMENT-SIGNATURE → gas wallet executes transfer, returns AccessGrant
- *   4. GET  /api/resource/:id (Bearer)      → call protected backend API
+ *   1. POST /x402/access                     → HTTP 402 with challengeId + payment requirements
+ *   2. signTypedData(TransferWithAuth)        → EIP-3009 off-chain authorization signature
+ *   3. POST /x402/access + PAYMENT-SIGNATURE → gas wallet executes transfer, returns AccessGrant
+ *   4. GET  /api/resource/:id (Bearer)        → call protected backend API
  */
 
 import { randomBytes } from "crypto";
@@ -112,7 +112,7 @@ export class E2eTestClient {
 		requestId: string;
 		resourceId?: string;
 	}): Promise<ChallengeResponse> {
-		const res = await fetch(`${this.agentgateUrl}/a2a/access`, {
+		const res = await fetch(`${this.agentgateUrl}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -213,7 +213,7 @@ export class E2eTestClient {
 
 		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
-		const res = await fetch(`${this.agentgateUrl}/a2a/access`, {
+		const res = await fetch(`${this.agentgateUrl}/x402/access`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
