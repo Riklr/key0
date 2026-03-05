@@ -8,8 +8,8 @@
  *   4. GET  /api/resource/:id (Bearer)        → call protected backend API
  */
 
-import { randomBytes } from "crypto";
-import { type PublicClient, type WalletClient, formatUnits } from "viem";
+import { randomBytes } from "node:crypto";
+import { formatUnits, type PublicClient, type WalletClient } from "viem";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -236,11 +236,7 @@ export class E2eTestClient {
 
 	// ── Convenience: full purchase ────────────────────────────────────────
 
-	async purchaseAccess(opts: {
-		tierId: string;
-		requestId?: string;
-		resourceId?: string;
-	}): Promise<{
+	async purchaseAccess(opts: { tierId: string; requestId?: string; resourceId?: string }): Promise<{
 		requestId: string;
 		challengeId: string;
 		grant: AccessGrant;

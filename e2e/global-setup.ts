@@ -12,11 +12,11 @@
  */
 
 import { afterAll, beforeAll } from "bun:test";
-import type { Server } from "http";
+import type { Server } from "node:http";
+import { AGENTGATE_URL } from "./fixtures/constants.ts";
 import { startBackend } from "./helpers/backend-server.ts";
 import { printLogs, startDockerStack, stopDockerStack } from "./helpers/docker-manager.ts";
 import { connectRedis, disconnectRedis } from "./helpers/redis-client.ts";
-import { AGENTGATE_URL } from "./fixtures/constants.ts";
 
 let backendServer: Server | null = null;
 

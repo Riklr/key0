@@ -45,13 +45,7 @@ export type ResourceVerifier = (resourceId: string, tierId: string) => Promise<b
  * Satisfied by any ioredis client instance.
  */
 export type IRedisLockClient = {
-	set(
-		key: string,
-		value: string,
-		nx: "NX",
-		px: "PX",
-		ttlMs: number,
-	): Promise<string | null>;
+	set(key: string, value: string, nx: "NX", px: "PX", ttlMs: number): Promise<string | null>;
 	eval(script: string, numkeys: number, ...args: string[]): Promise<unknown>;
 };
 

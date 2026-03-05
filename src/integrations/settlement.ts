@@ -122,7 +122,7 @@ export function buildDiscoveryResponse(
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
 ): X402PaymentRequiredResponse {
-	const basePath = config.basePath ?? "/a2a";
+	const _basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
@@ -183,7 +183,10 @@ export function buildDiscoveryResponse(
 						accessToken: { type: "string", description: "JWT token for API access" },
 						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
 						expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
-						resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
+						resourceEndpoint: {
+							type: "string",
+							description: "URL to access the protected resource",
+						},
 						txHash: { type: "string", description: "On-chain transaction hash" },
 						explorerUrl: { type: "string", description: "Blockchain explorer URL" },
 					},

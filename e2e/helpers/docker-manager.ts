@@ -2,8 +2,8 @@
  * Manages docker compose lifecycle for e2e tests.
  */
 
-import { execSync, spawnSync } from "child_process";
-import path from "path";
+import { execSync, spawnSync } from "node:child_process";
+import path from "node:path";
 
 const E2E_DIR = path.resolve(import.meta.dir, "..");
 
@@ -52,11 +52,11 @@ export async function waitForHttp(url: string, timeoutMs = 60_000): Promise<void
 export function printLogs(config: StackConfig = {}): void {
 	const file = config.composeFile ?? "docker-compose.e2e.yml";
 	const project = config.projectName ?? "agentgate-e2e";
-	const result = spawnSync(
-		"docker",
-		["compose", "-f", file, "-p", project, "logs", "--tail=100"],
-		{ cwd: E2E_DIR, encoding: "utf8", env: { ...process.env } },
-	);
+	const result = spawnSync("docker", ["compose", "-f", file, "-p", project, "logs", "--tail=100"], {
+		cwd: E2E_DIR,
+		encoding: "utf8",
+		env: { ...process.env },
+	});
 	console.log(result.stdout);
 	console.error(result.stderr);
 }

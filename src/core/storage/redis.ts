@@ -214,9 +214,7 @@ export class RedisChallengeStore implements IChallengeStore {
 
 		// ARGV layout: [fromState, toState, challengeId, paidAtScore, ...field/value pairs]
 		// paidAtScore is the paidAt epoch ms (for ZADD on PAID transitions), or "" otherwise.
-		const score = toState === "PAID" && updates?.paidAt
-			? updates.paidAt.getTime().toString()
-			: "";
+		const score = toState === "PAID" && updates?.paidAt ? updates.paidAt.getTime().toString() : "";
 		const argv: string[] = [fromState, toState, challengeId, score];
 
 		if (updates) {

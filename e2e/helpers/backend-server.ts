@@ -7,9 +7,9 @@
  *   GET  /api/resource/:id       ← Protected resource, validates Bearer JWT
  */
 
+import type { Server } from "node:http";
 import express from "express";
-import { SignJWT, jwtVerify } from "jose";
-import type { Server } from "http";
+import { jwtVerify, SignJWT } from "jose";
 
 export const BACKEND_PORT = 3001;
 export const BACKEND_JWT_SECRET = "e2e-backend-jwt-secret-for-testing-1234567890";

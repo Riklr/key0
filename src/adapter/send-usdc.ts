@@ -1,4 +1,4 @@
-import { http, createPublicClient, createWalletClient } from "viem";
+import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import type { NetworkConfig } from "../types/index.js";
@@ -47,7 +47,8 @@ export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
 		// Build EIP-3009 typed data
 		const validAfter = 0n;
 		const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
-		const nonce = `0x${crypto.getRandomValues(new Uint8Array(32)).reduce((hex, b) => hex + b.toString(16).padStart(2, "0"), "")}` as `0x${string}`;
+		const nonce =
+			`0x${crypto.getRandomValues(new Uint8Array(32)).reduce((hex, b) => hex + b.toString(16).padStart(2, "0"), "")}` as `0x${string}`;
 
 		const domain = {
 			name: networkConfig.usdcDomain.name,

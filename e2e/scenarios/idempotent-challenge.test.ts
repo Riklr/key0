@@ -25,9 +25,7 @@ describe("Idempotent Challenge", () => {
 		expect(first.paymentRequired.accepts[0]?.amount).toBe(
 			second.paymentRequired.accepts[0]?.amount,
 		);
-		expect(first.paymentRequired.accepts[0]?.payTo).toBe(
-			second.paymentRequired.accepts[0]?.payTo,
-		);
+		expect(first.paymentRequired.accepts[0]?.payTo).toBe(second.paymentRequired.accepts[0]?.payTo);
 	});
 
 	test("different requestIds create distinct challenges", async () => {

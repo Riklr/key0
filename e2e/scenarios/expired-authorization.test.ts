@@ -13,39 +13,35 @@ import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 
 describe("Expired Authorization", () => {
-	test(
-		"EIP-3009 authorization with validBefore in the past is rejected",
-		async () => {
-			const client = makeClientE2eClient();
-			const requestId = crypto.randomUUID();
+	test("EIP-3009 authorization with validBefore in the past is rejected", async () => {
+		const client = makeClientE2eClient();
+		const requestId = crypto.randomUUID();
 
-			const { paymentRequired } = await client.requestAccess({
-				tierId: DEFAULT_TIER_ID,
-				requestId,
-			});
+		const { paymentRequired } = await client.requestAccess({
+			tierId: DEFAULT_TIER_ID,
+			requestId,
+		});
 
-			const requirements = paymentRequired.accepts[0]!;
-			const destination = requirements.payTo as `0x${string}`;
-			const amountRaw = BigInt(requirements.amount);
+		const requirements = paymentRequired.accepts[0]!;
+		const destination = requirements.payTo as `0x${string}`;
+		const amountRaw = BigInt(requirements.amount);
 
-			// Sign with validBefore = 1 (Unix epoch + 1 second = long in the past)
-			const auth = await client.signEIP3009({
-				destination,
-				amountRaw,
-				validBeforeOverride: 1n,
-			});
+		// Sign with validBefore = 1 (Unix epoch + 1 second = long in the past)
+		const auth = await client.signEIP3009({
+			destination,
+			amountRaw,
+			validBeforeOverride: 1n,
+		});
 
-			const result = await client.submitPayment({
-				tierId: DEFAULT_TIER_ID,
-				requestId,
-				auth,
-				paymentRequired,
-			});
+		const result = await client.submitPayment({
+			tierId: DEFAULT_TIER_ID,
+			requestId,
+			auth,
+			paymentRequired,
+		});
 
-			// Must be rejected — expired authorization window
-			expect(result.status).not.toBe(200);
-			expect(result.error).toBeDefined();
-		},
-		60_000,
-	);
+		// Must be rejected — expired authorization window
+		expect(result.status).not.toBe(200);
+		expect(result.error).toBeDefined();
+	}, 60_000);
 });

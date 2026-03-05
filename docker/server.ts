@@ -11,10 +11,10 @@ import {
 	type IChallengeStore,
 	type NetworkName,
 	type ProductTier,
+	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-	processRefunds,
 } from "@riklr/agentgate";
 import { agentGateRouter } from "@riklr/agentgate/express";
 import express from "express";

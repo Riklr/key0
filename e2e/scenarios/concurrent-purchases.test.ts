@@ -12,35 +12,31 @@ import { makeClientE2eClient, makeGasE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeRecord } from "../helpers/redis-client.ts";
 
 describe("Concurrent Purchases", () => {
-	test(
-		"two clients purchasing simultaneously both receive distinct grants",
-		async () => {
-			const clientA = makeClientE2eClient();
-			const clientB = makeGasE2eClient();
+	test("two clients purchasing simultaneously both receive distinct grants", async () => {
+		const clientA = makeClientE2eClient();
+		const clientB = makeGasE2eClient();
 
-			const [resultA, resultB] = await Promise.all([
-				clientA.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
-				clientB.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
-			]);
+		const [resultA, resultB] = await Promise.all([
+			clientA.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
+			clientB.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
+		]);
 
-			// Both must succeed
-			expect(resultA.grant.type).toBe("AccessGrant");
-			expect(resultB.grant.type).toBe("AccessGrant");
+		// Both must succeed
+		expect(resultA.grant.type).toBe("AccessGrant");
+		expect(resultB.grant.type).toBe("AccessGrant");
 
-			// Grants must be distinct
-			expect(resultA.grant.challengeId).not.toBe(resultB.grant.challengeId);
-			expect(resultA.grant.txHash).not.toBe(resultB.grant.txHash);
-			expect(resultA.grant.accessToken).not.toBe(resultB.grant.accessToken);
+		// Grants must be distinct
+		expect(resultA.grant.challengeId).not.toBe(resultB.grant.challengeId);
+		expect(resultA.grant.txHash).not.toBe(resultB.grant.txHash);
+		expect(resultA.grant.accessToken).not.toBe(resultB.grant.accessToken);
 
-			// Both challenges must be in DELIVERED state
-			const [recordA, recordB] = await Promise.all([
-				readChallengeRecord(resultA.challengeId),
-				readChallengeRecord(resultB.challengeId),
-			]);
+		// Both challenges must be in DELIVERED state
+		const [recordA, recordB] = await Promise.all([
+			readChallengeRecord(resultA.challengeId),
+			readChallengeRecord(resultB.challengeId),
+		]);
 
-			expect(recordA?.["state"]).toBe("DELIVERED");
-			expect(recordB?.["state"]).toBe("DELIVERED");
-		},
-		120_000,
-	);
+		expect(recordA?.["state"]).toBe("DELIVERED");
+		expect(recordB?.["state"]).toBe("DELIVERED");
+	}, 120_000);
 });

@@ -23,7 +23,7 @@ describe("Agent Card", () => {
 		const requestSkill = card.skills.find((s) => s.id === DEFAULT_TIER_ID);
 		expect(requestSkill).toBeDefined();
 		expect(Array.isArray(requestSkill?.pricing)).toBe(true);
-		expect((requestSkill?.pricing?.length ?? 0)).toBeGreaterThan(0);
+		expect(requestSkill?.pricing?.length ?? 0).toBeGreaterThan(0);
 
 		// x402 extension must be declared
 		expect(Array.isArray(card.capabilities.extensions)).toBe(true);

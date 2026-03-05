@@ -12,12 +12,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import {
-	REFUND_POLL_TIMEOUT_MS,
-	DEFAULT_TIER_ID,
-} from "../fixtures/constants.ts";
+import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
 import { agentgateWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
-import { connectRedis, readChallengeState, writePaidChallengeRecord } from "../helpers/redis-client.ts";
+import {
+	connectRedis,
+	readChallengeState,
+	writePaidChallengeRecord,
+} from "../helpers/redis-client.ts";
 import { waitForChallengeState } from "../helpers/wait.ts";
 
 // $0.01 USDC — small amount to minimize testnet spend

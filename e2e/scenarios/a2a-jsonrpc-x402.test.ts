@@ -16,8 +16,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { AGENTGATE_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
-import type { AccessGrant } from "../helpers/client.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
+import type { AccessGrant } from "../helpers/client.ts";
 
 const JSONRPC_URL = `${AGENTGATE_URL}/a2a/jsonrpc`;
 
@@ -79,78 +79,74 @@ describe("A2A JSON-RPC x402 Middleware", () => {
 		expect(decoded.accepts[0].scheme).toBe("exact");
 	});
 
-	test(
-		"POST /a2a/jsonrpc with AccessRequest + PAYMENT-SIGNATURE returns 200 AccessGrant",
-		async () => {
-			const client = makeClientE2eClient();
-			const requestId = crypto.randomUUID();
+	test("POST /a2a/jsonrpc with AccessRequest + PAYMENT-SIGNATURE returns 200 AccessGrant", async () => {
+		const client = makeClientE2eClient();
+		const requestId = crypto.randomUUID();
 
-			// Step 1: Get challenge (no signature)
-			const challengeRes = await fetch(JSONRPC_URL, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
-			});
+		// Step 1: Get challenge (no signature)
+		const challengeRes = await fetch(JSONRPC_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
+		});
 
-			expect(challengeRes.status).toBe(402);
-			const challengeBody = (await challengeRes.json()) as Record<string, unknown>;
-			const challengeId = challengeBody["challengeId"] as string;
+		expect(challengeRes.status).toBe(402);
+		const challengeBody = (await challengeRes.json()) as Record<string, unknown>;
+		const challengeId = challengeBody["challengeId"] as string;
 
-			// Decode payment requirements from header
-			const header = challengeRes.headers.get("payment-required");
-			expect(header).toBeTruthy();
-			const paymentRequired = JSON.parse(
-				Buffer.from(header!, "base64").toString("utf-8"),
-			) as { accepts: Array<{ amount: string; payTo: string }> };
+		// Decode payment requirements from header
+		const header = challengeRes.headers.get("payment-required");
+		expect(header).toBeTruthy();
+		const paymentRequired = JSON.parse(Buffer.from(header!, "base64").toString("utf-8")) as {
+			accepts: Array<{ amount: string; payTo: string }>;
+		};
 
-			const requirements = paymentRequired.accepts[0]!;
+		const requirements = paymentRequired.accepts[0]!;
 
-			// Step 2: Sign EIP-3009
-			const auth = await client.signEIP3009({
-				destination: requirements.payTo as `0x${string}`,
-				amountRaw: BigInt(requirements.amount),
-			});
+		// Step 2: Sign EIP-3009
+		const auth = await client.signEIP3009({
+			destination: requirements.payTo as `0x${string}`,
+			amountRaw: BigInt(requirements.amount),
+		});
 
-			// Build PAYMENT-SIGNATURE payload (same format as /x402/access)
-			const paymentPayload = {
-				x402Version: 2,
-				network: `eip155:84532`,
-				scheme: "exact",
-				payload: {
-					signature: auth.signature,
-					authorization: auth.authorization,
-					from: client.account,
-				},
-				accepted: requirements,
-			};
-			const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+		// Build PAYMENT-SIGNATURE payload (same format as /x402/access)
+		const paymentPayload = {
+			x402Version: 2,
+			network: `eip155:84532`,
+			scheme: "exact",
+			payload: {
+				signature: auth.signature,
+				authorization: auth.authorization,
+				from: client.account,
+			},
+			accepted: requirements,
+		};
+		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
-			// Step 3: POST with signature
-			const settleRes = await fetch(JSONRPC_URL, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"payment-signature": paymentSignature,
-				},
-				body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
-			});
+		// Step 3: POST with signature
+		const settleRes = await fetch(JSONRPC_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"payment-signature": paymentSignature,
+			},
+			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
+		});
 
-			expect(settleRes.status).toBe(200);
+		expect(settleRes.status).toBe(200);
 
-			const grant = (await settleRes.json()) as AccessGrant;
-			expect(grant.type).toBe("AccessGrant");
-			expect(typeof grant.accessToken).toBe("string");
-			expect(grant.tokenType).toBe("Bearer");
-			expect(grant.txHash).toMatch(/^0x/);
-			expect(grant.challengeId).toBe(challengeId);
-			expect(grant.requestId).toBe(requestId);
+		const grant = (await settleRes.json()) as AccessGrant;
+		expect(grant.type).toBe("AccessGrant");
+		expect(typeof grant.accessToken).toBe("string");
+		expect(grant.tokenType).toBe("Bearer");
+		expect(grant.txHash).toMatch(/^0x/);
+		expect(grant.challengeId).toBe(challengeId);
+		expect(grant.requestId).toBe(requestId);
 
-			// payment-response header must be set
-			const paymentResponse = settleRes.headers.get("payment-response");
-			expect(paymentResponse).toBeTruthy();
-		},
-		120_000,
-	);
+		// payment-response header must be set
+		const paymentResponse = settleRes.headers.get("payment-response");
+		expect(paymentResponse).toBeTruthy();
+	}, 120_000);
 
 	test("POST /a2a/jsonrpc with X-A2A-Extensions header passes through to A2A handler", async () => {
 		// When X-A2A-Extensions is present, the middleware skips x402 logic and

@@ -1,6 +1,6 @@
 import { sendUsdc } from "../adapter/send-usdc.js";
-import { CHAIN_CONFIGS } from "../types/index.js";
 import type { IChallengeStore, NetworkName } from "../types/index.js";
+import { CHAIN_CONFIGS } from "../types/index.js";
 
 export type RefundConfig = {
 	readonly store: IChallengeStore;

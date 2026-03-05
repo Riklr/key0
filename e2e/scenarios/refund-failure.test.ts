@@ -9,10 +9,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import Redis from "ioredis";
-import { REFUND_FAIL_REDIS_URL, REFUND_POLL_TIMEOUT_MS, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+import {
+	DEFAULT_TIER_ID,
+	REFUND_FAIL_REDIS_URL,
+	REFUND_POLL_TIMEOUT_MS,
+} from "../fixtures/constants.ts";
 import { agentgateWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
-import { writePaidChallengeRecord } from "../helpers/redis-client.ts";
 import { printLogs, startDockerStack, stopDockerStack } from "../helpers/docker-manager.ts";
+import { writePaidChallengeRecord } from "../helpers/redis-client.ts";
 import { waitForChallengeState } from "../helpers/wait.ts";
 
 const STACK_CONFIG = {

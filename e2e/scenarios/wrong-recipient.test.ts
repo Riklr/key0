@@ -12,36 +12,32 @@ import { makeClientE2eClient } from "../fixtures/wallets.ts";
 const RANDOM_ADDRESS = "0x000000000000000000000000000000000000dEaD" as `0x${string}`;
 
 describe("Wrong Recipient", () => {
-	test(
-		"payment to wrong address is rejected by the settlement layer",
-		async () => {
-			const client = makeClientE2eClient();
-			const requestId = crypto.randomUUID();
+	test("payment to wrong address is rejected by the settlement layer", async () => {
+		const client = makeClientE2eClient();
+		const requestId = crypto.randomUUID();
 
-			const { paymentRequired } = await client.requestAccess({
-				tierId: DEFAULT_TIER_ID,
-				requestId,
-			});
+		const { paymentRequired } = await client.requestAccess({
+			tierId: DEFAULT_TIER_ID,
+			requestId,
+		});
 
-			const requirements = paymentRequired.accepts[0]!;
-			const correctAmount = BigInt(requirements.amount);
+		const requirements = paymentRequired.accepts[0]!;
+		const correctAmount = BigInt(requirements.amount);
 
-			// Sign to the WRONG address (not the seller's payTo)
-			const auth = await client.signEIP3009({
-				destination: RANDOM_ADDRESS, // deliberately wrong recipient
-				amountRaw: correctAmount,
-			});
+		// Sign to the WRONG address (not the seller's payTo)
+		const auth = await client.signEIP3009({
+			destination: RANDOM_ADDRESS, // deliberately wrong recipient
+			amountRaw: correctAmount,
+		});
 
-			const result = await client.submitPayment({
-				tierId: DEFAULT_TIER_ID,
-				requestId,
-				auth,
-				paymentRequired,
-			});
+		const result = await client.submitPayment({
+			tierId: DEFAULT_TIER_ID,
+			requestId,
+			auth,
+			paymentRequired,
+		});
 
-			expect(result.status).not.toBe(200);
-			expect(result.error).toBeDefined();
-		},
-		120_000,
-	);
+		expect(result.status).not.toBe(200);
+		expect(result.error).toBeDefined();
+	}, 120_000);
 });
