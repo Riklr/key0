@@ -142,7 +142,7 @@ export class ChallengeEngine {
 					asset: this.networkConfig.usdcAddress,
 					amount: record.amountRaw.toString(),
 					payTo: record.destination,
-					maxTimeoutSeconds: 300, // 5 minutes
+					maxTimeoutSeconds: this.config.challengeTTLSeconds ?? 900,
 					extra: {
 						challengeId: record.challengeId,
 						requestId: record.requestId,
@@ -205,17 +205,18 @@ export class ChallengeEngine {
 
 		// 3. Pre-flight resource check (with 5s timeout)
 		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
 		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, req.tierId),
-			new Promise<never>((_, reject) =>
-				setTimeout(
+			this.config.onVerifyResource(resourceId, req.tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
 					() =>
 						reject(
 							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
 						),
 					timeoutMs,
-				),
-			),
+				);
+			}),
 		]);
 		if (!exists) {
 			throw new AgentGateError(
@@ -526,17 +527,18 @@ export class ChallengeEngine {
 
 		// 2. Verify resource exists
 		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
 		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, tierId),
-			new Promise<never>((_, reject) =>
-				setTimeout(
+			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
 					() =>
 						reject(
 							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
 						),
 					timeoutMs,
-				),
-			),
+				);
+			}),
 		]);
 		if (!exists) {
 			throw new AgentGateError(

@@ -138,7 +138,7 @@ export function buildHttpPaymentRequirements(
 				asset: networkConfig.usdcAddress,
 				amount: amountRaw.toString(),
 				payTo: config.walletAddress,
-				maxTimeoutSeconds: 300,
+				maxTimeoutSeconds: config.challengeTTLSeconds ?? 900,
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
@@ -174,7 +174,7 @@ export function buildDiscoveryResponse(
 			asset: networkConfig.usdcAddress,
 			amount: amountRaw.toString(),
 			payTo: config.walletAddress,
-			maxTimeoutSeconds: 300,
+			maxTimeoutSeconds: config.challengeTTLSeconds ?? 900,
 			extra: {
 				name: networkConfig.usdcDomain.name,
 				version: networkConfig.usdcDomain.version,
@@ -516,7 +516,7 @@ export async function settlePayment(
 
 		if (config.redis) {
 			// Distributed lock — safe across multiple instances
-			const lockKey = `agentgate:settle-lock:${privateKey.slice(0, 10)}`;
+			const lockKey = `agentgate:settle-lock:${privateKeyToAccount(privateKey).address}`;
 			const lockToken = crypto.randomUUID();
 			await acquireRedisLock(config.redis, lockKey, lockToken);
 			try {

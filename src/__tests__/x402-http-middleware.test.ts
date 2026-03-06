@@ -124,7 +124,7 @@ describe("x402-http-middleware", () => {
 			expect(requirements.accepts[0]?.asset).toBe(networkConfig.usdcAddress);
 			expect(requirements.accepts[0]?.amount).toBe("990000"); // $0.99 USDC
 			expect(requirements.accepts[0]?.payTo).toBe(WALLET);
-			expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(300); // 5 minutes
+			expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(900); // derived from challengeTTLSeconds default
 
 			// EIP-712 domain parameters in extra field
 			expect(requirements.accepts[0]?.extra).toBeDefined();

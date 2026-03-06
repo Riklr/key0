@@ -157,6 +157,14 @@ export class RedisChallengeStore implements IChallengeStore {
 		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
 	}
 
+	/** Verify Redis is reachable. Call at startup to fail fast on misconfiguration. */
+	async healthCheck(): Promise<void> {
+		const result = await this.redis.ping();
+		if (result !== "PONG") {
+			throw new Error(`Redis health check failed: expected PONG, got ${result}`);
+		}
+	}
+
 	private challengeKey(challengeId: string): string {
 		return `${this.prefix}:challenge:${challengeId}`;
 	}
