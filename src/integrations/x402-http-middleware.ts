@@ -174,6 +174,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				`[x402-http-middleware] PAYMENT-SIGNATURE (first 50 chars): ${paymentSignatureRaw.substring(0, 50)}...`,
 			);
 
+			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
+			await engine.verifyResource(resourceId, tierId);
+
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
 			const { txHash, settleResponse, payer } = await settlePayment(

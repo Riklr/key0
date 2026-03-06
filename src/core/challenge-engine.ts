@@ -52,6 +52,51 @@ export class ChallengeEngine {
 		return this.clock();
 	}
 
+	/**
+	 * Call onIssueToken with a timeout and configurable retries with exponential backoff.
+	 * On timeout, throws TOKEN_ISSUE_TIMEOUT. On final failure, re-throws the original error.
+	 */
+	private async issueTokenWithRetry(
+		params: import("../types/config.js").IssueTokenParams,
+	): Promise<import("../types/config.js").TokenIssuanceResult> {
+		const timeoutMs = this.config.tokenIssueTimeoutMs ?? 15_000;
+		const maxRetries = this.config.tokenIssueRetries ?? 2;
+
+		const callWithTimeout = () => {
+			let timer: ReturnType<typeof setTimeout>;
+			return Promise.race([
+				this.config.onIssueToken(params).finally(() => clearTimeout(timer)),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(
+						() =>
+							reject(
+								new AgentGateError(
+									"TOKEN_ISSUE_TIMEOUT",
+									"Token issuance timed out",
+									504,
+								),
+							),
+						timeoutMs,
+					);
+				}),
+			]);
+		};
+
+		let lastError: unknown;
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			try {
+				return await callWithTimeout();
+			} catch (err) {
+				lastError = err;
+				if (attempt < maxRetries) {
+					const delay = 500 * 2 ** attempt; // 500ms, 1s, 2s...
+					await new Promise((r) => setTimeout(r, delay));
+				}
+			}
+		}
+		throw lastError;
+	}
+
 	private findTier(tierId: string): ProductTier | undefined {
 		return this.config.products.find((t: ProductTier) => t.tierId === tierId);
 	}
@@ -373,7 +418,7 @@ export class ChallengeEngine {
 		const resourceEndpoint = this.buildResourceEndpoint(challenge.resourceId);
 		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${proof.txHash}`;
 
-		const tokenResult = await this.config.onIssueToken({
+		const tokenResult = await this.issueTokenWithRetry({
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId: challenge.resourceId,
@@ -527,6 +572,34 @@ export class ChallengeEngine {
 	}
 
 	/**
+	 * Verify that a resource exists and is available for the given tier.
+	 * Call this BEFORE settlement to avoid money-at-risk if the resource disappears.
+	 */
+	async verifyResource(resourceId: string, tierId: string): Promise<void> {
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() =>
+						reject(
+							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				);
+			}),
+		]);
+		if (!exists) {
+			throw new AgentGateError(
+				"RESOURCE_NOT_FOUND",
+				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				404,
+			);
+		}
+	}
+
+	/**
 	 * Process an HTTP x402 payment with full lifecycle tracking.
 	 * Used by the x402 HTTP middleware when a client sends PAYMENT-SIGNATURE header
 	 * with an EIP-3009 signed authorization that has been settled via the gas wallet
@@ -535,6 +608,9 @@ export class ChallengeEngine {
 	 * Lifecycle: looks up PENDING record (or auto-creates one if step 1 was skipped),
 	 * transitions PENDING → PAID → DELIVERED. If onIssueToken throws, record stays
 	 * PAID and the refund cron can pick it up.
+	 *
+	 * NOTE: Resource verification is NOT performed here — callers must verify the
+	 * resource BEFORE settlement (via engine.verifyResource()) to avoid money-at-risk.
 	 */
 	async processHttpPayment(
 		requestId: string,
@@ -550,28 +626,6 @@ export class ChallengeEngine {
 				"TIER_NOT_FOUND",
 				`Tier "${tierId}" not found in product catalog`,
 				400,
-			);
-		}
-
-		// 2. Verify resource exists
-		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
-		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, tierId),
-			new Promise<never>((_, reject) =>
-				setTimeout(
-					() =>
-						reject(
-							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
-						),
-					timeoutMs,
-				),
-			),
-		]);
-		if (!exists) {
-			throw new AgentGateError(
-				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
-				404,
 			);
 		}
 
@@ -653,7 +707,7 @@ export class ChallengeEngine {
 		const resourceEndpoint = this.buildResourceEndpoint(resourceId);
 		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${txHash}`;
 
-		const tokenResult = await this.config.onIssueToken({
+		const tokenResult = await this.issueTokenWithRetry({
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId,

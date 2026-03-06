@@ -190,6 +190,9 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 				`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`,
 			);
 
+			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
+			await engine.verifyResource(resourceId, tierId);
+
 			// Decode header then settle via shared settlement layer
 			console.log("[x402-access] Decoding payment signature...");
 			const paymentPayload = decodePaymentSignature(paymentSignature);

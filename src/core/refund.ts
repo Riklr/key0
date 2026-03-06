@@ -40,7 +40,13 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 	const networkConfig = CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
 
-	const pending = await store.findPendingForRefund(minAgeMs);
+	let pending: Awaited<ReturnType<IChallengeStore["findPendingForRefund"]>>;
+	try {
+		pending = await store.findPendingForRefund(minAgeMs);
+	} catch (err) {
+		console.error("[Refund] Failed to fetch pending refunds:", err);
+		return results;
+	}
 
 	for (const record of pending) {
 		// Destructure before the try/catch so TypeScript's narrowing is unambiguous
@@ -85,9 +91,17 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 			const error = err instanceof Error ? err.message : String(err);
 
 			// 4. Mark as failed — cron will NOT retry automatically
-			await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
-				refundError: error,
-			});
+			try {
+				await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
+					refundError: error,
+				});
+			} catch (transitionErr) {
+				console.error(
+					`[Refund] Failed to mark REFUND_FAILED for ${record.challengeId}:`,
+					transitionErr,
+				);
+				// Record stays REFUND_PENDING — needs manual operator intervention
+			}
 
 			results.push({
 				challengeId: record.challengeId,

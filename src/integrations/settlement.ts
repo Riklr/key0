@@ -21,6 +21,43 @@ export type SettlementResult = {
 };
 
 // ---------------------------------------------------------------------------
+// Helpers: fetch with timeout + retry with backoff
+// ---------------------------------------------------------------------------
+
+async function fetchWithTimeout(
+	url: string,
+	init: RequestInit,
+	timeoutMs: number,
+): Promise<Response> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...init, signal: controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+async function retryWithBackoff<T>(
+	fn: () => Promise<T>,
+	maxRetries: number,
+	baseDelayMs: number,
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			lastError = err;
+			if (attempt < maxRetries) {
+				await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+			}
+		}
+	}
+	throw lastError;
+}
+
+// ---------------------------------------------------------------------------
 // Decode
 // ---------------------------------------------------------------------------
 
@@ -215,12 +252,16 @@ export async function settleViaFacilitator(
 	const paymentRequirements = paymentPayload.accepted;
 	const facilitatorRequestBody = { paymentPayload, paymentRequirements };
 
-	// STEP 1: Verify
-	const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(facilitatorRequestBody),
-	});
+	// STEP 1: Verify (30s timeout)
+	const verifyRes = await fetchWithTimeout(
+		`${facilitatorUrl}/verify`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(facilitatorRequestBody),
+		},
+		30_000,
+	);
 
 	if (!verifyRes.ok) {
 		const errorText = await verifyRes.text().catch(() => "");
@@ -246,36 +287,51 @@ export async function settleViaFacilitator(
 
 	console.log("[settleViaFacilitator] ✓ Payment verified");
 
-	// STEP 2: Settle
-	const settleRes = await fetch(`${facilitatorUrl}/settle`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(facilitatorRequestBody),
-	});
+	// STEP 2: Settle (60s timeout, 2 retries with exponential backoff)
+	const result = await retryWithBackoff(
+		async () => {
+			const settleRes = await fetchWithTimeout(
+				`${facilitatorUrl}/settle`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(facilitatorRequestBody),
+				},
+				60_000,
+			);
 
-	if (!settleRes.ok) {
-		const errorText = await settleRes.text().catch(() => "");
-		let errorMessage = "Facilitator settlement failed";
-		try {
-			const errorData = JSON.parse(errorText);
-			errorMessage = errorData.message || errorData.error || errorMessage;
-		} catch {
-			if (errorText) errorMessage = errorText;
-		}
-		throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
-	}
+			if (!settleRes.ok) {
+				const errorText = await settleRes.text().catch(() => "");
+				let errorMessage = "Facilitator settlement failed";
+				try {
+					const errorData = JSON.parse(errorText);
+					errorMessage = errorData.message || errorData.error || errorMessage;
+				} catch {
+					if (errorText) errorMessage = errorText;
+				}
+				throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
+			}
 
-	const result = (await settleRes.json()) as X402SettleResponse;
-	if (!result.success) {
-		throw new AgentGateError(
-			"PAYMENT_FAILED",
-			result.errorReason || "Payment settlement failed",
-			402,
-		);
-	}
-	if (!result.transaction) {
-		throw new AgentGateError("PAYMENT_FAILED", "Facilitator did not return transaction hash", 500);
-	}
+			const res = (await settleRes.json()) as X402SettleResponse;
+			if (!res.success) {
+				throw new AgentGateError(
+					"PAYMENT_FAILED",
+					res.errorReason || "Payment settlement failed",
+					402,
+				);
+			}
+			if (!res.transaction) {
+				throw new AgentGateError(
+					"PAYMENT_FAILED",
+					"Facilitator did not return transaction hash",
+					500,
+				);
+			}
+			return res;
+		},
+		2,
+		500,
+	);
 
 	console.log(`[settleViaFacilitator] ✓ Settled: ${result.transaction}`);
 	return {
@@ -394,12 +450,15 @@ async function acquireRedisLock(
 	redis: import("../types/config.js").IRedisLockClient,
 	key: string,
 	token: string,
+	maxWaitMs = 30_000,
 ): Promise<void> {
-	while (true) {
+	const deadline = Date.now() + maxWaitMs;
+	while (Date.now() < deadline) {
 		const ok = await redis.set(key, token, "NX", "PX", LOCK_TTL_MS);
 		if (ok === "OK") return;
 		await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
 	}
+	throw new AgentGateError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
 }
 
 async function releaseRedisLock(
