@@ -1,6 +1,6 @@
 # AgentGate Payment Flow — Complete Lifecycle
 
-This document describes the full payment lifecycle, Redis schema, HTTP request/response structures, state transitions, and all security checks.
+This document is the source of truth for the full payment lifecycle, state machine, Redis schema, HTTP request/response structures, settlement strategies, and security checks.
 
 ---
 
@@ -9,25 +9,55 @@ This document describes the full payment lifecycle, Redis schema, HTTP request/r
 1. [Overview](#overview)
 2. [State Machine](#state-machine)
 3. [Redis Schema](#redis-schema)
-4. [Flow 1: A2A Protocol (Agent-to-Agent)](#flow-1-a2a-protocol-agent-to-agent)
-5. [Flow 2: x402 HTTP (Browser/REST Client)](#flow-2-x402-http-browserrest-client)
-6. [On-Chain Verification](#on-chain-verification)
+4. [Payment Flow](#payment-flow)
+5. [Transports (Entry Points)](#transports-entry-points)
+6. [Settlement Strategies](#settlement-strategies)
 7. [Token Issuance & Validation](#token-issuance--validation)
 8. [Refund Lifecycle](#refund-lifecycle)
-9. [Security Checks Summary](#security-checks-summary)
+9. [Error Codes Reference](#error-codes-reference)
+10. [Security Checks Summary](#security-checks-summary)
 
 ---
 
 ## Overview
 
-AgentGate uses a **two-phase payment flow**: the client first requests access (receiving a payment challenge), then submits proof of payment (receiving an access token). There are two transport mechanisms:
+AgentGate uses a **two-phase payment flow**: the client first requests access (receiving a payment challenge), then signs an EIP-3009 authorization off-chain. The server (or a facilitator) settles on-chain. The client never sends a transaction directly.
 
-| Transport | Entry Points | Settlement | Used By |
-|-----------|-------------|------------|---------|
-| **A2A Protocol** | `requestAccess()` + `submitProof()` | Client sends on-chain tx, server verifies receipt | AI agents via JSON-RPC |
-| **x402 HTTP** | `POST /access` or `POST /jsonrpc` | Client signs EIP-3009 off-chain, server/facilitator settles | Browsers, REST clients |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     ChallengeEngine                         │
+│                                                             │
+│    requestAccess() / requestHttpAccess()   ← Phase 1       │
+│         → settlePayment() (transport layer)                 │
+│              → processHttpPayment()        ← Phase 2       │
+└─────────────────────────────────────────────────────────────┘
+              ▲               ▲               ▲
+              │               │               │
+     ┌────────┴──┐   ┌───────┴──────┐   ┌────┴──────────┐
+     │ /x402/    │   │ {basePath}/  │   │ {basePath}/   │
+     │ access    │   │ jsonrpc      │   │ jsonrpc       │
+     │ (REST)    │   │ (middleware) │   │ (A2A executor)│
+     └───────────┘   └──────────────┘   └───────────────┘
+```
 
-Both flows share the same `ChallengeEngine`, Redis stores, and state machine.
+Three transports share the same `ChallengeEngine`, Redis stores, state machine, and settlement logic. They differ only in how the HTTP request arrives and how the response is formatted.
+
+### Key Files
+
+| Component | File |
+|-----------|------|
+| Challenge Engine | `src/core/challenge-engine.ts` |
+| Types & State | `src/types/challenge.ts`, `src/types/errors.ts` |
+| Redis Storage | `src/core/storage/redis.ts` |
+| Access Token | `src/core/access-token.ts` |
+| Settlement | `src/integrations/settlement.ts` |
+| x402 HTTP Middleware | `src/integrations/x402-http-middleware.ts` |
+| Express Integration | `src/integrations/express.ts` |
+| A2A Executor | `src/executor.ts` |
+| Factory | `src/factory.ts` |
+| Auth Helpers | `src/helpers/auth.ts`, `src/helpers/remote.ts` |
+| Token Validation Middleware | `src/middleware.ts` |
+| USDC Send (Refunds) | `src/adapter/send-usdc.ts` |
 
 ---
 
@@ -42,9 +72,9 @@ Both flows share the same `ChallengeEngine`, Redis stores, and state machine.
                          +---------+
                         /    |      \
                        /     |       \
-              expired /  submitProof  \ cancelChallenge
-                     /   processHttp   \
-                    v       |           v
+              expired /  processHttp  \ cancelChallenge
+                     /       |         \
+                    v        |          v
               +---------+   |     +-----------+
               | EXPIRED |   |     | CANCELLED |
               +---------+   |     +-----------+
@@ -66,13 +96,26 @@ Both flows share the same `ChallengeEngine`, Redis stores, and state machine.
                        +----------+    +---------------+
 ```
 
+### States
+
+| State | Meaning |
+|-------|---------|
+| `PENDING` | Awaiting payment |
+| `PAID` | Payment verified, token issued, awaiting delivery confirmation |
+| `DELIVERED` | Final success state — resource served |
+| `EXPIRED` | Challenge timed out |
+| `CANCELLED` | Manually cancelled |
+| `REFUND_PENDING` | Cron claimed record, refund tx being broadcast |
+| `REFUNDED` | Refund sent on-chain — final state |
+| `REFUND_FAILED` | Refund tx threw — needs operator attention |
+
 ### Allowed Transitions
 
 | From | To | Trigger | Fields Written |
 |------|----|---------|----------------|
-| (new) | PENDING | `create()` | All base fields |
-| PENDING | PAID | `submitProof()` / `processHttpPayment()` | `txHash`, `paidAt`, `fromAddress` |
-| PENDING | EXPIRED | `submitProof()` (expiry check) | — |
+| *(new)* | PENDING | `create()` | All base fields |
+| PENDING | PAID | `processHttpPayment()` | `txHash`, `paidAt`, `fromAddress` |
+| PENDING | EXPIRED | Expiry check on access | — |
 | PENDING | CANCELLED | `cancelChallenge()` | — |
 | PAID | DELIVERED | Token issued successfully | `accessGrant` (full JSON), `deliveredAt` |
 | PAID | PENDING | `markUsed()` race rollback (extremely rare) | — |
@@ -109,14 +152,14 @@ Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
 | `state` | string | CREATE, updated on transitions | `"PENDING"` / `"PAID"` / `"DELIVERED"` / etc. |
 | `expiresAt` | ISO-8601 string | CREATE | `"2025-03-05T12:30:00.000Z"` |
 | `createdAt` | ISO-8601 string | CREATE | `"2025-03-05T12:15:00.000Z"` |
-| `txHash` | string (0x) | PENDING->PAID | `"0x1234..."` |
-| `paidAt` | ISO-8601 string | PENDING->PAID | `"2025-03-05T12:16:00.000Z"` |
-| `fromAddress` | string (0x) | PENDING->PAID | `"0xBuyer..."` (payer wallet) |
-| `accessGrant` | JSON string | PAID->DELIVERED | Full `AccessGrant` object (see below) |
-| `deliveredAt` | ISO-8601 string | PAID->DELIVERED | `"2025-03-05T12:16:05.000Z"` |
-| `refundTxHash` | string (0x) | REFUND_PENDING->REFUNDED | `"0xRefund..."` |
-| `refundedAt` | ISO-8601 string | REFUND_PENDING->REFUNDED | `"2025-03-05T12:21:00.000Z"` |
-| `refundError` | string | REFUND_PENDING->REFUND_FAILED | `"insufficient gas"` |
+| `txHash` | string (0x) | PENDING→PAID | `"0x1234..."` |
+| `paidAt` | ISO-8601 string | PENDING→PAID | `"2025-03-05T12:16:00.000Z"` |
+| `fromAddress` | string (0x) | PENDING→PAID | `"0xBuyer..."` (payer wallet) |
+| `accessGrant` | JSON string | PAID→DELIVERED | Full `AccessGrant` object |
+| `deliveredAt` | ISO-8601 string | PAID→DELIVERED | `"2025-03-05T12:16:05.000Z"` |
+| `refundTxHash` | string (0x) | REFUND_PENDING→REFUNDED | `"0xRefund..."` |
+| `refundedAt` | ISO-8601 string | REFUND_PENDING→REFUNDED | `"2025-03-05T12:21:00.000Z"` |
+| `refundError` | string | REFUND_PENDING→REFUND_FAILED | `"insufficient gas"` |
 
 **TTL**: 7 days (`recordTTLSeconds`, default 604,800s). Shortened to 12 hours (`deliveredTTLSeconds`, default 43,200s) when state reaches DELIVERED.
 
@@ -130,9 +173,6 @@ VALUE: http-a1b2c3d4-...
 TTL:   900s (challengeTTLSeconds)
 ```
 
-**Written**: When `create()` is called (pipeline with the challenge hash).
-**Read**: By `findActiveByRequestId()` during idempotency checks.
-
 ### 3. Seen Transaction Set — `agentgate:seentx:{txHash}`
 
 A simple `SET NX` key for **double-spend prevention**. Maps `txHash -> challengeId`.
@@ -142,9 +182,6 @@ KEY:   agentgate:seentx:0x1234abcd...
 VALUE: http-a1b2c3d4-...
 TTL:   7 days (604,800s)
 ```
-
-**Written**: `markUsed(txHash, challengeId)` — uses `SET ... NX` so only the first writer wins.
-**Read**: `get(txHash)` — checked before on-chain verification and before `markUsed`.
 
 ### 4. Paid Set (Sorted Set) — `agentgate:paid`
 
@@ -164,12 +201,12 @@ ZADD agentgate:paid <paidAt_epoch_ms> <challengeId>
 
 | Operation | Redis Commands |
 |-----------|---------------|
-| **create** | Pipeline: `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s) |
+| **create** | Pipeline: `EXISTS` (guard) + `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s) |
 | **get** | `HGETALL` |
-| **findActiveByRequestId** | `GET` (request index) -> `HGETALL` (challenge hash) |
-| **transition** | `EVAL` (Lua: check state + `HSET` atomically) + conditional `ZADD`/`ZREM` + conditional `EXPIRE` |
+| **findActiveByRequestId** | `GET` (request index) → `HGETALL` (challenge hash) |
+| **transition** | `EVAL` (Lua: check state + `HSET` + conditional `ZADD`/`ZREM`) + conditional `EXPIRE` (if DELIVERED) |
 | **markUsed** | `SET NX EX` (7d) |
-| **findPendingForRefund** | `ZRANGEBYSCORE` -> N x `HGETALL` |
+| **findPendingForRefund** | `ZRANGEBYSCORE` → N x `HGETALL` |
 
 ### Lua Script (Atomic Transition)
 
@@ -178,125 +215,351 @@ local current = redis.call('HGET', KEYS[1], 'state')
 if current ~= ARGV[1] then
   return 0  -- state mismatch, transition rejected
 end
-redis.call('HSET', KEYS[1], 'state', ARGV[2])
-for i = 3, #ARGV, 2 do
+local fromState = ARGV[1]
+local toState = ARGV[2]
+local challengeId = ARGV[3]
+local score = ARGV[4]
+redis.call('HSET', KEYS[1], 'state', toState)
+for i = 5, #ARGV, 2 do
   redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
+end
+if toState == 'PAID' and score ~= '' then
+  redis.call('ZADD', KEYS[2], score, challengeId)
+elseif fromState == 'PAID' then
+  redis.call('ZREM', KEYS[2], challengeId)
 end
 return 1
 ```
 
-`KEYS[1]` = `agentgate:challenge:{challengeId}`, `ARGV[1]` = fromState, `ARGV[2]` = toState, `ARGV[3..N]` = field/value pairs.
+- `KEYS[1]` = `agentgate:challenge:{challengeId}`
+- `KEYS[2]` = `agentgate:paid`
+- `ARGV[1]` = fromState, `ARGV[2]` = toState, `ARGV[3]` = challengeId, `ARGV[4]` = paidAt epoch ms (or ""), `ARGV[5..N]` = field/value pairs.
+
+The `EXPIRE` call that shortens TTL to 12 hours on DELIVERED is done **outside** the Lua script (TTL adjustment is not a correctness invariant).
 
 ---
 
-## Flow 1: A2A Protocol (Agent-to-Agent)
+## Payment Flow
 
-Used by AI agents communicating over the A2A JSON-RPC protocol.
+The client signs an EIP-3009 `transferWithAuthorization` off-chain. The server (or a facilitator) settles on-chain. The client never sends a transaction directly.
 
-### Phase 1: Request Access
+### Phase 1 — Challenge
 
-**Client sends** `AccessRequest`:
+Engine method: `requestAccess()` or `requestHttpAccess()`
 
-```json
+1. Validate `requestId` (UUID format)
+2. Extract/default `resourceId` (`"default"`) and `clientAgentId` (`"anonymous"` or `"x402-http"`)
+3. Look up `tierId` in `SellerConfig.products` — throw `TIER_NOT_FOUND` (400) if missing
+4. Call `onVerifyResource(resourceId, tierId)` with timeout (default 5s, configurable via `resourceVerifyTimeoutMs`)
+   - Timeout → `RESOURCE_VERIFY_TIMEOUT` (504)
+   - Returns false → `RESOURCE_NOT_FOUND` (404)
+5. **Idempotency check**: `store.findActiveByRequestId(requestId)`
+   - If PENDING and not expired → return existing challenge
+   - If DELIVERED with grant → throw `PROOF_ALREADY_REDEEMED` (200, includes grant in details)
+   - If EXPIRED/CANCELLED → fall through to create new
+6. Generate `challengeId` (UUID via adapter for A2A, `http-{uuid}` for HTTP)
+7. Create PENDING `ChallengeRecord`, store via `store.create()`
+8. Return `X402Challenge` (A2A) or `{ challengeId }` (HTTP)
+
+### Phase 2 — Settlement + Token Issuance
+
+The transport layer calls `settlePayment()` to verify and settle the EIP-3009 signature on-chain, then passes the result to `engine.processHttpPayment()`.
+
+Engine method: `processHttpPayment(requestId, tierId, resourceId, txHash, fromAddress?)`
+
+1. Look up tier, verify resource
+2. **Double-spend guard**: `seenTxStore.get(txHash)` — throw `TX_ALREADY_REDEEMED` (409)
+3. Find PENDING record by `requestId` — or auto-create one if challenge phase was skipped or expired
+4. **Atomic transition**: PENDING → PAID (with `txHash`, `paidAt`, `fromAddress`)
+5. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)` — SET NX
+   - If returns `false` → rollback PAID→PENDING, throw `TX_ALREADY_REDEEMED` (409)
+6. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, tierId, txHash })`
+7. Build `AccessGrant` object
+8. **Transition**: PAID → DELIVERED (with `accessGrant`, `deliveredAt`)
+9. Fire `onPaymentReceived` hook (async, non-blocking)
+10. Return `AccessGrant`
+
+### Phase 3 — Access Protected Resource
+
+```
+POST /api/photos/photo-123
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+Middleware (`validateAccessToken`) verifies JWT, attaches decoded claims to request as `req.agentGateToken`.
+
+### Redis Example (End to End)
+
+**After Phase 1 (challenge created):**
+
+```
+agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL 7d)
+  challengeId = http-a1b2c3d4-...
+  requestId   = 550e8400-...
+  state       = PENDING
+  amount      = $0.10
+  amountRaw   = 100000
+  asset       = USDC
+  chainId     = 84532
+  destination = 0xSeller...
+  expiresAt   = 2025-03-05T12:30:00.000Z
+  createdAt   = 2025-03-05T12:15:00.000Z
+  clientAgentId = x402-http
+
+agentgate:request:550e8400-...  (STRING, TTL 900s)
+  = http-a1b2c3d4-...
+```
+
+**After Phase 2 (payment settled, token issued):**
+
+```
+agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL reset to 12h)
+  state       = DELIVERED
+  txHash      = 0xabcdef...
+  paidAt      = 2025-03-05T12:16:00.000Z
+  fromAddress = 0xBuyer...
+  accessGrant = {"type":"AccessGrant",...}
+  deliveredAt = 2025-03-05T12:16:05.000Z
+  ... (all original fields unchanged)
+
+agentgate:seentx:0xabcdef...  (STRING, TTL 7d)
+  = http-a1b2c3d4-...
+
+agentgate:paid  (SORTED SET)
+  (challengeId was added then removed -- net empty for this challenge)
+```
+
+---
+
+## Transports (Entry Points)
+
+Three "front doors" feed into the same payment flow. They differ only in how the HTTP request arrives and how the response is formatted.
+
+### Transport 1: `/x402/access` (Simple REST)
+
+A plain REST endpoint — no JSON-RPC wrapping. Mounted at `POST /x402/access` by the Express integration.
+
+**Three cases based on request shape:**
+
+#### Case 1: Discovery (no `tierId`) → HTTP 402
+
+```
+POST /x402/access
+Content-Type: application/json
+
+{}
+```
+
+Returns all available product tiers. No PENDING record is created.
+
+```
+HTTP/1.1 402 Payment Required
+payment-required: eyJ4NDAyVm... (base64)
+www-authenticate: Payment realm="https://api.example.com", accept="exact"
+
 {
-  "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "resourceId": "photo-123",
-  "tierId": "basic",
-  "clientAgentId": "did:web:buyer.example"
+  "x402Version": 2,
+  "resource": { "url": "...", "method": "POST", ... },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "amount": "100000",
+      "payTo": "0xSellerWallet...",
+      "maxTimeoutSeconds": 300,
+      "extra": { "name": "USDC", "version": "2", "description": "Basic tier - $0.10 USDC" }
+    }
+  ],
+  "error": "Payment required"
 }
 ```
 
-**Engine steps** (`requestAccess()`):
+#### Case 2: Challenge (`tierId`, no `payment-signature`) → HTTP 402
 
-1. Validate `requestId` (UUID format)
-2. Look up `tierId` in `SellerConfig.products`
-3. Call `onVerifyResource(resourceId, tierId)` with 5s timeout — pre-flight check
-4. **Idempotency check**: `store.findActiveByRequestId(requestId)`
-   - If PENDING and not expired -> return existing challenge
-   - If DELIVERED with grant -> throw `PROOF_ALREADY_REDEEMED` (200, includes grant)
-   - If EXPIRED/CANCELLED -> fall through to create new
-5. Call `adapter.issueChallenge()` to get a `challengeId`
-6. Build `ChallengeRecord` with state=PENDING
-7. `store.create(record)` -> writes Redis hash + request index
-8. Return `X402Challenge`
+```
+POST /x402/access
+Content-Type: application/json
 
-**Server responds** with `X402Challenge`:
+{ "tierId": "basic", "requestId": "550e8400-...", "resourceId": "photo-123" }
+```
+
+`requestId` is auto-generated (`http-{uuid}`) if not provided. Creates PENDING record via `engine.requestHttpAccess()`.
+
+```
+HTTP/1.1 402 Payment Required
+payment-required: eyJ4NDAyVm... (base64)
+www-authenticate: Payment realm="...", accept="exact", challenge="http-a1b2c3d4-..."
+
+{
+  "x402Version": 2,
+  "accepts": [ ... ],
+  "extensions": {
+    "agentgate": { "inputSchema": { ... }, "outputSchema": { ... }, "description": "..." }
+  },
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+#### Case 3: Settlement (`tierId` + `payment-signature` header) → HTTP 200
+
+```
+POST /x402/access
+Content-Type: application/json
+payment-signature: eyJ4NDAyVm... (base64-encoded X402PaymentPayload)
+
+{ "tierId": "basic", "requestId": "550e8400-...", "resourceId": "photo-123" }
+```
+
+Server decodes header → `settlePayment()` → `engine.processHttpPayment()` → returns `AccessGrant`.
+
+```
+HTTP/1.1 200 OK
+payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
+
+{
+  "type": "AccessGrant",
+  "challengeId": "http-a1b2c3d4-...",
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "tokenType": "Bearer",
+  "expiresAt": "2025-03-05T13:15:00.000Z",
+  "resourceEndpoint": "https://api.example.com/photos/photo-123",
+  "resourceId": "photo-123",
+  "tierId": "basic",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx..."
+}
+```
+
+### Transport 2: `{basePath}/jsonrpc` with x402 Middleware
+
+The same JSON-RPC endpoint (`POST {basePath}/jsonrpc`) serves both A2A-native agents and plain HTTP clients. The `createX402HttpMiddleware` sits in front of the A2A handler and routes based on headers:
+
+```
+POST {basePath}/jsonrpc
+        │
+        ▼
+ x402HttpMiddleware
+        │
+        ├── Has X-A2A-Extensions header?
+        │       YES → pass through to A2A SDK → AgentGateExecutor (Transport 3)
+        │
+        ├── Not a message/send call?
+        │       → pass through
+        │
+        ├── No AccessRequest in parts?
+        │       → pass through
+        │
+        ├── No payment-signature header?
+        │       → engine.requestHttpAccess() → HTTP 402 + payment-required header
+        │
+        └── Has payment-signature header?
+                → settlePayment() → engine.processHttpPayment() → HTTP 200 + AccessGrant
+```
+
+The middleware extracts `AccessRequest` from `params.message.parts` — either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON.
+
+Same settlement logic as Transport 1, just wrapped in JSON-RPC framing.
+
+### Transport 3: A2A Executor (via A2A SDK)
+
+When a native A2A client sends `X-A2A-Extensions` header, the middleware passes through to the A2A SDK, which routes to `AgentGateExecutor`.
+
+**Phase 1 — AccessRequest → Task (`input-required`)**
+
+Client sends A2A `message/send` with `AccessRequest` in message parts.
+
+```json
+{
+  "method": "message/send",
+  "params": {
+    "message": {
+      "parts": [{ "kind": "data", "data": { "type": "AccessRequest", "tierId": "basic", "requestId": "...", "resourceId": "photo-123", "clientAgentId": "did:web:buyer" } }]
+    }
+  }
+}
+```
+
+Executor calls `engine.requestAccess(req)` and publishes a Task:
+
+- State: `input-required`
+- Metadata: `x402.payment.status: "payment-required"`, `x402.payment.required: <PaymentRequirements>`
+- Parts: challenge description (text) + X402Challenge (data)
+
+**Phase 2 — Payment → Task (`completed`)**
+
+Client sends A2A `message/send` with payment payload in metadata:
+
+```json
+{
+  "method": "message/send",
+  "params": {
+    "message": {
+      "metadata": {
+        "x402.payment.status": "payment-submitted",
+        "x402.payment.payload": { "x402Version": 2, "payload": { "signature": "0x..." }, "accepted": { "extra": { "challengeId": "..." }, ... } }
+      },
+      "parts": [{ "kind": "text", "text": "Payment submitted" }]
+    }
+  }
+}
+```
+
+Executor processes through intermediate working states:
+
+1. Extracts `challengeId` from `payload.accepted.extra.challengeId`
+2. Publishes working Task: `x402.payment.status: "payment-submitted"`
+3. Calls `settlePayment()` → verify + settle on-chain
+4. Publishes working Task: `x402.payment.status: "payment-verified"`
+5. Calls `engine.processHttpPayment()` → PENDING → PAID → DELIVERED
+6. Publishes final Task:
+   - State: `completed`
+   - Metadata: `x402.payment.status: "payment-completed"`, `x402.payment.receipts: [receipt]`
+   - Parts: confirmation text + AccessGrant data
+   - Artifacts: access-grant data part
+
+**x402 Metadata Keys**
+
+| Key | Value | Direction |
+|-----|-------|-----------|
+| `x402.payment.status` | `"payment-required"` / `"payment-submitted"` / `"payment-verified"` / `"payment-completed"` / `"payment-failed"` | Server → Client |
+| `x402.payment.required` | `PaymentRequirements` object | Server → Client |
+| `x402.payment.payload` | `X402PaymentPayload` object | Client → Server |
+| `x402.payment.receipts` | Array of `X402SettleResponse` | Server → Client |
+| `x402.payment.error` | Error code string | Server → Client |
+
+### HTTP Headers Reference
+
+| Header | Direction | Format | Purpose |
+|--------|-----------|--------|---------|
+| `payment-required` | Server → Client (402) | base64 JSON | PaymentRequirements / Discovery |
+| `www-authenticate` | Server → Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance |
+| `payment-signature` | Client → Server | base64 JSON | X402PaymentPayload with EIP-3009 signature |
+| `payment-response` | Server → Client (200) | base64 JSON | X402SettleResponse with txHash |
+| `x-a2a-extensions` | Client → Server | presence check | Routes to A2A handler, skips x402 middleware |
+
+### Message Types
+
+**X402Challenge** (server → client, Phase 1):
 
 ```json
 {
   "type": "X402Challenge",
-  "challengeId": "a1b2c3d4-e5f6-...",
-  "requestId": "550e8400-e29b-...",
+  "challengeId": "a1b2c3d4-...",
+  "requestId": "550e8400-...",
   "tierId": "basic",
   "amount": "$0.10",
   "asset": "USDC",
   "chainId": 84532,
   "destination": "0xSellerWallet...",
   "expiresAt": "2025-03-05T12:30:00.000Z",
-  "description": "Send $0.10 USDC to 0xSeller... on chain 84532. Then call...",
+  "description": "Send $0.10 USDC to 0xSeller... on chain 84532.",
   "resourceVerified": true
 }
 ```
 
-**Redis after Phase 1:**
-
-```
-agentgate:challenge:a1b2c3d4-...  (HASH, TTL 7d)
-  challengeId = a1b2c3d4-...
-  requestId   = 550e8400-...
-  state       = PENDING
-  amount      = $0.10
-  amountRaw   = 100000
-  chainId     = 84532
-  destination = 0xSeller...
-  expiresAt   = 2025-03-05T12:30:00.000Z
-  createdAt   = 2025-03-05T12:15:00.000Z
-  ...
-
-agentgate:request:550e8400-...  (STRING, TTL 900s)
-  = a1b2c3d4-...
-```
-
-### Phase 2: Submit Proof
-
-Client executes an on-chain USDC transfer, then submits proof.
-
-**Client sends** `PaymentProof`:
-
-```json
-{
-  "type": "PaymentProof",
-  "challengeId": "a1b2c3d4-...",
-  "requestId": "550e8400-...",
-  "chainId": 84532,
-  "txHash": "0xabcdef1234567890...",
-  "amount": "$0.10",
-  "asset": "USDC",
-  "fromAgentId": "did:web:buyer.example"
-}
-```
-
-**Engine steps** (`submitProof()`):
-
-1. Validate `challengeId` (non-empty) and `txHash` (0x-prefixed, 66 chars)
-2. `store.get(challengeId)` — load challenge record
-3. **State check**: if DELIVERED with grant -> `PROOF_ALREADY_REDEEMED`; if not PENDING -> `CHALLENGE_EXPIRED`
-4. **Expiry check**: if `expiresAt <= now` -> transition PENDING->EXPIRED, throw
-5. **Chain mismatch guard**: `proof.chainId !== challenge.chainId` -> throw
-6. **Amount guard**: `proof.amount !== challenge.amount` -> throw
-7. **Double-spend guard**: `seenTxStore.get(txHash)` -> if exists, throw `TX_ALREADY_REDEEMED`
-8. **On-chain verification**: `adapter.verifyProof()` (see [On-Chain Verification](#on-chain-verification))
-9. **Atomic transition**: `store.transition(challengeId, "PENDING", "PAID", { txHash, paidAt, fromAddress })`
-   - If returns `false` -> concurrent request already transitioned; reload and check
-10. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)` — SET NX
-    - If returns `false` -> extremely rare race; rollback PAID->PENDING, throw
-11. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, tierId, txHash })`
-12. Build `AccessGrant` object
-13. **Transition to DELIVERED**: `store.transition(challengeId, "PAID", "DELIVERED", { accessGrant, deliveredAt })`
-14. Fire `onPaymentReceived` hook (async, non-blocking)
-15. Return `AccessGrant`
-
-**Server responds** with `AccessGrant`:
+**AccessGrant** (server → client, Phase 2):
 
 ```json
 {
@@ -314,141 +577,7 @@ Client executes an on-chain USDC transfer, then submits proof.
 }
 ```
 
-**Redis after Phase 2:**
-
-```
-agentgate:challenge:a1b2c3d4-...  (HASH, TTL reset to 12h)
-  state       = DELIVERED
-  txHash      = 0xabcdef...
-  paidAt      = 2025-03-05T12:16:00.000Z
-  fromAddress = 0xBuyer...
-  accessGrant = {"type":"AccessGrant","challengeId":"a1b2c3d4-...",...}
-  deliveredAt = 2025-03-05T12:16:05.000Z
-  ... (all original fields unchanged)
-
-agentgate:seentx:0xabcdef...  (STRING, TTL 7d)
-  = a1b2c3d4-...
-
-agentgate:paid  (SORTED SET)
-  (challengeId was added then removed — net empty for this challenge)
-```
-
-### Phase 3: Access Protected Resource
-
-**Client sends** request with Bearer token:
-
-```
-POST /api/photos/photo-123
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-```
-
-**Middleware** (`validateAccessToken`):
-
-1. Extract token from `Authorization: Bearer <token>` header
-2. Verify JWT signature (HS256 with shared secret, or RS256 with public key)
-3. Check expiration (`exp` claim)
-4. Attach decoded claims to request object as `req.agentGateToken`
-5. Call `next()` to pass to route handler
-
-**JWT Claims** (decoded payload):
-
-```json
-{
-  "sub": "550e8400-...",
-  "jti": "a1b2c3d4-...",
-  "resourceId": "photo-123",
-  "tierId": "basic",
-  "txHash": "0xabcdef...",
-  "iat": 1741176960,
-  "exp": 1741180560
-}
-```
-
----
-
-## Flow 2: x402 HTTP (Browser/REST Client)
-
-Used by clients that interact via standard HTTP headers instead of the A2A JSON-RPC protocol. The client signs an EIP-3009 authorization off-chain; a facilitator or gas wallet settles on-chain.
-
-### Step 1: Request (No Payment) -> HTTP 402
-
-**Client sends**:
-
-```
-POST /a2a/access
-Content-Type: application/json
-
-{
-  "tierId": "basic",
-  "requestId": "550e8400-...",
-  "resourceId": "photo-123"
-}
-```
-
-No `PAYMENT-SIGNATURE` header present.
-
-**Engine steps** (`requestHttpAccess()`):
-
-1. Validate tier and resource (same as A2A flow)
-2. Idempotency check via `store.findActiveByRequestId(requestId)`
-3. Generate `challengeId` with `http-` prefix: `http-{uuid}`
-4. Create PENDING `ChallengeRecord` with `clientAgentId = "x402-http"`
-5. `store.create(record)` -> Redis hash + request index
-
-**Server responds** with HTTP 402:
-
-```
-HTTP/1.1 402 Payment Required
-PAYMENT-REQUIRED: eyJ4NDAyVm... (base64-encoded PaymentRequirements)
-Content-Type: application/json
-
-{
-  "x402Version": 2,
-  "resource": {
-    "url": "https://api.example.com/a2a/jsonrpc",
-    "method": "POST",
-    "description": "Access to photo-123",
-    "mimeType": "application/json"
-  },
-  "accepts": [
-    {
-      "scheme": "exact",
-      "network": "eip155:84532",
-      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      "amount": "100000",
-      "payTo": "0xSellerWallet...",
-      "maxTimeoutSeconds": 300,
-      "extra": {
-        "name": "USDC",
-        "version": "2",
-        "description": "Basic tier access - $0.10 USDC"
-      }
-    }
-  ],
-  "challengeId": "http-a1b2c3d4-...",
-  "error": "PAYMENT-SIGNATURE header is required"
-}
-```
-
-### Step 2: Payment -> HTTP 200
-
-Client signs an EIP-3009 `transferWithAuthorization` off-chain and re-sends the request.
-
-**Client sends**:
-
-```
-POST /a2a/access
-Content-Type: application/json
-PAYMENT-SIGNATURE: eyJ4NDAyVm... (base64url-encoded X402PaymentPayload)
-
-{
-  "tierId": "basic",
-  "requestId": "550e8400-...",
-  "resourceId": "photo-123"
-}
-```
-
-**`PAYMENT-SIGNATURE` header** (decoded):
+**`payment-signature` header** (decoded X402PaymentPayload):
 
 ```json
 {
@@ -478,87 +607,43 @@ PAYMENT-SIGNATURE: eyJ4NDAyVm... (base64url-encoded X402PaymentPayload)
 }
 ```
 
-**Settlement steps**:
-
-1. `decodePaymentSignature(header)` — base64url/base64 decode to `X402PaymentPayload`
-2. `settlePayment(payload, config, networkConfig)`:
-   - If `config.gasWalletPrivateKey` is set -> **Gas Wallet mode**: use `ExactEvmScheme` from `@x402/evm` to verify + settle locally
-   - Otherwise -> **Facilitator mode**: POST to `facilitatorUrl/verify` then `facilitatorUrl/settle`
-3. Returns `{ txHash, settleResponse, payer }`
-
-**Engine steps** (`processHttpPayment()`):
-
-1. Validate tier and resource
-2. **Double-spend guard**: `seenTxStore.get(txHash)`
-3. Find PENDING record by `requestId` or auto-create one if Step 1 was skipped
-4. **Atomic transition**: PENDING -> PAID (with `txHash`, `paidAt`, `fromAddress`)
-5. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)`
-6. **Issue token**: call `config.onIssueToken()`
-7. Build `AccessGrant`
-8. **Transition**: PAID -> DELIVERED (with `accessGrant`, `deliveredAt`)
-9. Fire `onPaymentReceived` hook
-
-**Server responds** with HTTP 200:
-
-```
-HTTP/1.1 200 OK
-PAYMENT-RESPONSE: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
-Content-Type: application/json
-
-{
-  "type": "AccessGrant",
-  "challengeId": "http-a1b2c3d4-...",
-  "requestId": "550e8400-...",
-  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-  "tokenType": "Bearer",
-  "expiresAt": "2025-03-05T13:15:00.000Z",
-  "resourceEndpoint": "https://api.example.com/photos/photo-123",
-  "resourceId": "photo-123",
-  "tierId": "basic",
-  "txHash": "0xSettledTx...",
-  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx..."
-}
-```
-
-**`PAYMENT-RESPONSE` header** (decoded):
-
-```json
-{
-  "success": true,
-  "transaction": "0xSettledTx...",
-  "network": "eip155:84532",
-  "payer": "0xBuyer..."
-}
-```
-
-### x402 HTTP via JSON-RPC Middleware
-
-The same flow also works on the `/a2a/jsonrpc` endpoint. The `createX402HttpMiddleware` intercepts `message/send` JSON-RPC calls:
-
-- If `X-A2A-Extensions` header is present -> pass through to A2A handler (native A2A client)
-- If `method === "message/send"` and no `PAYMENT-SIGNATURE` -> return HTTP 402
-- If `method === "message/send"` and has `PAYMENT-SIGNATURE` -> settle and return AccessGrant
-
-The middleware parses `AccessRequest` from `params.message.parts` (either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON).
-
 ---
 
-## On-Chain Verification
+## Settlement Strategies
 
-Used only in the **A2A flow** (Flow 1). The x402 HTTP flow relies on the facilitator/gas-wallet for verification.
+The `settlePayment()` function is called by all three transports. It routes based on config.
 
-`verifyTransfer()` performs 6 checks against the blockchain:
+### Gas Wallet Mode (`config.gasWalletPrivateKey` set)
 
-| Step | Check | Error Code | HTTP |
-|------|-------|-----------|------|
-| 1 | Fetch tx receipt from RPC | `TX_NOT_FOUND` / `RPC_ERROR` | 202 / 400 |
-| 2 | Receipt status != reverted | `TX_REVERTED` | 400 |
-| 3 | Find USDC Transfer events to `destination` | `WRONG_RECIPIENT` | 400 |
-| 4 | Sum of transfers >= `expectedAmountRaw` | `AMOUNT_INSUFFICIENT` | 400 |
-| 5 | Block timestamp <= `challengeExpiresAt` | `TX_AFTER_EXPIRY` | 400 |
-| 6 | All pass | verified: true | 200 |
+Self-contained settlement using `@x402/evm`:
 
-The function also extracts `fromAddress` from the first matching Transfer event log.
+1. Create viem wallet client with gas wallet account
+2. Instantiate `ExactEvmScheme` from `@x402/evm/exact/facilitator`
+3. Call `scheme.verify()` to validate the EIP-3009 signature
+4. Call `scheme.settle()` to broadcast `transferWithAuthorization` on-chain (gas wallet pays gas)
+5. Return `{ txHash, settleResponse, payer }`
+
+**Nonce serialization** prevents concurrent settlement from causing nonce conflicts:
+
+| Strategy | When | How |
+|----------|------|-----|
+| **Redis distributed lock** | `config.redis` provided | `SET NX` with 60s TTL, Lua-script atomic release. Poll interval: 200ms. |
+| **In-process queue** | No Redis | Promise-based serial queue. Single-instance only. |
+
+### Facilitator Mode (default)
+
+Routes to an external facilitator service:
+
+1. `POST {facilitatorUrl}/verify` with `X402PaymentPayload` + payment requirements
+2. Check `isValid` in response
+3. `POST {facilitatorUrl}/settle` to complete on-chain settlement
+4. Return `{ txHash, settleResponse, payer }`
+
+Default facilitator URLs (from `CHAIN_CONFIGS`):
+- **Testnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
+- **Mainnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
+
+Overridable via `config.facilitatorUrl`.
 
 ---
 
@@ -588,7 +673,15 @@ And must return:
 }
 ```
 
-The built-in `AccessTokenIssuer` class supports HS256 (shared secret) and RS256 (private key) JWTs with these claims:
+### Built-in `AccessTokenIssuer`
+
+Supports HS256 (shared secret, min 32 chars) and RS256 (PEM private key) JWTs.
+
+**Constructor accepts**:
+- `string` — treated as HS256 shared secret (legacy)
+- `{ secret?, privateKey?, algorithm? }` — full config
+
+**JWT Claims**:
 
 | Claim | Value |
 |-------|-------|
@@ -597,41 +690,59 @@ The built-in `AccessTokenIssuer` class supports HS256 (shared secret) and RS256 
 | `resourceId` | Resource identifier |
 | `tierId` | Product tier |
 | `txHash` | On-chain transaction hash |
-| `iat` | Issued-at timestamp |
-| `exp` | Expiration timestamp |
+| `iat` | Issued-at timestamp (unix seconds) |
+| `exp` | Expiration timestamp (unix seconds) |
 
-### Validation
+**Methods**:
 
-`validateAccessToken` middleware:
+- `sign(claims, ttlSeconds)` → `{ token, expiresAt }`
+- `verify(token)` → decoded claims (HS256 only)
+- `verifyWithFallback(token, fallbackSecrets[])` → tries primary then each fallback for zero-downtime rotation
 
-1. Extract `Bearer <token>` from `Authorization` header
+### Validation Middleware
+
+`validateToken(authHeader, config)` in `src/middleware.ts`:
+
+1. Check `Bearer {token}` format
 2. Verify JWT with `jose.jwtVerify(token, secret)`
-3. If expired -> `CHALLENGE_EXPIRED` (401)
-4. If invalid -> `INVALID_REQUEST` (401)
-5. Attach decoded payload to `req.agentGateToken`
+3. If expired → `CHALLENGE_EXPIRED` (401)
+4. If invalid → `INVALID_REQUEST` (401)
+5. Return decoded payload
 
-Supports **fallback secrets** via `verifyWithFallback()` for zero-downtime secret rotation.
+Framework-specific wrappers attach decoded token to the request:
+- **Express**: `req.agentGateToken`
+- **Hono**: `c.set("agentGateToken", payload)`
+- **Fastify**: `request.agentGateToken`
 
 ---
 
 ## Refund Lifecycle
 
-The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared).
+The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared). The cron is **not built into AgentGate** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
 
 ### How It Works
 
-1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs` (default 5 minutes)
-2. **Claim**: For each record, atomically transition PAID -> REFUND_PENDING (prevents double-refund from concurrent cron workers)
+1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID and `fromAddress` set
+2. **Claim**: For each record, atomically transition PAID → REFUND_PENDING (prevents double-refund from concurrent cron workers)
 3. **Send**: Call `sendUsdc()` to transfer USDC back to `record.fromAddress`
-4. **Success**: Transition REFUND_PENDING -> REFUNDED with `refundTxHash` and `refundedAt`
-5. **Failure**: Transition REFUND_PENDING -> REFUND_FAILED with `refundError` (needs operator attention; cron will NOT retry)
+4. **Success**: Transition REFUND_PENDING → REFUNDED with `refundTxHash` and `refundedAt`
+5. **Failure**: Transition REFUND_PENDING → REFUND_FAILED with `refundError` (needs operator attention; cron does NOT retry)
+
+### Refund Settlement (`sendUsdc()`)
+
+| Strategy | How | Gas Payer |
+|----------|-----|-----------|
+| **With gasWalletPrivateKey** | USDC owner signs EIP-3009 off-chain. Gas wallet calls `transferWithAuthorization` on-chain. | Gas wallet |
+| **Without gasWalletPrivateKey** | Direct ERC-20 `transfer()` call. | USDC owner |
+
+Both wait for `waitForTransactionReceipt` before returning.
 
 ### Redis During Refund
 
 ```
 # After PAID -> REFUND_PENDING claim:
 agentgate:paid (SORTED SET)
-  (challengeId removed via ZREM)
+  (challengeId removed via ZREM -- inside Lua script)
 
 agentgate:challenge:{challengeId}
   state = REFUND_PENDING
@@ -641,6 +752,39 @@ agentgate:challenge:{challengeId}
   state        = REFUNDED
   refundTxHash = 0xRefund...
   refundedAt   = 2025-03-05T12:21:00.000Z
+```
+
+---
+
+## Error Codes Reference
+
+### AgentGateErrorCode (thrown by ChallengeEngine)
+
+| Code | HTTP | When |
+|------|------|------|
+| `RESOURCE_NOT_FOUND` | 404 | `onVerifyResource()` returns false |
+| `TIER_NOT_FOUND` | 400 | `tierId` not in `SellerConfig.products` |
+| `CHALLENGE_NOT_FOUND` | 404 | `store.get(challengeId)` returns null |
+| `CHALLENGE_EXPIRED` | 410 | Challenge `expiresAt <= now` or state not PENDING |
+| `TX_ALREADY_REDEEMED` | 409 | `txHash` already in `seenTxStore` |
+| `PROOF_ALREADY_REDEEMED` | 200 | Challenge already DELIVERED (returns grant in details) |
+| `INVALID_REQUEST` | 400/401 | Malformed input or invalid JWT |
+| `PAYMENT_FAILED` | 400 | Settlement failed |
+| `ADAPTER_ERROR` | 500 | Payment adapter threw |
+| `RESOURCE_VERIFY_TIMEOUT` | 504 | `onVerifyResource()` timed out |
+| `TOKEN_ISSUE_FAILED` | 500 | `onIssueToken()` threw |
+| `TOKEN_ISSUE_TIMEOUT` | 504 | `onIssueToken()` timed out |
+| `INTERNAL_ERROR` | 500 | Unexpected failure |
+
+### Error Shape
+
+```json
+{
+  "type": "Error",
+  "code": "CHALLENGE_EXPIRED",
+  "message": "Challenge has expired",
+  "details": {}
+}
 ```
 
 ---
@@ -656,18 +800,39 @@ agentgate:challenge:{challengeId}
 | 3 | Resource verification | `onVerifyResource()` with timeout | Access to nonexistent resources |
 | 4 | Idempotency (requestId lookup) | `store.findActiveByRequestId()` | Duplicate challenge creation |
 | 5 | State check (PENDING required) | `challenge.state` check | Acting on expired/cancelled challenges |
-| 6 | Expiry check | `expiresAt <= now` | Late payments |
-| 7 | Chain ID match | `proof.chainId !== challenge.chainId` | Cross-chain replay |
-| 8 | Amount match | `proof.amount !== challenge.amount` | Underpayment |
-| 9 | Double-spend pre-check | `seenTxStore.get(txHash)` | Reusing a txHash |
-| 10 | On-chain verification | `adapter.verifyProof()` | Fake/insufficient/reverted txs |
-| 11 | Atomic state transition | Lua `HGET + HSET` | Concurrent double-redemption |
-| 12 | Atomic txHash claim | `SET NX` | Race condition double-spend |
+| 6 | Double-spend pre-check | `seenTxStore.get(txHash)` | Reusing a txHash |
+| 7 | Atomic state transition | Lua `HGET + HSET` | Concurrent double-redemption |
+| 8 | Atomic txHash claim | `SET NX` | Race condition double-spend |
 
 ### Invariants
 
 1. **State transitions are atomic** — Lua script checks current state before writing; concurrent transitions are rejected
 2. **Double-spend is impossible** — `SET NX` on `agentgate:seentx:{txHash}` ensures one txHash maps to exactly one challenge; if `markUsed` fails, the PAID state is rolled back to PENDING
-3. **On-chain verification is complete** — receipt status, USDC Transfer event, recipient, amount, and block timestamp are all checked
-4. **JWT security** — minimum 32-char secret, supports HS256/RS256, fallback secrets for rotation
-5. **Refunds cannot double-fire** — atomic PAID->REFUND_PENDING transition ensures only one cron worker processes each record
+3. **JWT security** — minimum 32-char secret, supports HS256/RS256, fallback secrets for rotation
+4. **Refunds cannot double-fire** — atomic PAID→REFUND_PENDING transition ensures only one cron worker processes each record
+5. **Nonce serialization for gas wallet** — Redis distributed lock or in-process queue prevents nonce conflicts during settlement
+
+---
+
+## Network Configuration
+
+| Field | Testnet (Base Sepolia) | Mainnet (Base) |
+|-------|----------------------|----------------|
+| Chain ID | 84532 | 8453 |
+| RPC URL | `https://sepolia.base.org` | `https://mainnet.base.org` |
+| USDC Address | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Facilitator URL | `https://api.cdp.coinbase.com/platform/v2/x402` | `https://api.cdp.coinbase.com/platform/v2/x402` |
+| Explorer | `https://sepolia.basescan.org` | `https://basescan.org` |
+| USDC Domain | `{ name: "USDC", version: "2" }` | `{ name: "USDC", version: "2" }` |
+| USDC Decimals | 6 | 6 |
+
+---
+
+## Validation Patterns
+
+| Pattern | Regex | Used For |
+|---------|-------|----------|
+| UUID | `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (case-insensitive) | `requestId` |
+| Tx Hash | `^0x[0-9a-fA-F]{64}$` | `txHash` |
+| Address | `^0x[0-9a-fA-F]{40}$` | Wallet addresses |
+| Dollar Amount | `^\$\d+(\.\d{1,6})?$` | Product tier `amount` |
