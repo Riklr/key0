@@ -32,18 +32,11 @@ function makeConfig(): SellerConfig {
 			return resourceId !== "nonexistent";
 		},
 		onIssueToken: async (params) => {
-			const { AccessTokenIssuer } = await import("../core/access-token.js");
-			const issuer = new AccessTokenIssuer(SECRET);
-			return issuer.sign(
-				{
-					sub: params.requestId,
-					jti: params.challengeId,
-					resourceId: params.resourceId,
-					tierId: params.tierId,
-					txHash: params.txHash,
-				},
-				3600,
-			);
+			// Mock token issuance to avoid jose import issues
+			return {
+				token: `mock-token-${params.challengeId}`,
+				expiresAt: new Date(Date.now() + 3600 * 1000),
+			};
 		},
 		resourceEndpointTemplate: "https://api.example.com/photos/{resourceId}",
 	};

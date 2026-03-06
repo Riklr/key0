@@ -11,6 +11,10 @@ export {
 export { RedisChallengeStore, RedisSeenTxStore } from "./storage/redis.js";
 export type { RedisStoreConfig } from "./storage/redis.js";
 
+// Storage — Postgres
+export { PostgresChallengeStore, PostgresSeenTxStore } from "./storage/postgres.js";
+export type { PostgresStoreConfig } from "./storage/postgres.js";
+
 // Access Token
 export { AccessTokenIssuer } from "./access-token.js";
 export type { TokenClaims, TokenResult } from "./access-token.js";
