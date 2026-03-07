@@ -196,6 +196,61 @@ Fires `purchaseAccess()` from two `E2eTestClient` instances (CLIENT and GAS wall
 
 ---
 
+### `concurrent-same-challenge.test.ts` — Concurrent Same-Challenge Proof (1 test)
+
+Verifies atomicity of `store.transition(PENDING → PAID)` when two clients race to submit proof for the **same** challenge.
+
+Client A requests a challenge. Both Client A and Client B sign independent EIP-3009 authorizations for that challenge and submit payment simultaneously via `Promise.all`. Exactly one must succeed (200 + AccessGrant), the other must fail. The challenge record must end in `DELIVERED` state. This tests the core compare-and-swap guard that prevents double-redemption on a single challenge.
+
+---
+
+### `already-redeemed.test.ts` — Already Redeemed (2 tests)
+
+Verifies the `PROOF_ALREADY_REDEEMED` recovery paths.
+
+- **Re-submit after DELIVERED**: Completes a full purchase, then re-sends the same `requestId` to `/x402/access`. The server must either return the existing grant (200) or a 402 with the same challengeId — but must NOT create a duplicate PENDING record. State must remain `DELIVERED`.
+- **New requestId after DELIVERED**: A fresh `requestId` for the same tier creates an independent challenge (not confused with the prior DELIVERED one).
+
+---
+
+### `expired-challenge-proof.test.ts` — Expired Challenge Proof (2 tests)
+
+Verifies proof submission is rejected after a challenge expires (distinct from `expired-authorization.test.ts` which tests an expired EIP-3009 signature).
+
+- **Proof after expiry**: Creates a challenge, sets `expiresAt` to the past and state to `EXPIRED` in Redis, then submits a valid payment. Must be rejected (not 200). State must remain `EXPIRED`.
+- **Re-request after expiry**: Same `requestId` after expiry creates a new challenge with a different `challengeId`.
+
+---
+
+### `happy-path-state-verification.test.ts` — Happy Path State Verification (3 tests)
+
+Extends the basic happy-path test with Redis state assertions at each lifecycle step.
+
+- **PENDING → DELIVERED with fields**: After requesting access, verifies the Redis hash contains correct `requestId`, `tierId`, `resourceId`, `destination`, `asset`, `chainId`. After payment, verifies `DELIVERED` state with `txHash`, `paidAt`, and the stored `accessGrant` JSON matching the returned grant.
+- **resourceEndpoint format**: Verifies the grant's `resourceEndpoint` contains the requested `resourceId`.
+- **explorerUrl format**: Verifies the grant's `explorerUrl` contains `sepolia` (Base Sepolia) and the `txHash`.
+
+---
+
+### `cancel-challenge.test.ts` — Cancel Challenge (2 tests)
+
+Verifies the `PENDING → CANCELLED` transition and its effects.
+
+- **Proof after cancel**: Creates a challenge, atomically transitions it to `CANCELLED` via a Lua script (mimicking `engine.cancelChallenge()`), then submits a valid payment. Must be rejected.
+- **Re-request after cancel**: Same `requestId` after cancellation creates a new `PENDING` challenge.
+
+---
+
+### `refund-batch.test.ts` — Refund Batch Processing (1 test)
+
+Verifies the refund cron handles multiple PAID records in a single cycle.
+
+Writes 3 PAID records to Redis (all past `REFUND_MIN_AGE_MS`), then polls until all have transitioned. All 3 must reach `REFUNDED` state, confirming the cron processes batches rather than one record per cycle.
+
+USDC cost per run: ~$0.03 (3 x $0.01 refunds).
+
+---
+
 ## Infrastructure Notes
 
 **Refund cron timings** (configured in `docker-compose.e2e.yml` for speed):

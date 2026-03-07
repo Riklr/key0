@@ -664,7 +664,8 @@ bun run start
 bun install          # Install dependencies
 bun run typecheck    # Type-check
 bun run lint         # Lint with Biome v2
-bun test src/        # Run unit tests (e2e tests require separate setup — see e2e/)
+bun test src/        # Run unit tests
+                     # E2E tests require Docker + funded wallets — see e2e/README.md
 bun run build        # Compile to ./dist
 ```
 
