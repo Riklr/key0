@@ -190,6 +190,14 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 				`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`,
 			);
 
+			// Pre-settlement check: avoid burning USDC if already delivered/expired/cancelled
+			console.log("[x402-access] Pre-settlement check for requestId:", requestId);
+			const existingGrant = await engine.preSettlementCheck(requestId);
+			if (existingGrant) {
+				console.log("[x402-access] ✓ Already delivered, returning cached grant");
+				return res.status(200).json(existingGrant);
+			}
+
 			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
 			await engine.verifyResource(resourceId, tierId);
 
@@ -245,6 +253,10 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 			if (err instanceof AgentGateError) {
 				console.error(`[x402-access] AgentGate error: ${err.code} (HTTP ${err.httpStatus})`);
+				// Return the grant directly for PROOF_ALREADY_REDEEMED (status 200)
+				if (err.code === "PROOF_ALREADY_REDEEMED" && err.details?.["grant"]) {
+					return res.status(200).json(err.details["grant"]);
+				}
 				return res.status(err.httpStatus).json(err.toJSON());
 			}
 
