@@ -197,9 +197,9 @@ export function mountMcpRoutes(
 
 	// MCP Streamable HTTP transport (stateless — new server + transport per request)
 	router.post("/mcp", async (req: Request, res: Response) => {
+		const server = createMcpServer(engine, config);
+		const transport = new StreamableHTTPServerTransport({});
 		try {
-			const server = createMcpServer(engine, config);
-			const transport = new StreamableHTTPServerTransport({});
 			await server.connect(transport as Parameters<typeof server.connect>[0]);
 			await transport.handleRequest(req, res, req.body);
 		} catch (err: unknown) {
@@ -209,6 +209,8 @@ export function mountMcpRoutes(
 					message: err instanceof Error ? err.message : "Internal MCP error",
 				});
 			}
+		} finally {
+			await server.close();
 		}
 	});
 
