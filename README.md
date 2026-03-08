@@ -349,6 +349,7 @@ fastify.listen({ port: 3000 });
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | — | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | — | Fired when a challenge expires |
+| `mcp` | `boolean` | | `false` | Enable MCP server — mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
 #### ProductTier
 
@@ -535,6 +536,44 @@ Coding agents like [Claude Code](https://claude.ai/code) can discover an AgentGa
 
 No configuration or human approval required — the agent handles the full payment flow end-to-end.
 
+### MCP (Model Context Protocol)
+
+Set `mcp: true` in your config to expose AgentGate as an MCP server. MCP clients like Claude Desktop, Cursor, and Claude Code can discover and call your tools directly.
+
+```typescript
+app.use(
+  agentGateRouter({
+    config: {
+      // ...existing config
+      mcp: true, // enables MCP routes
+    },
+    adapter, store, seenTxStore,
+  })
+);
+```
+
+This adds:
+- `GET /.well-known/mcp.json` — MCP discovery document
+- `POST /mcp` — Streamable HTTP transport endpoint
+
+**Two tools are exposed:**
+- `discover_products` — returns the product catalog (tiers, pricing, wallet, chainId)
+- `request_product_access` — two-step payment flow: call without `txHash` to get payment requirements, call with `txHash` after paying to receive an access token
+
+**Connect from Claude Code** (`.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "my-seller": {
+      "type": "http",
+      "url": "https://my-agent.example.com/mcp"
+    }
+  }
+}
+```
+
+See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture details and transport rationale.
+
 ### Autonomous Agents (e.g. OpenClaw)
 
 Headless autonomous agents can do the same. Any agent runtime that supports wallet signing (via an embedded wallet, a KMS-backed key, or an MCP-compatible tool) can interact with AgentGate without modification — the protocol is standard HTTP + on-chain USDC.
@@ -675,3 +714,4 @@ bun run build        # Compile to ./dist
 - [SPEC.md](./SPEC.md) — Protocol specification
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/agentgate`)
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
+- [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns
