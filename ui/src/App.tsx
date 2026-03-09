@@ -30,7 +30,9 @@ export default function App() {
 						walletAddress: data.config.walletAddress ?? "",
 						issueTokenApi: data.config.issueTokenApi ?? "",
 						network: data.config.network ?? "testnet",
+						storageBackend: data.config.storageBackend ?? "redis",
 						redisUrl: data.config.redisUrl ?? "redis://redis:6379",
+						databaseUrl: data.config.databaseUrl ?? "",
 						port: data.config.port ?? "3000",
 						basePath: data.config.basePath ?? "/a2a",
 						agentName: data.config.agentName ?? "Key2a Server",
@@ -39,6 +41,7 @@ export default function App() {
 						providerName: data.config.providerName ?? "",
 						providerUrl: data.config.providerUrl ?? "",
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
+						backendAuthStrategy: data.config.backendAuthStrategy ?? "shared-secret",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
 						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
 						walletPrivateKey: data.config.walletPrivateKey ?? "",
@@ -60,7 +63,9 @@ export default function App() {
 		config.walletAddress.startsWith("0x") &&
 		config.walletAddress.length === 42 &&
 		config.issueTokenApi.length > 0 &&
-		config.redisUrl.length > 0 &&
+		(config.storageBackend === "redis"
+			? config.redisUrl.length > 0
+			: config.databaseUrl.length > 0) &&
 		config.plans.length > 0 &&
 		config.plans.every((p) => p.planId && p.displayName && p.unitAmount);
 
@@ -205,12 +210,35 @@ export default function App() {
 								/>
 							</Field>
 
-							<Field label="API Secret" hint="Sent as Authorization: Bearer header to your API">
+							<Field label="Backend Auth Strategy" hint="How Key2a authenticates with your backend">
+								<Select
+									value={config.backendAuthStrategy}
+									onChange={(e) =>
+										set("backendAuthStrategy", e.target.value as "shared-secret" | "jwt")
+									}
+								>
+									<option value="shared-secret">Shared Secret (Bearer token)</option>
+									<option value="jwt">JWT (signed token)</option>
+								</Select>
+							</Field>
+
+							<Field
+								label="API Secret"
+								hint={
+									config.backendAuthStrategy === "jwt"
+										? "Secret used to sign JWT tokens sent to your API"
+										: "Sent as Authorization: Bearer header to your API"
+								}
+							>
 								<Input
 									type="password"
 									value={config.issueTokenApiSecret}
 									onChange={(e) => set("issueTokenApiSecret", e.target.value)}
-									placeholder="Optional shared secret"
+									placeholder={
+										config.backendAuthStrategy === "jwt"
+											? "JWT signing secret (min 32 chars)"
+											: "Optional shared secret"
+									}
 								/>
 							</Field>
 						</Section>
@@ -273,7 +301,7 @@ export default function App() {
 						<Section
 							icon="S"
 							title="Server & Storage"
-							description="Port, Redis, and challenge settings"
+							description="Port, storage backend, and challenge settings"
 							defaultOpen={false}
 						>
 							<div className="grid grid-cols-2 gap-3">
@@ -292,13 +320,47 @@ export default function App() {
 									/>
 								</Field>
 							</div>
-							<Field label="Redis URL" required>
-								<Input
-									value={config.redisUrl}
-									onChange={(e) => set("redisUrl", e.target.value)}
-									placeholder="redis://redis:6379"
-								/>
+
+							<Field label="Storage Backend">
+								<Select
+									value={config.storageBackend}
+									onChange={(e) => set("storageBackend", e.target.value as "redis" | "postgres")}
+								>
+									<option value="redis">Redis</option>
+									<option value="postgres">PostgreSQL</option>
+								</Select>
 							</Field>
+
+							{config.storageBackend === "redis" && (
+								<Field label="Redis URL" required>
+									<Input
+										value={config.redisUrl}
+										onChange={(e) => set("redisUrl", e.target.value)}
+										placeholder="redis://redis:6379"
+									/>
+								</Field>
+							)}
+
+							{config.storageBackend === "postgres" && (
+								<>
+									<Field label="Database URL" required hint="PostgreSQL connection string">
+										<Input
+											value={config.databaseUrl}
+											onChange={(e) => set("databaseUrl", e.target.value)}
+											placeholder="postgresql://user:pass@host:5432/db"
+											spellCheck={false}
+										/>
+									</Field>
+									<Field label="Redis URL" hint="Still required for BullMQ refund cron queue">
+										<Input
+											value={config.redisUrl}
+											onChange={(e) => set("redisUrl", e.target.value)}
+											placeholder="redis://redis:6379"
+										/>
+									</Field>
+								</>
+							)}
+
 							<Field label="Challenge TTL (seconds)" hint="Default: 900 (15 min)">
 								<Input
 									type="number"

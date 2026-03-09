@@ -45,7 +45,7 @@ function makeConfig(): SellerConfig {
 		onVerifyResource: async (resourceId: string) => {
 			return resourceId !== "nonexistent";
 		},
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			const { token, expiresAt } = await issuer.sign(
 				{
 					sub: params.requestId,
@@ -705,10 +705,10 @@ describe("x402-http-middleware", () => {
 			expect(record!.requestId).toBe("req-skip");
 		});
 
-		test("should leave record as PAID when onIssueToken throws", async () => {
+		test("should leave record as PAID when fetchResourceCredentials throws", async () => {
 			const failConfig: SellerConfig = {
 				...config,
-				onIssueToken: async () => {
+				fetchResourceCredentials: async () => {
 					throw new Error("Token issuance failed");
 				},
 			};

@@ -17,7 +17,7 @@ All challenge state changes MUST use `IChallengeStore.transition(id, fromState, 
 
 **The rule**: `transition()` only writes if the current state matches `fromState`. If another caller already changed the state, this call returns `false` and must abort.
 
-The full happy-path state machine is: `PENDING → PAID → DELIVERED`. DELIVERED is the terminal success state — it is set after `onIssueToken` succeeds and the `accessGrant` is stored on the record. EXPIRED and CANCELLED are terminal failure states. All transitions go through `transition()`.
+The full happy-path state machine is: `PENDING → PAID → DELIVERED`. DELIVERED is the terminal success state — it is set after `fetchResourceCredentials` succeeds and the `accessGrant` is stored on the record. EXPIRED and CANCELLED are terminal failure states. All transitions go through `transition()`.
 
 Forbidden patterns:
 - Calling `store.set()`, `store.update()`, or direct Map/Redis writes to change `state`
@@ -72,13 +72,13 @@ Forbidden:
 
 ## Invariant 5 — Callback Boundary Safety
 
-`onPaymentReceived` and `onIssueToken` are user-supplied callbacks that run after the critical payment path.
+`onPaymentReceived` and `fetchResourceCredentials` are user-supplied callbacks that run after the critical payment path.
 
 **`onPaymentReceived`** — MUST be fire-and-forget:
 - Called with `.catch(noop)` and not awaited in the main flow
 - If awaited and the webhook is slow/down: client times out, retries, risks double-processing
 
-**`onIssueToken`** — errors leave the challenge stuck in PAID:
+**`fetchResourceCredentials`** — errors leave the challenge stuck in PAID:
 - Its return value (the token) is required, so it is awaited — this is correct
 - If it throws, the challenge stays in PAID (never reaches DELIVERED), no token is issued, client paid for nothing
 - This is a known recoverable failure state — a refund/recovery cron can detect PAID records with no `accessGrant` and act on them

@@ -79,7 +79,9 @@ app.get("/api/setup/status", (req, res) => {
 					walletAddress: WALLET_ADDRESS ?? "",
 					issueTokenApi: ISSUE_TOKEN_API ?? "",
 					network: process.env.KEY2A_NETWORK ?? "testnet",
+					storageBackend: process.env.STORAGE_BACKEND ?? "redis",
 					redisUrl: REDIS_URL ?? "",
+					databaseUrl: process.env.DATABASE_URL ?? "",
 					port: PORT.toString(),
 					basePath: process.env.BASE_PATH ?? "/a2a",
 					agentName: process.env.AGENT_NAME ?? "Key2a Server",
@@ -88,6 +90,7 @@ app.get("/api/setup/status", (req, res) => {
 					providerName: process.env.PROVIDER_NAME ?? "",
 					providerUrl: process.env.PROVIDER_URL ?? "",
 					challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
+					backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "shared-secret",
 					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 					gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
 					walletPrivateKey: process.env.KEY2A_WALLET_PRIVATE_KEY ? "••••••" : "",
@@ -102,7 +105,9 @@ interface SetupBody {
 	walletAddress: string;
 	issueTokenApi: string;
 	network: string;
+	storageBackend: "redis" | "postgres";
 	redisUrl: string;
+	databaseUrl: string;
 	port: string;
 	basePath: string;
 	agentName: string;
@@ -118,6 +123,7 @@ interface SetupBody {
 		expiresIn?: number;
 	}>;
 	challengeTtlSeconds: string;
+	backendAuthStrategy: "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 	gasWalletPrivateKey: string;
 	walletPrivateKey: string;
@@ -128,9 +134,9 @@ interface SetupBody {
 app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	const body = req.body as SetupBody;
 
-	if (!body.walletAddress || !body.issueTokenApi || !body.redisUrl) {
+	if (!body.walletAddress || !body.issueTokenApi) {
 		res.status(400).json({
-			error: "walletAddress, issueTokenApi, and redisUrl are required",
+			error: "walletAddress and issueTokenApi are required",
 		});
 		return;
 	}
@@ -140,13 +146,18 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	const lines: string[] = [
 		`KEY2A_WALLET_ADDRESS=${body.walletAddress}`,
 		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
-		`REDIS_URL=${body.redisUrl}`,
 		`KEY2A_NETWORK=${body.network || "testnet"}`,
 		`PORT=${body.port || PORT}`,
 		`AGENT_NAME=${q(body.agentName || "Key2a Server")}`,
 		`AGENT_DESCRIPTION=${q(body.agentDescription || "Payment-gated A2A endpoint")}`,
 		`AGENT_URL=${body.agentUrl || `http://localhost:${body.port || PORT}`}`,
 	];
+
+	if (body.storageBackend === "postgres") {
+		lines.push(`STORAGE_BACKEND=postgres`);
+		if (body.databaseUrl) lines.push(`DATABASE_URL=${body.databaseUrl}`);
+	}
+	if (body.redisUrl) lines.push(`REDIS_URL=${body.redisUrl}`);
 
 	if (body.basePath && body.basePath !== "/a2a") {
 		lines.push(`BASE_PATH=${body.basePath}`);
@@ -161,6 +172,9 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
+	}
+	if (body.backendAuthStrategy && body.backendAuthStrategy !== "shared-secret") {
+		lines.push(`BACKEND_AUTH_STRATEGY=${body.backendAuthStrategy}`);
 	}
 	if (body.issueTokenApiSecret) {
 		lines.push(`ISSUE_TOKEN_API_SECRET=${body.issueTokenApiSecret}`);
@@ -316,7 +330,7 @@ if (!isConfigured) {
 	}
 
 	// Token issuance
-	const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
+	const fetchResourceCredentials = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
 		apiSecret: ISSUE_TOKEN_API_SECRET,
 		plans,
 	});
@@ -526,7 +540,7 @@ if (!isConfigured) {
 				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 				basePath: BASE_PATH,
 				onVerifyResource: async () => true,
-				onIssueToken,
+				fetchResourceCredentials,
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
 				...(GAS_WALLET_PRIVATE_KEY && redis

@@ -15,7 +15,7 @@ function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 			{ planId: "single", displayName: "Single", unitAmount: "$0.10", resourceType: "photo" },
 		],
 		onVerifyResource: async () => true,
-		onIssueToken: async (params) => ({
+		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
 			expiresAt: new Date(Date.now() + 3600 * 1000),
 		}),
@@ -58,16 +58,20 @@ describe("validateSellerConfig", () => {
 		);
 	});
 
-	test("rejects missing onIssueToken", () => {
+	test("rejects missing fetchResourceCredentials", () => {
 		expect(() =>
-			validateSellerConfig(makeValidConfig({ onIssueToken: undefined as unknown as never })),
-		).toThrow("onIssueToken must be a function");
+			validateSellerConfig(
+				makeValidConfig({ fetchResourceCredentials: undefined as unknown as never }),
+			),
+		).toThrow("fetchResourceCredentials must be a function");
 	});
 
-	test("rejects non-function onIssueToken", () => {
+	test("rejects non-function fetchResourceCredentials", () => {
 		expect(() =>
-			validateSellerConfig(makeValidConfig({ onIssueToken: "not-a-function" as unknown as never })),
-		).toThrow("onIssueToken must be a function");
+			validateSellerConfig(
+				makeValidConfig({ fetchResourceCredentials: "not-a-function" as unknown as never }),
+			),
+		).toThrow("fetchResourceCredentials must be a function");
 	});
 
 	test("rejects empty plans array", () => {

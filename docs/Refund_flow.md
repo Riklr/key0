@@ -10,7 +10,7 @@ When a buyer pays for a resource, the SDK records the payment in a single `Chall
 
 After payment is verified, the SDK automatically issues the access token and transitions the record to `DELIVERED` in the same request.
 
-If `onIssueToken` throws or the server crashes between payment verification and token issuance, the record stays `PAID`. The refund cron picks it up after a configurable grace period and sends the USDC back to the buyer's wallet.
+If `fetchResourceCredentials` throws or the server crashes between payment verification and token issuance, the record stays `PAID`. The refund cron picks it up after a configurable grace period and sends the USDC back to the buyer's wallet.
 
 There is no separate delivery store. One store, one record, one lifecycle.
 
@@ -23,13 +23,13 @@ PENDING ──── payment verified on-chain ───────────
 PENDING ──── challenge TTL exceeded ─────────────────────────► EXPIRED
 PENDING ──── seller cancels ─────────────────────────────────► CANCELLED
 
-PAID ────── onIssueToken() succeeds (SDK auto-transitions) ──► DELIVERED      ← happy path, final
+PAID ────── fetchResourceCredentials() succeeds (SDK auto-transitions) ──► DELIVERED      ← happy path, final
 PAID ────── cron: paidAt + minAgeMs <= now ──────────────────► REFUND_PENDING
 REFUND_PENDING ── sendUsdc() succeeds ───────────────────────► REFUNDED       ← refunded, final
 REFUND_PENDING ── sendUsdc() throws ─────────────────────────► REFUND_FAILED  ← needs operator
 ```
 
-`PAID` is transient in the normal path — it lasts milliseconds between payment verification and token issuance. The refund cron is a safety net for failures only (server crashes, `onIssueToken` errors). `DELIVERED` is set automatically by the SDK after token issuance.
+`PAID` is transient in the normal path — it lasts milliseconds between payment verification and token issuance. The refund cron is a safety net for failures only (server crashes, `fetchResourceCredentials` errors). `DELIVERED` is set automatically by the SDK after token issuance.
 
 ---
 
@@ -63,14 +63,14 @@ Both payment paths share the same `ChallengeRecord` lifecycle. The refund cron d
 ### A2A Flow (Agent-to-Agent)
 
 1. `requestAccess()` — validates tier, verifies resource, calls `adapter.issueChallenge()`, creates `PENDING` record, returns `X402Challenge`
-2. `submitProof()` — looks up `PENDING` record, verifies on-chain via `adapter.verifyProof()`, transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from Transfer event), calls `onIssueToken`, transitions `PAID → DELIVERED`
+2. `submitProof()` — looks up `PENDING` record, verifies on-chain via `adapter.verifyProof()`, transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from Transfer event), calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`
 
 ### HTTP x402 Flow (Gas Wallet / Facilitator)
 
 1. `requestHttpAccess()` — validates tier, verifies resource, creates `PENDING` record (no adapter challenge needed — the 402 response carries x402 payment requirements instead), returns `challengeId`
-2. `processHttpPayment()` — looks up `PENDING` record (auto-creates one if step 1 was skipped), transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from settlement payer), calls `onIssueToken`, transitions `PAID → DELIVERED`
+2. `processHttpPayment()` — looks up `PENDING` record (auto-creates one if step 1 was skipped), transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from settlement payer), calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`
 
-If `onIssueToken` throws in either path, the record stays `PAID` and the refund cron picks it up.
+If `fetchResourceCredentials` throws in either path, the record stays `PAID` and the refund cron picks it up.
 
 ---
 
@@ -177,7 +177,7 @@ const { requestHandler } = createKey2a({
       { planId: 'report-v1', unitAmount: '$2.00' },
     ],
     onVerifyResource: async (id) => db.resources.exists(id),
-    onIssueToken: async ({ challengeId, resourceId, planId }) => ({
+    fetchResourceCredentials: async ({ challengeId, resourceId, planId }) => ({
       token: jwt.sign({ jti: challengeId, sub: resourceId, plan: planId }, SECRET, { expiresIn: '2h' }),
       expiresAt: new Date(Date.now() + 7200_000),
     }),
@@ -190,7 +190,7 @@ app.get('/api/reports/:id', validateToken, async (req, res) => {
   res.json(report);
 });
 
-// Refund cron — runs every minute, safety net for onIssueToken failures or server crashes
+// Refund cron — runs every minute, safety net for fetchResourceCredentials failures or server crashes
 const refundQueue = new Queue('refunds', { connection: redis });
 
 new Worker('refunds', async () => {
@@ -280,7 +280,7 @@ t=0:00   requestAccess() called
 t=?      Buyer pays on-chain, calls submitProof()
          SDK verifies Transfer event, extracts fromAddress
          store: PENDING → PAID  { txHash, paidAt, fromAddress }
-         onIssueToken() → JWT issued
+         fetchResourceCredentials() → JWT issued
          store: PAID → DELIVERED  { accessGrant, deliveredAt }
          Redis TTL reset from 7 days → 12 hours
          AccessGrant returned to buyer
@@ -300,7 +300,7 @@ t=?      Client sends AccessRequest with PAYMENT-SIGNATURE
          processHttpPayment() called with requestId + payer
          store: look up PENDING record via requestId
          store: PENDING → PAID  { txHash, paidAt, fromAddress (= payer) }
-         onIssueToken() → JWT issued
+         fetchResourceCredentials() → JWT issued
          store: PAID → DELIVERED  { accessGrant, deliveredAt }
          Redis TTL reset from 7 days → 12 hours
          AccessGrant returned to client
@@ -310,7 +310,7 @@ t=?      Client sends AccessRequest with PAYMENT-SIGNATURE
 ### Refund (both paths)
 
 ```
-         ── if onIssueToken throws or server crashes between PAID and DELIVERED ──
+         ── if fetchResourceCredentials throws or server crashes between PAID and DELIVERED ──
 
 t=5:00   Grace period expires (minAgeMs = 300_000)
          Cron runs processRefunds()

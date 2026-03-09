@@ -61,7 +61,7 @@ PAID → PAID                     (idempotent re-verification)
 Happy path:
 1. Request → challenge → proof → grant (full flow, ends in DELIVERED)
 2. Same `requestId` returns the same challenge (idempotency)
-3. `onIssueToken` return value becomes the `accessToken` in the grant
+3. `fetchResourceCredentials` return value becomes the `accessToken` in the grant
 
 Error paths:
 4. Expired challenge is rejected (`CHALLENGE_EXPIRED`)

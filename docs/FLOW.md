@@ -85,7 +85,7 @@ Three transports share the same `ChallengeEngine`, Redis stores, state machine, 
                          | PAID |
                          +------+
                         /        \
-            onIssueToken          \  refund cron (minAgeMs elapsed)
+            fetchResourceCredentials          \  refund cron (minAgeMs elapsed)
               success              \
                   |                 v
                   v           +----------------+
@@ -294,7 +294,7 @@ Engine method: `processHttpPayment(requestId, planId, resourceId, txHash, fromAd
 4. **Atomic transition**: PENDING → PAID (with `txHash`, `paidAt`, `fromAddress`)
 5. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)` — SET NX
    - If returns `false` → rollback PAID→PENDING, throw `TX_ALREADY_REDEEMED` (409)
-6. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, planId, txHash })` with timeout (`tokenIssueTimeoutMs`, default 15s) and retry (`tokenIssueRetries`, default 2 attempts with exponential backoff)
+6. **Issue token**: call `config.fetchResourceCredentials({ requestId, challengeId, resourceId, planId, txHash })` with timeout (`tokenIssueTimeoutMs`, default 15s) and retry (`tokenIssueRetries`, default 2 attempts with exponential backoff)
 7. Build `AccessGrant` object
 8. **Persist grant (outbox pattern)**: PAID → PAID write with `accessGrant` stored — ensures grant is durable before returning to client
 9. **Mark DELIVERED (best-effort)**: PAID → DELIVERED (with `deliveredAt`) — if this fails, the record stays PAID with `accessGrant` set; the refund cron skips records that already have `accessGrant`
@@ -678,7 +678,7 @@ Overridable via `config.facilitatorUrl`.
 
 ### Issuance
 
-Token issuance is **fully delegated** to the seller via `config.onIssueToken()`. The callback receives:
+Token issuance is **fully delegated** to the seller via `config.fetchResourceCredentials()`. The callback receives:
 
 ```typescript
 {
@@ -749,7 +749,7 @@ Framework-specific wrappers attach decoded token to the request:
 
 ## Refund Lifecycle
 
-The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared). The cron is **not built into Key2a** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
+The refund cron handles PAID records that were never DELIVERED (e.g., `fetchResourceCredentials` failed or the client disappeared). The cron is **not built into Key2a** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
 
 ### How It Works
 
@@ -812,8 +812,8 @@ key2a:challenge:{challengeId}
 | `PAYMENT_FAILED`          | 400     | Settlement failed                                      |
 | `ADAPTER_ERROR`           | 500     | Payment adapter threw                                  |
 | `RESOURCE_VERIFY_TIMEOUT` | 504     | `onVerifyResource()` timed out                         |
-| `TOKEN_ISSUE_FAILED`      | 500     | `onIssueToken()` threw                                 |
-| `TOKEN_ISSUE_TIMEOUT`     | 504     | `onIssueToken()` timed out                             |
+| `TOKEN_ISSUE_FAILED`      | 500     | `fetchResourceCredentials()` threw                                 |
+| `TOKEN_ISSUE_TIMEOUT`     | 504     | `fetchResourceCredentials()` timed out                             |
 | `INTERNAL_ERROR`          | 500     | Unexpected failure                                     |
 
 

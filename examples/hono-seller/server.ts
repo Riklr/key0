@@ -50,7 +50,7 @@ const gate = key2aApp({
 			const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
 			return validResources.includes(resourceId);
 		},
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
 			const ttl = params.planId === "single-photo" ? 3600 : 86400;
 			return tokenIssuer.sign(

@@ -21,7 +21,7 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 			},
 		],
 		onVerifyResource: async () => true,
-		onIssueToken: async () => ({
+		fetchResourceCredentials: async () => ({
 			token: "test-token",
 			expiresAt: new Date(),
 		}),

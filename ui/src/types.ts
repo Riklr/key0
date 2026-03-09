@@ -11,7 +11,11 @@ export interface Config {
 	walletAddress: string;
 	issueTokenApi: string;
 	network: "testnet" | "mainnet";
+
+	// Storage
+	storageBackend: "redis" | "postgres";
 	redisUrl: string;
+	databaseUrl: string;
 
 	// Server
 	port: string;
@@ -31,6 +35,7 @@ export interface Config {
 	challengeTtlSeconds: string;
 
 	// Token API Auth
+	backendAuthStrategy: "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 
 	// Settlement
@@ -46,7 +51,10 @@ export const defaultConfig: Config = {
 	walletAddress: "",
 	issueTokenApi: "",
 	network: "testnet",
+
+	storageBackend: "redis",
 	redisUrl: "redis://redis:6379",
+	databaseUrl: "",
 
 	port: "3000",
 	basePath: "/a2a",
@@ -69,6 +77,7 @@ export const defaultConfig: Config = {
 
 	challengeTtlSeconds: "900",
 
+	backendAuthStrategy: "shared-secret",
 	issueTokenApiSecret: "",
 
 	gasWalletPrivateKey: "",

@@ -72,15 +72,15 @@ export type SellerConfig = {
 	readonly onVerifyResource: ResourceVerifier;
 	readonly resourceVerifyTimeoutMs?: number; // defaults to 5000
 
-	// Token issuance callback (required)
+	// Credential issuance callback (required)
 	/**
-	 * Callback that issues an access token after payment is verified.
+	 * Callback that fetches/issues resource credentials after payment is verified.
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
 	 */
-	readonly onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
-	/** Timeout for onIssueToken callback in ms. Default: 15000. */
+	readonly fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+	/** Timeout for fetchResourceCredentials callback in ms. Default: 15000. */
 	readonly tokenIssueTimeoutMs?: number;
-	/** Max retries for onIssueToken on failure. Default: 2. */
+	/** Max retries for fetchResourceCredentials on failure. Default: 2. */
 	readonly tokenIssueRetries?: number;
 
 	// Lifecycle hooks (optional)

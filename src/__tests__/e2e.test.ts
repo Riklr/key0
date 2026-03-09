@@ -34,7 +34,7 @@ function makeConfig(): SellerConfig {
 		onVerifyResource: async (resourceId: string) => {
 			return resourceId !== "nonexistent";
 		},
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			const { token, expiresAt } = await issuer.sign(
 				{
 					sub: params.requestId,

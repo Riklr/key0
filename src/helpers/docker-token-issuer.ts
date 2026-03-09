@@ -8,7 +8,7 @@ export type DockerTokenIssuerOptions = {
 };
 
 /**
- * Builds an `onIssueToken` callback suitable for the Docker standalone server.
+ * Builds an `fetchResourceCredentials` callback suitable for the Docker standalone server.
  *
  * Behaviour:
  * - Merges the matching Plan fields into the POST body sent to `issueTokenApiUrl`.

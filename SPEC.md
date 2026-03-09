@@ -232,7 +232,7 @@ type AccessGrant = {
   type: "AccessGrant";
   challengeId: string;
   requestId: string;
-  accessToken: string;       // JWT or custom token from onIssueToken callback
+  accessToken: string;       // JWT or custom token from fetchResourceCredentials callback
   tokenType: "Bearer";
   expiresAt: string;         // ISO-8601
   resourceEndpoint: string;  // actual API endpoint to call
@@ -278,7 +278,7 @@ type SellerConfig = {
 
   // Callbacks (mandatory)
   onVerifyResource: (resourceId: string, planId: string) => Promise<boolean>;
-  onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+  fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
   // Callbacks (optional)
   onPaymentReceived?: (grant: AccessGrant) => Promise<void>;
@@ -380,7 +380,7 @@ Returns the agent card. No auth required.
 5. `chainId` matches the challenge's `chainId` (replay guard).
 6. `block.timestamp <= challenge.expiresAt` (payment must land before expiry).
 
-After verification: mark challenge as `PAID`, call `onIssueToken`, fire `onPaymentReceived`, return `AccessGrant`.
+After verification: mark challenge as `PAID`, call `fetchResourceCredentials`, fire `onPaymentReceived`, return `AccessGrant`.
 
 ---
 
@@ -515,7 +515,7 @@ Before issuing a challenge, `onVerifyResource` confirms the resource exists and 
 
 ### 9.6 Access Token Security
 
-- Tokens are issued by the seller's `onIssueToken` callback — full control over format and lifetime.
+- Tokens are issued by the seller's `fetchResourceCredentials` callback — full control over format and lifetime.
 - The built-in `AccessTokenIssuer` issues HS256 JWTs. Secret must be ≥ 32 characters.
 - `jti` = `challengeId` for replay detection in the token validation middleware.
 - `verifyWithFallback()` supports zero-downtime secret rotation.
@@ -545,7 +545,7 @@ Step 3: Define pricing plans
 
 Step 4: Implement callbacks
   onVerifyResource(resourceId, planId): Promise<boolean>
-  onIssueToken(params): Promise<TokenIssuanceResult>
+  fetchResourceCredentials(params): Promise<TokenIssuanceResult>
   onPaymentReceived?(grant): Promise<void>   // optional
 
 Step 5: Set up Redis storage

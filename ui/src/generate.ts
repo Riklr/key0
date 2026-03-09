@@ -10,16 +10,27 @@ export function generateEnv(config: Config): string {
 		"",
 		`KEY2A_WALLET_ADDRESS=${config.walletAddress}`,
 		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
-		`REDIS_URL=${config.redisUrl}`,
 		"",
 		"# ── Network ───────────────────────────────────────────────────────────────────",
 		"",
 		`KEY2A_NETWORK=${config.network}`,
 		"",
+		"# ── Storage ───────────────────────────────────────────────────────────────────",
+		"",
+		`STORAGE_BACKEND=${config.storageBackend}`,
+		`REDIS_URL=${config.redisUrl}`,
+	];
+
+	if (config.storageBackend === "postgres" && config.databaseUrl) {
+		lines.push(`DATABASE_URL=${config.databaseUrl}`);
+	}
+
+	lines.push(
+		"",
 		"# ── Server ────────────────────────────────────────────────────────────────────",
 		"",
 		`PORT=${config.port}`,
-	];
+	);
 
 	if (config.basePath && config.basePath !== "/a2a") {
 		lines.push(`BASE_PATH=${config.basePath}`);
@@ -71,13 +82,18 @@ export function generateEnv(config: Config): string {
 		);
 	}
 
-	if (config.issueTokenApiSecret) {
+	if (config.backendAuthStrategy !== "shared-secret" || config.issueTokenApiSecret) {
 		lines.push(
 			"",
 			"# ── Token API Auth ────────────────────────────────────────────────────────────",
 			"",
-			`ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`,
 		);
+		if (config.backendAuthStrategy !== "shared-secret") {
+			lines.push(`BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
+		}
+		if (config.issueTokenApiSecret) {
+			lines.push(`ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`);
+		}
 	}
 
 	if (config.gasWalletPrivateKey) {
@@ -113,8 +129,12 @@ export function generateDockerRun(config: Config): string {
 
 	envFlags.push(`-e KEY2A_WALLET_ADDRESS=${config.walletAddress}`);
 	envFlags.push(`-e ISSUE_TOKEN_API=${config.issueTokenApi}`);
-	envFlags.push(`-e REDIS_URL=${config.redisUrl}`);
 	envFlags.push(`-e KEY2A_NETWORK=${config.network}`);
+	envFlags.push(`-e STORAGE_BACKEND=${config.storageBackend}`);
+	envFlags.push(`-e REDIS_URL=${config.redisUrl}`);
+	if (config.storageBackend === "postgres" && config.databaseUrl) {
+		envFlags.push(`-e DATABASE_URL=${config.databaseUrl}`);
+	}
 	envFlags.push(`-e PORT=${config.port}`);
 	envFlags.push(`-e AGENT_NAME="${config.agentName}"`);
 	envFlags.push(`-e AGENT_DESCRIPTION="${config.agentDescription}"`);
@@ -144,6 +164,9 @@ export function generateDockerRun(config: Config): string {
 	if (config.challengeTtlSeconds !== "900") {
 		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
+	if (config.backendAuthStrategy !== "shared-secret") {
+		envFlags.push(`-e BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
+	}
 	if (config.issueTokenApiSecret) {
 		envFlags.push(`-e ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`);
 	}
@@ -162,12 +185,17 @@ export function generateDockerCompose(config: Config): string {
 		KEY2A_WALLET_ADDRESS: config.walletAddress,
 		ISSUE_TOKEN_API: config.issueTokenApi,
 		KEY2A_NETWORK: config.network,
+		STORAGE_BACKEND: config.storageBackend,
+		REDIS_URL: config.storageBackend === "postgres" ? config.redisUrl : "redis://redis:6379",
 		PORT: config.port,
 		AGENT_NAME: config.agentName,
 		AGENT_DESCRIPTION: config.agentDescription,
 		AGENT_URL: config.agentUrl,
-		REDIS_URL: "redis://redis:6379",
 	};
+
+	if (config.storageBackend === "postgres" && config.databaseUrl) {
+		envVars.DATABASE_URL = config.databaseUrl;
+	}
 
 	if (config.basePath && config.basePath !== "/a2a") {
 		envVars.BASE_PATH = config.basePath;
@@ -187,6 +215,9 @@ export function generateDockerCompose(config: Config): string {
 	}
 	if (config.challengeTtlSeconds !== "900") {
 		envVars.CHALLENGE_TTL_SECONDS = config.challengeTtlSeconds;
+	}
+	if (config.backendAuthStrategy !== "shared-secret") {
+		envVars.BACKEND_AUTH_STRATEGY = config.backendAuthStrategy;
 	}
 	if (config.issueTokenApiSecret) {
 		envVars.ISSUE_TOKEN_API_SECRET = config.issueTokenApiSecret;
@@ -208,7 +239,10 @@ export function generateDockerCompose(config: Config): string {
 		.map(([k, v]) => `      ${k}: "${v}"`)
 		.join("\n");
 
-	return `services:
+	const dependsOn = ["redis"];
+	if (config.storageBackend === "postgres") dependsOn.push("postgres");
+
+	let services = `services:
   key2a:
     image: riklr/key2a:latest
     ports:
@@ -216,7 +250,7 @@ export function generateDockerCompose(config: Config): string {
     environment:
 ${envLines}
     depends_on:
-      - redis
+${dependsOn.map((d) => `      - ${d}`).join("\n")}
 
   redis:
     image: redis:7-alpine
@@ -224,8 +258,27 @@ ${envLines}
       - "6379:6379"
     volumes:
       - redis-data:/data
-
-volumes:
-  redis-data:
 `;
+
+	if (config.storageBackend === "postgres") {
+		services += `
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: key2a
+      POSTGRES_PASSWORD: key2a
+      POSTGRES_DB: key2a
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+`;
+	}
+
+	services += `\nvolumes:\n  redis-data:\n`;
+	if (config.storageBackend === "postgres") {
+		services += `  pg-data:\n`;
+	}
+
+	return services;
 }

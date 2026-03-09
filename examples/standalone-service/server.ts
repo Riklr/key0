@@ -45,7 +45,7 @@ const NETWORK = (process.env.KEY2A_NETWORK ?? "testnet") as NetworkName;
 const SECRET = process.env.KEY2A_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
-const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
+const BACKEND_AUTH_STRATEGY = process.env.BACKEND_AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
 const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "redis"; // "redis" | "postgres"
 
 // Gas wallet configuration for facilitation
@@ -83,7 +83,7 @@ if (STORAGE_BACKEND === "postgres" && !process.env.DATABASE_URL) {
 	process.exit(1);
 }
 
-if (AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
+if (BACKEND_AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 	console.error("ERROR: INTERNAL_AUTH_SECRET is required for shared-secret auth");
 	process.exit(1);
 }
@@ -122,7 +122,7 @@ let authProvider: AuthHeaderProvider;
 // This is used for service-to-service auth, not for access tokens issued to agents
 const serviceTokenIssuer = new AccessTokenIssuer(SECRET);
 
-if (AUTH_STRATEGY === "jwt") {
+if (BACKEND_AUTH_STRATEGY === "jwt") {
 	// Strategy 2: Signed JWT
 	// Requires SECRET to be a private key (PEM) if algorithm is RS256, or shared secret for HS256
 	// The backend must have the corresponding public key or shared secret
@@ -145,7 +145,7 @@ const remoteVerifier = createRemoteResourceVerifier({
 });
 
 // Create token issuer callback based on mode
-let onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+let fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
 if (tokenMode === "remote") {
 	// Remote mode: Call backend to issue tokens
@@ -155,12 +155,12 @@ if (tokenMode === "remote") {
 		auth: authProvider,
 		timeoutMs: 10000,
 	});
-	onIssueToken = remoteTokenIssuer;
+	fetchResourceCredentials = remoteTokenIssuer;
 } else {
 	// Native mode: Generate JWT locally using AccessTokenIssuer utility
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
-	onIssueToken = async (params) => {
+	fetchResourceCredentials = async (params) => {
 		//NOTE: Testing for refund cron
 		// throw new Error("Not issuing tokens for refund cron");
 
@@ -211,7 +211,7 @@ app.use(
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
 			plans,
 			onVerifyResource: remoteVerifier,
-			onIssueToken,
+			fetchResourceCredentials,
 			onPaymentReceived: async (grant) => {
 				// Notify backend when payment is received
 				try {

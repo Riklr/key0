@@ -53,7 +53,7 @@ export class ChallengeEngine {
 	}
 
 	/**
-	 * Call onIssueToken with a timeout and configurable retries with exponential backoff.
+	 * Call fetchResourceCredentials with a timeout and configurable retries with exponential backoff.
 	 * On timeout, throws TOKEN_ISSUE_TIMEOUT. On final failure, re-throws the original error.
 	 */
 	private async issueTokenWithRetry(
@@ -65,7 +65,7 @@ export class ChallengeEngine {
 		const callWithTimeout = () => {
 			let timer: ReturnType<typeof setTimeout>;
 			return Promise.race([
-				this.config.onIssueToken(params).finally(() => clearTimeout(timer)),
+				this.config.fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() => reject(new Key2aError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
@@ -646,7 +646,7 @@ export class ChallengeEngine {
 	 * or facilitator.
 	 *
 	 * Lifecycle: looks up PENDING record (or auto-creates one if step 1 was skipped),
-	 * transitions PENDING → PAID → DELIVERED. If onIssueToken throws, record stays
+	 * transitions PENDING → PAID → DELIVERED. If fetchResourceCredentials throws, record stays
 	 * PAID and the refund cron can pick it up.
 	 *
 	 * NOTE: Resource verification is NOT performed here — callers must verify the

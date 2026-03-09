@@ -12,7 +12,7 @@ Key2a lets you monetize any API: agents request access, pay via on-chain USDC, a
 |---|---|---|
 | **Setup** | `docker compose up` → browser Setup UI | `bun add @riklr/key2a` |
 | **Config** | Setup UI or environment variables | TypeScript config |
-| **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
+| **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `fetchResourceCredentials` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
 
 ---
@@ -217,7 +217,7 @@ Install the SDK and add Key2a as middleware inside your existing application. Yo
 │  [pays USDC on Base]  │  │                                             │  │
 │  retry +sig  │───────▶│  │  settle on-chain                           │  │
 │              │        │  │  [PENDING → PAID]                          │  │
-│              │        │  │  onIssueToken()      ──▶  your JWT/key gen  │  │
+│              │        │  │  fetchResourceCredentials()      ──▶  your JWT/key gen  │  │
 │              │        │  │  [PAID → DELIVERED]                        │  │
 │              │◀───────│  │  AccessGrant (JWT or custom credential)     │  │
 │              │        │  └────────────────────────────────────────────┘  │
@@ -278,7 +278,7 @@ app.use(
       onVerifyResource: async (resourceId, planId) => {
         return true; // check your DB here
       },
-      onIssueToken: async (params) => {
+      fetchResourceCredentials: async (params) => {
         return tokenIssuer.sign(
           { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
           params.expiresIn,
@@ -364,7 +364,7 @@ fastify.listen({ port: 3000 });
 | `network` | `"testnet" \| "mainnet"` | ✅ | — | Base Sepolia or Base |
 | `plans` | `Plan[]` | ✅ | — | Pricing plans |
 | `onVerifyResource` | `(resourceId, planId) => Promise<boolean>` | ✅ | — | Check the resource exists and plan is valid |
-| `onIssueToken` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
+| `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
 | `resourceVerifyTimeoutMs` | `number` | | `5000` | Timeout for `onVerifyResource` |
 | `basePath` | `string` | | `"/a2a"` | A2A endpoint path prefix |
@@ -398,7 +398,7 @@ fastify.listen({ port: 3000 });
 
 ### Refund Cron (Embedded)
 
-When `onIssueToken` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
+When `fetchResourceCredentials` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
 
 ```
 ┌──────────────┐   ┌──────────────────────────────────────────────────┐   ┌──────────┐
@@ -407,7 +407,7 @@ When `onIssueToken` throws or the server crashes after payment but before delive
 │  pays USDC   │──▶│  │  Key2a Middleware                       │  │──▶│          │
 │              │   │  │  verify on-chain                            │  │◀──│          │
 │              │   │  │  PENDING ──────────────────────────▶ PAID   │  │   │          │
-│              │   │  │  onIssueToken() throws                      │  │   │          │
+│              │   │  │  fetchResourceCredentials() throws                      │  │   │          │
 │              │◀──│  │  record stays PAID                          │  │   │          │
 │              │   │  └────────────────────────────────────────────┘  │   │          │
 │              │   │                                                   │   │          │
@@ -501,7 +501,7 @@ Client Agent                          Seller Server
 4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
 5. **Proof** — Client submits a `PaymentProof` with the transaction hash
 6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
-7. **Grant** — Server calls `onIssueToken`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
+7. **Grant** — Server calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
 8. **Access** — Client uses the token as a Bearer header to access the protected resource
 
 ### HTTP x402 Flow (Gas Wallet / Facilitator)
@@ -542,7 +542,7 @@ Client                                Seller Server
 3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
 4. **Access** — Client uses the token as a Bearer header to access the protected resource.
 
-If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
+If `fetchResourceCredentials` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
 ## Clients
 
@@ -642,14 +642,14 @@ Redis storage provides:
 
 ## Token Issuance
 
-The `onIssueToken` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
+The `fetchResourceCredentials` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
 import { AccessTokenIssuer } from "@riklr/key2a";
 
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
-onIssueToken: async (params) => {
+fetchResourceCredentials: async (params) => {
   return tokenIssuer.sign(
     { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
     params.expiresIn,  // token TTL in seconds

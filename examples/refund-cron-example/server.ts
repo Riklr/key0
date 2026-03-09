@@ -77,7 +77,7 @@ app.use(
 			onVerifyResource: async (resourceId: string) => {
 				return ["item-1", "item-2", "item-3"].includes(resourceId);
 			},
-			onIssueToken: async (params) => {
+			fetchResourceCredentials: async (params) => {
 				console.log("New token issued", params);
 				throw new Error("No Token Issued"); // NOTE: This is for testing the refund cron
 

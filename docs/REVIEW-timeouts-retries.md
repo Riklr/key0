@@ -26,7 +26,7 @@ This document audits every async operation in the Key2a SDK for timeout protecti
 
 | Severity | Count | Category |
 |----------|-------|----------|
-| CRITICAL | 3 | Money stuck in PAID state (R1), no timeout on `onIssueToken` (T1), no timeout on facilitator fetch (T2) |
+| CRITICAL | 3 | Money stuck in PAID state (R1), no timeout on `fetchResourceCredentials` (T1), no timeout on facilitator fetch (T2) |
 | HIGH | 10 | Infinite lock loop (R4), no timeout on gas wallet/waitForReceipt/OAuth/Docker (T3, T5, T7-T8), no facilitator retry (R2), resource re-verify after settlement (S2), refund cron crashes (RC1-RC2), facilitator idempotency (SE3) |
 | MEDIUM | 10 | Implicit RPC timeout (T4), PAID->DELIVERED failure (S1), no `fromAddress` refund path (S3), non-atomic create (R3), pipeline unchecked (RD2), Redis errors (RD3), lock release (SE1), refund retry (RC3), refund batch (RC4), fire-and-forget hooks (F1) |
 | LOW | 8 | Timer leaks (T6), expired hook (F2), no health check (RD1), queue error swallow (SE2), lock key prefix (DL1), ghost sorted set entries (DC1), verbose logging (M1), hardcoded maxTimeout (M2) |
@@ -35,15 +35,15 @@ This document audits every async operation in the Key2a SDK for timeout protecti
 
 ## Timeout Gaps
 
-### T1. `onIssueToken` has NO timeout (CRITICAL)
+### T1. `fetchResourceCredentials` has NO timeout (CRITICAL)
 
 **File**: `src/core/challenge-engine.ts:376` (submitProof), `src/core/challenge-engine.ts:656` (processHttpPayment)
 
-**Problem**: The `onIssueToken` callback is awaited with no timeout. If the seller's token issuance hangs (e.g., remote service down, database lock), the request hangs forever. Critically, at this point the state is already **PAID** and `txHash` is already marked used — so the client has paid, money is locked, and no token is delivered.
+**Problem**: The `fetchResourceCredentials` callback is awaited with no timeout. If the seller's token issuance hangs (e.g., remote service down, database lock), the request hangs forever. Critically, at this point the state is already **PAID** and `txHash` is already marked used — so the client has paid, money is locked, and no token is delivered.
 
 **Current code**:
 ```ts
-const tokenResult = await this.config.onIssueToken({ ... });
+const tokenResult = await this.config.fetchResourceCredentials({ ... });
 ```
 
 **Impact**: Client pays USDC, record stays PAID forever (until refund cron runs, if one exists). HTTP request hangs indefinitely.
@@ -53,7 +53,7 @@ const tokenResult = await this.config.onIssueToken({ ... });
 ```ts
 const timeoutMs = this.config.tokenIssueTimeoutMs ?? 15_000;
 const tokenResult = await Promise.race([
-  this.config.onIssueToken({ ... }),
+  this.config.fetchResourceCredentials({ ... }),
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Key2aError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)), timeoutMs)
   ),
@@ -166,11 +166,11 @@ const exists = await Promise.race([
 
 ## Retry Gaps
 
-### R1. No retry on `onIssueToken` failure — PAID record orphaned (CRITICAL)
+### R1. No retry on `fetchResourceCredentials` failure — PAID record orphaned (CRITICAL)
 
 **File**: `src/core/challenge-engine.ts:376-382`, `src/core/challenge-engine.ts:656-662`
 
-**Problem**: If `onIssueToken` throws (remote service error, temporary DB issue), the exception propagates up. The challenge stays in **PAID** state with `txHash` marked as used. There is:
+**Problem**: If `fetchResourceCredentials` throws (remote service error, temporary DB issue), the exception propagates up. The challenge stays in **PAID** state with `txHash` marked as used. There is:
 - No retry attempt
 - No transition to an error state
 - No way for the client to retry (txHash is claimed)
@@ -180,9 +180,9 @@ The only recovery is the refund cron (if deployed), which refunds after `minAgeM
 **Impact**: Client pays, gets nothing. Must wait for refund (if cron exists).
 
 **Fix options** (in order of preference):
-1. **Immediate retry with backoff** — retry `onIssueToken` 2-3 times before giving up
+1. **Immediate retry with backoff** — retry `fetchResourceCredentials` 2-3 times before giving up
 2. **Transition to DELIVERY_FAILED state** — add a new state so operators can see and manually fix
-3. **Allow client retry** — if `processHttpPayment` is called again with the same `requestId` and the record is PAID, re-attempt `onIssueToken` instead of rejecting
+3. **Allow client retry** — if `processHttpPayment` is called again with the same `requestId` and the record is PAID, re-attempt `fetchResourceCredentials` instead of rejecting
 
 ---
 
@@ -262,7 +262,7 @@ async function acquireRedisLock(redis, key, token, maxWaitMs = 30_000): Promise<
 
 **File**: `src/core/challenge-engine.ts:403-406`, `src/core/challenge-engine.ts:684-687`
 
-**Problem**: After `onIssueToken` succeeds and returns a valid token, the PAID -> DELIVERED transition could fail (Redis down, connection timeout). If it fails:
+**Problem**: After `fetchResourceCredentials` succeeds and returns a valid token, the PAID -> DELIVERED transition could fail (Redis down, connection timeout). If it fails:
 - The transition is `await`ed before `return grant`, so the error propagates and the client gets a 500 — they **never receive** the AccessGrant.
 - The record stays PAID with a valid JWT already generated but never stored or delivered.
 - The `txHash` is marked used — client can't retry with the same txHash.
@@ -467,7 +467,7 @@ const lockKey = `key2a:settle-lock:${gasAccount.address}`;
 
 **File**: `src/helpers/docker-token-issuer.ts:38`
 
-**Problem**: The Docker token issuer's fetch to `ISSUE_TOKEN_API` has no timeout. This is called as `onIssueToken`, so it compounds with T1 — the engine has no timeout on the callback, and the callback itself has no timeout on its HTTP call. Double unprotected.
+**Problem**: The Docker token issuer's fetch to `ISSUE_TOKEN_API` has no timeout. This is called as `fetchResourceCredentials`, so it compounds with T1 — the engine has no timeout on the callback, and the callback itself has no timeout on its HTTP call. Double unprotected.
 
 **Fix**: Add `AbortController` with configurable timeout (default 10s).
 
@@ -535,7 +535,7 @@ const lockKey = `key2a:settle-lock:${gasAccount.address}`;
 
 **File**: `src/core/refund.ts:45-101`
 
-**Problem**: The `for` loop processes all eligible records sequentially. If there's a backlog of 1000+ PAID records (e.g., after a prolonged `onIssueToken` outage), the cron run could take hours since each `sendUsdc` waits for on-chain confirmation.
+**Problem**: The `for` loop processes all eligible records sequentially. If there's a backlog of 1000+ PAID records (e.g., after a prolonged `fetchResourceCredentials` outage), the cron run could take hours since each `sendUsdc` waits for on-chain confirmation.
 
 **Fix**: Add a `batchSize` config (default: 50) to limit records per cron run. Or process refunds in parallel with a concurrency limit.
 
@@ -631,9 +631,9 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 
 | # | Fix | Effort |
 |---|-----|--------|
-| T1 | Add timeout to `onIssueToken` calls | Small |
+| T1 | Add timeout to `fetchResourceCredentials` calls | Small |
 | T2 | Add `AbortController` timeout to facilitator fetch calls | Small |
-| R1 | Add retry logic for `onIssueToken` (2-3 attempts with backoff) | Medium |
+| R1 | Add retry logic for `fetchResourceCredentials` (2-3 attempts with backoff) | Medium |
 | R4 | Add max-wait to `acquireRedisLock` | Small |
 | S2 | Move resource re-verification before settlement, or skip it | Medium |
 | SE3 | Add on-chain lookup fallback after settlement network errors | Medium |
@@ -677,7 +677,7 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 | Operation | Has Timeout? | Default | Configurable? |
 |-----------|-------------|---------|---------------|
 | `onVerifyResource` | Yes | 5s | `resourceVerifyTimeoutMs` |
-| `onIssueToken` | Yes | 15s | `tokenIssueTimeoutMs` |
+| `fetchResourceCredentials` | Yes | 15s | `tokenIssueTimeoutMs` |
 | `settleViaFacilitator` /verify | Yes | 30s | No (hardcoded) |
 | `settleViaFacilitator` /settle | Yes | 60s | No (hardcoded) |
 | `settleViaGasWallet` verify | Yes | 30s | No (hardcoded) |
@@ -701,7 +701,7 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 
 | Operation | Has Retry? | Strategy | Idempotent? |
 |-----------|-----------|----------|-------------|
-| `onIssueToken` | Yes | 2 retries, exponential backoff (500ms base), **not on timeout** | Depends on implementation |
+| `fetchResourceCredentials` | Yes | 2 retries, exponential backoff (500ms base), **not on timeout** | Depends on implementation |
 | `onVerifyResource` | **NO** | - | Yes (read-only) |
 | Facilitator /verify | **NO** | - | Yes (read-only) |
 | Facilitator /settle | Yes | 2 retries, exponential backoff (500ms base), **not on PAYMENT_FAILED** | Partially (nonce-bound) |
@@ -721,7 +721,7 @@ Bugs discovered during code review of the timeout & retry implementation itself.
 
 **File**: `src/core/challenge-engine.ts` — `issueTokenWithRetry` catch block
 
-**Problem**: `Promise.race` does not cancel the losing promise. When the timeout fires, the original `onIssueToken` call is still in-flight. The retry loop catches the timeout error and spawns a second concurrent call, risking duplicate token issuance for the same challenge.
+**Problem**: `Promise.race` does not cancel the losing promise. When the timeout fires, the original `fetchResourceCredentials` call is still in-flight. The retry loop catches the timeout error and spawns a second concurrent call, risking duplicate token issuance for the same challenge.
 
 **Fix**: Break immediately on `TOKEN_ISSUE_TIMEOUT` — do not retry. Only transient errors (network blips, temporary service unavailability) are retried.
 

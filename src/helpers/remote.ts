@@ -111,7 +111,7 @@ export function createRemoteResourceVerifier(config: RemoteVerifierConfig): Reso
 }
 
 /**
- * Creates an onIssueToken callback that calls a remote HTTP endpoint.
+ * Creates an fetchResourceCredentials callback that calls a remote HTTP endpoint.
  * This is useful when you want your backend to issue custom tokens/API keys
  * instead of Key2a's native JWT.
  *
@@ -124,7 +124,7 @@ export function createRemoteResourceVerifier(config: RemoteVerifierConfig): Reso
  *
  * const config = {
  *   tokenMode: "remote",
- *   onIssueToken: issuer,
+ *   fetchResourceCredentials: issuer,
  *   // ...
  * };
  * ```

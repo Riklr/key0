@@ -64,7 +64,7 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		],
 		challengeTTLSeconds: 900,
 		onVerifyResource: async () => true,
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			const { AccessTokenIssuer } = await import("../core/access-token.js");
 			const issuer = new AccessTokenIssuer(SECRET);
 			return issuer.sign(
@@ -537,10 +537,10 @@ describe("createMcpServer — request_access happy path", () => {
 		expect(body.code).toBe("RESOURCE_NOT_FOUND");
 	});
 
-	test("onIssueToken return value becomes the accessToken in the grant", async () => {
+	test("fetchResourceCredentials return value becomes the accessToken in the grant", async () => {
 		const { engine, config } = makeEngine({
 			config: {
-				onIssueToken: async (params) => ({
+				fetchResourceCredentials: async (params) => ({
 					token: `custom-tok-${params.challengeId}`,
 					expiresAt: new Date(Date.now() + 3600 * 1000),
 					tokenType: "Bearer",

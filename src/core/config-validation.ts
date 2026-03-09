@@ -65,8 +65,8 @@ export function validateSellerConfig(config: SellerConfig): void {
 		throw new Error("SellerConfig: onVerifyResource must be a function");
 	}
 
-	// Validate onIssueToken is a function
-	if (typeof config.onIssueToken !== "function") {
-		throw new Error("SellerConfig: onIssueToken must be a function");
+	// Validate fetchResourceCredentials is a function
+	if (typeof config.fetchResourceCredentials !== "function") {
+		throw new Error("SellerConfig: fetchResourceCredentials must be a function");
 	}
 }
