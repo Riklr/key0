@@ -12,7 +12,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - agentgate-config:/app/config
+      - key2a-config:/app/config
     depends_on:
       redis:
         condition: service_healthy
@@ -29,4 +29,4 @@ services:
 
 volumes:
   redis-data:
-  agentgate-config:
+  key2a-config:

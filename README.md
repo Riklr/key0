@@ -51,7 +51,7 @@ There are two ways to configure Standalone mode:
 
 #### Option A: Setup UI (zero-config start)
 
-Just start the container with no environment variables — AgentGate boots into **Setup Mode** and serves a browser-based configuration wizard:
+Just start the container with no environment variables — Key2a boots into **Setup Mode** and serves a browser-based configuration wizard:
 
 ```bash
 docker compose -f docker/docker-compose.yml up
@@ -60,7 +60,7 @@ docker compose -f docker/docker-compose.yml up
 
 The Setup UI lets you configure everything visually: wallet address, network, product tiers, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
 
-Configuration is persisted in a Docker volume (`agentgate-config`), so it survives `docker compose down` / `up` cycles.
+Configuration is persisted in a Docker volume (`key2a-config`), so it survives `docker compose down` / `up` cycles.
 
 The Setup UI also works as a **standalone config generator** — open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy.
 

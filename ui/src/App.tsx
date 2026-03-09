@@ -33,7 +33,7 @@ export default function App() {
 						redisUrl: data.config.redisUrl ?? "redis://redis:6379",
 						port: data.config.port ?? "3000",
 						basePath: data.config.basePath ?? "/a2a",
-						agentName: data.config.agentName ?? "AgentGate Server",
+						agentName: data.config.agentName ?? "Key2a Server",
 						agentDescription: data.config.agentDescription ?? "Payment-gated A2A endpoint",
 						agentUrl: data.config.agentUrl ?? "",
 						providerName: data.config.providerName ?? "",
@@ -133,7 +133,7 @@ export default function App() {
 							</svg>
 						</div>
 						<div>
-							<h1 className="text-base font-semibold text-neutral-100">AgentGate</h1>
+							<h1 className="text-base font-semibold text-neutral-100">Key2a</h1>
 							<p className="text-xs text-neutral-500">Standalone Setup</p>
 						</div>
 					</div>
@@ -196,7 +196,7 @@ export default function App() {
 							<Field
 								label="Issue Token API"
 								required
-								hint="AgentGate POSTs here after payment is verified"
+								hint="Key2a POSTs here after payment is verified"
 							>
 								<Input
 									value={config.issueTokenApi}
@@ -233,7 +233,7 @@ export default function App() {
 								<Input
 									value={config.agentName}
 									onChange={(e) => set("agentName", e.target.value)}
-									placeholder="AgentGate Server"
+									placeholder="Key2a Server"
 								/>
 							</Field>
 							<Field label="Agent Description">

@@ -51,7 +51,7 @@ export const defaultConfig: Config = {
 	port: "3000",
 	basePath: "/a2a",
 
-	agentName: "AgentGate Server",
+	agentName: "Key2a Server",
 	agentDescription: "Payment-gated A2A endpoint",
 	agentUrl: "http://localhost:3000",
 	providerName: "",

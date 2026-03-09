@@ -3,18 +3,18 @@ import type { Config } from "./types";
 export function generateEnv(config: Config): string {
 	const lines: string[] = [
 		"# ──────────────────────────────────────────────────────────────────────────────",
-		"# AgentGate Docker — Generated Configuration",
+		"# Key2a Docker — Generated Configuration",
 		"# ──────────────────────────────────────────────────────────────────────────────",
 		"",
 		"# ── Required ──────────────────────────────────────────────────────────────────",
 		"",
-		`AGENTGATE_WALLET_ADDRESS=${config.walletAddress}`,
+		`KEY2A_WALLET_ADDRESS=${config.walletAddress}`,
 		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
 		`REDIS_URL=${config.redisUrl}`,
 		"",
 		"# ── Network ───────────────────────────────────────────────────────────────────",
 		"",
-		`AGENTGATE_NETWORK=${config.network}`,
+		`KEY2A_NETWORK=${config.network}`,
 		"",
 		"# ── Server ────────────────────────────────────────────────────────────────────",
 		"",
@@ -96,7 +96,7 @@ export function generateEnv(config: Config): string {
 			"",
 			"# ── Refund Cron ───────────────────────────────────────────────────────────────",
 			"",
-			`AGENTGATE_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
+			`KEY2A_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
 		);
 		if (config.refundIntervalMs !== "60000") {
 			lines.push(`REFUND_INTERVAL_MS=${config.refundIntervalMs}`);
@@ -113,10 +113,10 @@ export function generateEnv(config: Config): string {
 export function generateDockerRun(config: Config): string {
 	const envFlags: string[] = [];
 
-	envFlags.push(`-e AGENTGATE_WALLET_ADDRESS=${config.walletAddress}`);
+	envFlags.push(`-e KEY2A_WALLET_ADDRESS=${config.walletAddress}`);
 	envFlags.push(`-e ISSUE_TOKEN_API=${config.issueTokenApi}`);
 	envFlags.push(`-e REDIS_URL=${config.redisUrl}`);
-	envFlags.push(`-e AGENTGATE_NETWORK=${config.network}`);
+	envFlags.push(`-e KEY2A_NETWORK=${config.network}`);
 	envFlags.push(`-e PORT=${config.port}`);
 	envFlags.push(`-e AGENT_NAME="${config.agentName}"`);
 	envFlags.push(`-e AGENT_DESCRIPTION="${config.agentDescription}"`);
@@ -155,17 +155,17 @@ export function generateDockerRun(config: Config): string {
 		envFlags.push(`-e GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`);
 	}
 	if (config.walletPrivateKey) {
-		envFlags.push(`-e AGENTGATE_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
+		envFlags.push(`-e KEY2A_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
 	}
 
-	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/agentgate:latest`;
+	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/key2a:latest`;
 }
 
 export function generateDockerCompose(config: Config): string {
 	const envVars: Record<string, string> = {
-		AGENTGATE_WALLET_ADDRESS: config.walletAddress,
+		KEY2A_WALLET_ADDRESS: config.walletAddress,
 		ISSUE_TOKEN_API: config.issueTokenApi,
-		AGENTGATE_NETWORK: config.network,
+		KEY2A_NETWORK: config.network,
 		PORT: config.port,
 		AGENT_NAME: config.agentName,
 		AGENT_DESCRIPTION: config.agentDescription,
@@ -201,7 +201,7 @@ export function generateDockerCompose(config: Config): string {
 		envVars.GAS_WALLET_PRIVATE_KEY = config.gasWalletPrivateKey;
 	}
 	if (config.walletPrivateKey) {
-		envVars.AGENTGATE_WALLET_PRIVATE_KEY = config.walletPrivateKey;
+		envVars.KEY2A_WALLET_PRIVATE_KEY = config.walletPrivateKey;
 		if (config.refundIntervalMs !== "60000") {
 			envVars.REFUND_INTERVAL_MS = config.refundIntervalMs;
 		}
@@ -215,8 +215,8 @@ export function generateDockerCompose(config: Config): string {
 		.join("\n");
 
 	return `services:
-  agentgate:
-    image: riklr/agentgate:latest
+  key2a:
+    image: riklr/key2a:latest
     ports:
       - "${config.port}:${config.port}"
     environment:
