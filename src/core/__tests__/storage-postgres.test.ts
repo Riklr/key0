@@ -53,7 +53,7 @@ function createMockSql() {
 			return { __updates: updates };
 		}
 
-		const query = (strings as TemplateStringsArray).join("?").toLowerCase();
+		const query = (strings as unknown as TemplateStringsArray).join("?").toLowerCase();
 
 		let result: Row[] = [];
 		let count = 0;
@@ -79,7 +79,8 @@ function createMockSql() {
 			result = findRows(
 				tableName,
 				(r) =>
-					r.challenge_id === challengeId && (r.deleted_at === null || r.deleted_at === undefined),
+					r["challenge_id"] === challengeId &&
+					(r["deleted_at"] === null || r["deleted_at"] === undefined),
 			);
 			count = 0;
 		}
@@ -89,14 +90,17 @@ function createMockSql() {
 			const requestId = values[1];
 			const matches = findRows(
 				tableName,
-				(r) => r.request_id === requestId && (r.deleted_at === null || r.deleted_at === undefined),
+				(r) =>
+					r["request_id"] === requestId &&
+					(r["deleted_at"] === null || r["deleted_at"] === undefined),
 			);
 			// Sort by created_at DESC and take first (matching ORDER BY created_at DESC LIMIT 1)
 			if (query.includes("order by") && query.includes("limit")) {
 				result = matches
 					.sort(
 						(a, b) =>
-							new Date(b.created_at as Date).getTime() - new Date(a.created_at as Date).getTime(),
+							new Date(b["created_at"] as Date).getTime() -
+							new Date(a["created_at"] as Date).getTime(),
 					)
 					.slice(0, 1);
 			} else {
@@ -110,10 +114,10 @@ function createMockSql() {
 			result = findRows(
 				tableName,
 				(r) =>
-					r.state === "PAID" &&
-					r.from_address !== null &&
-					r.from_address !== undefined &&
-					(r.deleted_at === null || r.deleted_at === undefined),
+					r["state"] === "PAID" &&
+					r["from_address"] !== null &&
+					r["from_address"] !== undefined &&
+					(r["deleted_at"] === null || r["deleted_at"] === undefined),
 			);
 			count = 0;
 		}
@@ -123,7 +127,7 @@ function createMockSql() {
 			const rows = tables.get(tableName) || [];
 
 			// Enforce primary key uniqueness on challenge_id to mimic Postgres behavior.
-			const existing = rows.find((r) => r.challenge_id === values[1]);
+			const existing = rows.find((r) => r["challenge_id"] === values[1]);
 			if (existing) {
 				const error = new Error(
 					'duplicate key value violates unique constraint "challenges_pkey"',
@@ -169,7 +173,7 @@ function createMockSql() {
 			const rows = tables.get(tableName) || [];
 
 			// Check if already exists
-			const existing = rows.find((r) => r.tx_hash === txHash);
+			const existing = rows.find((r) => r["tx_hash"] === txHash);
 			if (existing) {
 				result = [];
 				count = 0; // ON CONFLICT DO NOTHING
@@ -188,7 +192,7 @@ function createMockSql() {
 		else if (query.includes("select * from") && query.includes("where tx_hash")) {
 			const tableName = values[0];
 			const txHash = values[1];
-			result = findRows(tableName, (r) => r.tx_hash === txHash);
+			result = findRows(tableName, (r) => r["tx_hash"] === txHash);
 			count = 0;
 		}
 		// UPDATE (for transition and cleanup)
@@ -208,9 +212,9 @@ function createMockSql() {
 			count = updateRows(
 				tableName,
 				(r) =>
-					r.challenge_id === challengeId &&
-					r.state === fromState &&
-					(r.deleted_at === null || r.deleted_at === undefined),
+					r["challenge_id"] === challengeId &&
+					r["state"] === fromState &&
+					(r["deleted_at"] === null || r["deleted_at"] === undefined),
 				updates,
 			);
 			result = [];
@@ -222,11 +226,11 @@ function createMockSql() {
 			let updated = 0;
 			const rows = tables.get(tableName) || [];
 			for (const row of rows) {
-				if (row.deleted_at !== null && row.deleted_at !== undefined) continue;
+				if (row["deleted_at"] !== null && row["deleted_at"] !== undefined) continue;
 
-				const state = row.state as string;
-				const deliveredAt = row.delivered_at as Date | undefined;
-				const createdAt = new Date(row.created_at as Date);
+				const state = row["state"] as string;
+				const deliveredAt = row["delivered_at"] as Date | undefined;
+				const createdAt = new Date(row["created_at"] as Date);
 
 				let shouldDelete = false;
 				if (state === "DELIVERED" && deliveredAt) {
@@ -244,7 +248,7 @@ function createMockSql() {
 				}
 
 				if (shouldDelete) {
-					row.deleted_at = now;
+					row["deleted_at"] = now;
 					updated++;
 				}
 			}
@@ -258,8 +262,8 @@ function createMockSql() {
 			const rows = tables.get(tableName) || [];
 			const beforeCount = rows.length;
 			const filtered = rows.filter((r) => {
-				if (r.deleted_at === null || r.deleted_at === undefined) return true;
-				return new Date(r.deleted_at as Date) >= olderThan;
+				if (r["deleted_at"] === null || r["deleted_at"] === undefined) return true;
+				return new Date(r["deleted_at"] as Date) >= olderThan;
 			});
 			tables.set(tableName, filtered);
 			count = beforeCount - filtered.length;
@@ -278,7 +282,7 @@ function createMockSql() {
 	sql.json = (obj: unknown) => obj;
 
 	// Expose tables for inspection
-	(sql as { _tables: Map<string, Row[]> })._tables = tables;
+	(sql as unknown as { _tables: Map<string, Row[]> })._tables = tables;
 
 	return sql as unknown as {
 		// biome-ignore lint/suspicious/noExplicitAny: mock type
@@ -545,7 +549,7 @@ describe("PostgresChallengeStore", () => {
 		// Find records older than 5 minutes (300,000 ms)
 		const results = await store.findPendingForRefund(300_000);
 		expect(results.length).toBe(1);
-		expect(results[0].challengeId).toBe(record.challengeId);
+		expect(results[0]!.challengeId).toBe(record.challengeId);
 	});
 
 	test("cleanup soft-deletes old records", async () => {
@@ -601,11 +605,11 @@ describe("PostgresChallengeStore", () => {
 		await store.create(record);
 
 		// Manually soft-delete by setting deleted_at (simulating cleanup)
-		const tables = (sql as { _tables: Map<string, Row[]> })._tables;
+		const tables = (sql as unknown as { _tables: Map<string, Row[]> })._tables;
 		const rows = tables.get("agentgate_challenges") || [];
-		const row = rows.find((r) => r.challenge_id === record.challengeId);
+		const row = rows.find((r) => r["challenge_id"] === record.challengeId);
 		if (row) {
-			row.deleted_at = new Date(Date.now() - 1000 * 60 * 60 * 24); // 1 day ago
+			row["deleted_at"] = new Date(Date.now() - 1000 * 60 * 60 * 24); // 1 day ago
 		}
 
 		// Purge records deleted more than 12 hours ago
@@ -615,7 +619,7 @@ describe("PostgresChallengeStore", () => {
 
 		// Verify record is permanently deleted
 		const remainingRows = tables.get("agentgate_challenges") || [];
-		expect(remainingRows.find((r) => r.challenge_id === record.challengeId)).toBeUndefined();
+		expect(remainingRows.find((r) => r["challenge_id"] === record.challengeId)).toBeUndefined();
 	});
 });
 

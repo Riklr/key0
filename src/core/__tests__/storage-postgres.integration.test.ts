@@ -12,7 +12,7 @@ import { PostgresChallengeStore, PostgresSeenTxStore } from "../storage/postgres
 // In CI, point AGENTGATE_TEST_PG_URL at a dedicated throwaway database or a
 // Testcontainers-managed instance.
 
-const PG_URL = process.env.AGENTGATE_TEST_PG_URL ?? "postgresql://localhost:5432/agentgate";
+const PG_URL = process.env["AGENTGATE_TEST_PG_URL"] ?? "postgresql://localhost:5432/agentgate";
 
 // Use a distinct prefix so we never collide with production tables even if the
 // same database is (mis)configured.
