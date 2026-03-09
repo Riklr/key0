@@ -9,7 +9,9 @@ const REFUND_TX_HASH = `0x${"cc".repeat(32)}` as `0x${string}`;
 // Mutable delegate — swap per-test to simulate success, failure, or custom behaviour
 let sendUsdcImpl: () => Promise<`0x${string}`> = async () => REFUND_TX_HASH;
 
-mock.module("../../adapter/send-usdc.js", () => ({
+// NOTE: The specifier string here MUST match the one used in ../refund.ts
+// so that Bun's module mocking intercepts the correct import.
+mock.module("../adapter/send-usdc.js", () => ({
 	sendUsdc: () => sendUsdcImpl(),
 }));
 
