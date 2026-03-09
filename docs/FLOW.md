@@ -134,6 +134,15 @@ All transitions use **atomic Lua scripts** — if `currentState != expectedFromS
 
 ## Redis Schema
 
+### Health Check
+
+`RedisChallengeStore` exposes a `healthCheck()` method that sends a `PING` to Redis and throws if the response is not `PONG`. This is **not called automatically** by `createAgentGate()` — callers should invoke it at startup for fail-fast behavior:
+
+```ts
+const { engine, store } = createAgentGate(config);
+await store.healthCheck(); // throws if Redis is unreachable
+```
+
 ### Key Naming Convention
 
 All keys use the prefix `agentgate` (configurable via `keyPrefix`).
