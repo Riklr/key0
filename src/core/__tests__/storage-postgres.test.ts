@@ -83,22 +83,16 @@ function createMockSql() {
 			);
 			count = 0;
 		}
-		// SELECT * WHERE request_id (with optional state and expires_at filters for findActiveByRequestId)
+		// SELECT * WHERE request_id
 		else if (query.includes("select * from") && query.includes("where request_id")) {
 			const tableName = values[0];
 			const requestId = values[1];
-			const now = new Date();
-			// Check if this is the findActiveByRequestId query (has state and expires_at filters)
-			if (query.includes("state = 'pending'") && query.includes("expires_at > now()")) {
-				const matches = findRows(
-					tableName,
-					(r) =>
-						r.request_id === requestId &&
-						r.state === "PENDING" &&
-						new Date(r.expires_at as Date) > now &&
-						(r.deleted_at === null || r.deleted_at === undefined),
-				);
-				// Sort by created_at DESC and take first (matching ORDER BY created_at DESC LIMIT 1)
+			const matches = findRows(
+				tableName,
+				(r) => r.request_id === requestId && (r.deleted_at === null || r.deleted_at === undefined),
+			);
+			// Sort by created_at DESC and take first (matching ORDER BY created_at DESC LIMIT 1)
+			if (query.includes("order by") && query.includes("limit")) {
 				result = matches
 					.sort(
 						(a, b) =>
@@ -106,7 +100,7 @@ function createMockSql() {
 					)
 					.slice(0, 1);
 			} else {
-				result = findRows(tableName, (r) => r.request_id === requestId);
+				result = matches;
 			}
 			count = 0;
 		}

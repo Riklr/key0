@@ -13,7 +13,7 @@ import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
 import { CHAIN_CONFIGS } from "../types/config-shared.js";
 import type { SellerConfig } from "../types/index.js";
 
-const _SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
+const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(): SellerConfig {

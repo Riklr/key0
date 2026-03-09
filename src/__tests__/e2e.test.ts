@@ -12,7 +12,7 @@ import { MockPaymentAdapter, TestChallengeStore, TestSeenTxStore } from "../test
 import type { SellerConfig } from "../types";
 import { X402_METADATA_KEYS } from "../types";
 
-const _SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
+const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(): SellerConfig {
