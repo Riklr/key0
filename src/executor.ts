@@ -10,7 +10,7 @@ import type {
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
-import { Key2aError, CHAIN_CONFIGS, X402_METADATA_KEYS } from "./types/index.js";
+import { CHAIN_CONFIGS, Key2aError, X402_METADATA_KEYS } from "./types/index.js";
 
 export class Key2aExecutor implements AgentExecutor {
 	private readonly config: SellerConfig;

@@ -2,13 +2,13 @@ import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import {
 	type AccessGrant,
 	type AccessRequest,
-	Key2aError,
 	CHAIN_CONFIGS,
 	CHAIN_ID_TO_NETWORK,
 	type ChallengeRecord,
 	type IChallengeStore,
 	type IPaymentAdapter,
 	type ISeenTxStore,
+	Key2aError,
 	type NetworkConfig,
 	type PaymentProof,
 	type ProductTier,
@@ -68,8 +68,7 @@ export class ChallengeEngine {
 				this.config.onIssueToken(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
-						() =>
-							reject(new Key2aError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
+						() => reject(new Key2aError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
 						timeoutMs,
 					);
 				}),
@@ -346,14 +345,9 @@ export class ChallengeEngine {
 		// 7. Double-spend guard
 		const alreadyUsed = await this.seenTxStore.get(proof.txHash);
 		if (alreadyUsed) {
-			throw new Key2aError(
-				"TX_ALREADY_REDEEMED",
-				"This txHash has already been redeemed",
-				409,
-				{
-					existingChallengeId: alreadyUsed,
-				},
-			);
+			throw new Key2aError("TX_ALREADY_REDEEMED", "This txHash has already been redeemed", 409, {
+				existingChallengeId: alreadyUsed,
+			});
 		}
 
 		// 8. On-chain verification
@@ -554,11 +548,7 @@ export class ChallengeEngine {
 		// 1. Validate tier
 		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new Key2aError(
-				"TIER_NOT_FOUND",
-				`Tier "${tierId}" not found in product catalog`,
-				400,
-			);
+			throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
 		}
 
 		// 2. Verify resource exists
@@ -676,22 +666,15 @@ export class ChallengeEngine {
 		// 1. Validate tier
 		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new Key2aError(
-				"TIER_NOT_FOUND",
-				`Tier "${tierId}" not found in product catalog`,
-				400,
-			);
+			throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
 		}
 
 		// 3. Double-spend guard
 		const alreadyUsed = await this.seenTxStore.get(txHash);
 		if (alreadyUsed) {
-			throw new Key2aError(
-				"TX_ALREADY_REDEEMED",
-				"This txHash has already been redeemed",
-				409,
-				{ existingChallengeId: alreadyUsed },
-			);
+			throw new Key2aError("TX_ALREADY_REDEEMED", "This txHash has already been redeemed", 409, {
+				existingChallengeId: alreadyUsed,
+			});
 		}
 
 		// 4. Look up PENDING record created by requestHttpAccess (step 1).

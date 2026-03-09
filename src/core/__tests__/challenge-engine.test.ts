@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MockPaymentAdapter } from "../../test-utils";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
-import {
-	type AccessRequest,
-	Key2aError,
-	type PaymentProof,
-	type SellerConfig,
-} from "../../types";
+import { type AccessRequest, Key2aError, type PaymentProof, type SellerConfig } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
 
 // ---------------------------------------------------------------------------

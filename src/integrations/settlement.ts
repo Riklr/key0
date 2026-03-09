@@ -319,18 +319,10 @@ export async function settleViaFacilitator(
 
 			const res = (await settleRes.json()) as X402SettleResponse;
 			if (!res.success) {
-				throw new Key2aError(
-					"PAYMENT_FAILED",
-					res.errorReason || "Payment settlement failed",
-					402,
-				);
+				throw new Key2aError("PAYMENT_FAILED", res.errorReason || "Payment settlement failed", 402);
 			}
 			if (!res.transaction) {
-				throw new Key2aError(
-					"PAYMENT_FAILED",
-					"Facilitator did not return transaction hash",
-					500,
-				);
+				throw new Key2aError("PAYMENT_FAILED", "Facilitator did not return transaction hash", 500);
 			}
 			return res;
 		},
@@ -360,11 +352,7 @@ export async function settleViaGasWallet(
 	let payer: string | undefined = paymentPayload.payload?.authorization?.from ?? undefined;
 	const requirement = paymentPayload.accepted;
 	if (!requirement) {
-		throw new Key2aError(
-			"INVALID_REQUEST",
-			"Payment payload missing 'accepted' requirement",
-			400,
-		);
+		throw new Key2aError("INVALID_REQUEST", "Payment payload missing 'accepted' requirement", 400);
 	}
 
 	const gasAccount = privateKeyToAccount(privateKey);

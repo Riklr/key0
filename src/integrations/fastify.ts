@@ -1,6 +1,6 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type Key2aConfig, createKey2a } from "../factory.js";
+import { createKey2a, type Key2aConfig } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { Key2aError } from "../types/index.js";
@@ -11,10 +11,7 @@ import { Key2aError } from "../types/index.js";
  * Usage:
  *   fastify.register(key2aPlugin, { config, adapter });
  */
-export async function key2aPlugin(
-	fastify: FastifyInstance,
-	opts: Key2aConfig,
-): Promise<void> {
+export async function key2aPlugin(fastify: FastifyInstance, opts: Key2aConfig): Promise<void> {
 	const { requestHandler, agentCard } = createKey2a(opts);
 
 	// Agent Card

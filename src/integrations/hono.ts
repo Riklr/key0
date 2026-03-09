@@ -1,6 +1,6 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { Hono } from "hono";
-import { type Key2aConfig, createKey2a } from "../factory.js";
+import { createKey2a, type Key2aConfig } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { Key2aError } from "../types/index.js";

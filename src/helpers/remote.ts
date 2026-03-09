@@ -165,11 +165,7 @@ export function createRemoteTokenIssuer(
 
 			// Expecting { token: string, expiresAt: string|Date, tokenType?: string }
 			if (!data.token) {
-				throw new Key2aError(
-					"TOKEN_ISSUE_FAILED",
-					"Backend response missing 'token' field",
-					502,
-				);
+				throw new Key2aError("TOKEN_ISSUE_FAILED", "Backend response missing 'token' field", 502);
 			}
 
 			return {

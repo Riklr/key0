@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
-import { key2aWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
+import { clientWalletAddress, key2aWalletAddress } from "../fixtures/wallets.ts";
 import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { pollUntil } from "../helpers/wait.ts";
 

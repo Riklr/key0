@@ -40,9 +40,9 @@ export { Key2aError } from "./errors.js";
 
 export type { ChallengeTransitionUpdates, IChallengeStore, ISeenTxStore } from "./storage.js";
 export type {
-	Key2aExtension,
 	EIP3009Authorization,
 	FacilitatorVerifyResponse,
+	Key2aExtension,
 	PaymentRequirements,
 	ResourceInfo,
 	X402PaymentPayload,

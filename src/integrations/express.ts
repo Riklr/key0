@@ -6,11 +6,11 @@ import {
 	UserBuilder,
 } from "@a2a-js/sdk/server/express";
 import { type NextFunction, type Request, type Response, Router } from "express";
-import { type Key2aConfig, createKey2a } from "../factory.js";
+import { createKey2a, type Key2aConfig } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import type { X402PaymentRequiredResponse } from "../types/index.js";
-import { Key2aError, CHAIN_CONFIGS } from "../types/index.js";
+import { CHAIN_CONFIGS, Key2aError } from "../types/index.js";
 import { mountMcpRoutes } from "./mcp.js";
 import {
 	buildDiscoveryResponse,

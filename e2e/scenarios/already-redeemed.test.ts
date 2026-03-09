@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { KEY2A_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+import { DEFAULT_TIER_ID, KEY2A_URL } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeState } from "../helpers/storage-client.ts";
 

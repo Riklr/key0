@@ -5,7 +5,7 @@ import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import type { ChallengeEngine } from "../core/index.js";
 import type { NetworkConfig, SellerConfig, X402PaymentPayload } from "../types/index.js";
-import { Key2aError, CHAIN_CONFIGS } from "../types/index.js";
+import { CHAIN_CONFIGS, Key2aError } from "../types/index.js";
 import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
 
 // ---------------------------------------------------------------------------
