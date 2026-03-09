@@ -65,7 +65,7 @@ function resolveAuth(
 export function createRemoteResourceVerifier(config: RemoteVerifierConfig): ResourceVerifier {
 	const getAuthHeaders = resolveAuth(config.auth, config.secret, config.headerName);
 
-	return async (resourceId: string, tierId: string): Promise<boolean> => {
+	return async (resourceId: string, planId: string): Promise<boolean> => {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 5000);
 
@@ -77,7 +77,7 @@ export function createRemoteResourceVerifier(config: RemoteVerifierConfig): Reso
 					"Content-Type": "application/json",
 					...headers,
 				},
-				body: JSON.stringify({ resourceId, tierId }),
+				body: JSON.stringify({ resourceId, planId }),
 				signal: controller.signal,
 			});
 

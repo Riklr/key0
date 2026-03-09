@@ -9,7 +9,7 @@ describe("Happy Path: full purchase → JWT → protected API", () => {
 		// Step 1: Request access → get challenge + payment requirements
 		const requestId = crypto.randomUUID();
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			resourceId: "resource-1",
 		});
@@ -36,7 +36,7 @@ describe("Happy Path: full purchase → JWT → protected API", () => {
 
 		// Step 3: Submit payment → gas wallet settles, returns AccessGrant
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			resourceId: "resource-1",
 			auth,

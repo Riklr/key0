@@ -65,13 +65,13 @@ app.use(
 			walletAddress: WALLET,
 			network: NETWORK,
 			challengeTTLSeconds: 900,
-			products: [
+			plans: [
 				{
-					tierId: "single",
-					label: "Single access",
-					amount: "$0.10",
+					planId: "single",
+					displayName: "Single access",
+					unitAmount: "$0.10",
 					resourceType: "data",
-					accessDurationSeconds: 3600,
+					expiresIn: 3600,
 				},
 			],
 			onVerifyResource: async (resourceId: string) => {
@@ -87,7 +87,7 @@ app.use(
 				// 		sub: params.requestId,
 				// 		jti: params.challengeId,
 				// 		resourceId: params.resourceId,
-				// 		tierId: params.tierId,
+				// 		planId: params.planId,
 				// 		txHash: params.txHash,
 				// 	},
 				// 	3600,

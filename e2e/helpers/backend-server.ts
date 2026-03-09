@@ -26,7 +26,7 @@ export function startBackend(): Promise<Server> {
 
 	// ── Token issuance ──────────────────────────────────────────────────────
 	app.post("/internal/issue-token", async (req, res) => {
-		const { challengeId, requestId, resourceId, tierId, txHash } = req.body as Record<
+		const { challengeId, requestId, resourceId, planId, txHash } = req.body as Record<
 			string,
 			string
 		>;
@@ -42,7 +42,7 @@ export function startBackend(): Promise<Server> {
 			return;
 		}
 
-		const token = await new SignJWT({ challengeId, requestId, resourceId, tierId, txHash })
+		const token = await new SignJWT({ challengeId, requestId, resourceId, planId, txHash })
 			.setProtectedHeader({ alg: "HS256" })
 			.setIssuedAt()
 			.setExpirationTime("1h")

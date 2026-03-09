@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Field, Input, Select } from "./components/Field";
 import { OutputPanel } from "./components/OutputPanel";
-import { ProductEditor } from "./components/ProductEditor";
+import { PlanEditor } from "./components/PlanEditor";
 import { Section } from "./components/Section";
 import { type Config, defaultConfig } from "./types";
 
@@ -61,8 +61,8 @@ export default function App() {
 		config.walletAddress.length === 42 &&
 		config.issueTokenApi.length > 0 &&
 		config.redisUrl.length > 0 &&
-		config.products.length > 0 &&
-		config.products.every((p) => p.tierId && p.label && p.amount);
+		config.plans.length > 0 &&
+		config.plans.every((p) => p.planId && p.displayName && p.unitAmount);
 
 	const isDockerMode = serverStatus === "setup" || serverStatus === "running";
 
@@ -217,8 +217,8 @@ export default function App() {
 
 						<div className="border-t border-neutral-800/50" />
 
-						<Section icon="T" title="Product Tiers" description="Define pricing tiers for your API">
-							<ProductEditor products={config.products} onChange={(p) => set("products", p)} />
+						<Section icon="T" title="Pricing Plans" description="Define pricing plans for your API">
+							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
 						</Section>
 
 						<div className="border-t border-neutral-800/50" />

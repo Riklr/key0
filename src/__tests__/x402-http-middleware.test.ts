@@ -27,9 +27,19 @@ function makeConfig(): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [
-			{ tierId: "basic", label: "Basic Access", amount: "$0.99", resourceType: "api-call" },
-			{ tierId: "premium", label: "Premium Access", amount: "$4.99", resourceType: "api-call" },
+		plans: [
+			{
+				planId: "basic",
+				displayName: "Basic Access",
+				unitAmount: "$0.99",
+				resourceType: "api-call",
+			},
+			{
+				planId: "premium",
+				displayName: "Premium Access",
+				unitAmount: "$4.99",
+				resourceType: "api-call",
+			},
 		],
 		challengeTTLSeconds: 900,
 		onVerifyResource: async (resourceId: string) => {
@@ -41,7 +51,7 @@ function makeConfig(): SellerConfig {
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				3600,
@@ -142,7 +152,7 @@ describe("x402-http-middleware", () => {
 
 			expect(() =>
 				buildHttpPaymentRequirements("invalid-tier", "default", config, networkConfig),
-			).toThrow('Tier "invalid-tier" not found');
+			).toThrow('Plan "invalid-tier" not found');
 		});
 	});
 
@@ -176,7 +186,7 @@ describe("x402-http-middleware", () => {
 							parts: [
 								{
 									kind: "data",
-									data: { type: "AccessRequest", requestId: "test", tierId: "basic" },
+									data: { type: "AccessRequest", requestId: "test", planId: "basic" },
 								},
 							],
 						},
@@ -248,7 +258,7 @@ describe("x402-http-middleware", () => {
 								data: {
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "basic",
+									planId: "basic",
 									resourceId: "default",
 								},
 							},
@@ -291,7 +301,7 @@ describe("x402-http-middleware", () => {
 								data: {
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "basic",
+									planId: "basic",
 									resourceId: "nonexistent",
 								},
 							},
@@ -320,7 +330,7 @@ describe("x402-http-middleware", () => {
 								data: {
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "invalid-tier",
+									planId: "invalid-tier",
 									resourceId: "default",
 								},
 							},
@@ -349,7 +359,7 @@ describe("x402-http-middleware", () => {
 								text: JSON.stringify({
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "basic",
+									planId: "basic",
 									resourceId: "default",
 								}),
 							},
@@ -601,7 +611,7 @@ describe("x402-http-middleware", () => {
 			expect(record).toBeDefined();
 			expect(record!.state).toBe("PENDING");
 			expect(record!.requestId).toBe("req-1");
-			expect(record!.tierId).toBe("basic");
+			expect(record!.planId).toBe("basic");
 			expect(record!.clientAgentId).toBe("x402-http");
 		});
 
@@ -614,7 +624,7 @@ describe("x402-http-middleware", () => {
 
 		test("should reject invalid tier", async () => {
 			await expect(engine.requestHttpAccess("req-1", "invalid-tier", "default")).rejects.toThrow(
-				'Tier "invalid-tier" not found',
+				'Plan "invalid-tier" not found',
 			);
 		});
 
@@ -650,7 +660,7 @@ describe("x402-http-middleware", () => {
 			const grant = await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
 			expect(grant.type).toBe("AccessGrant");
-			expect(grant.tierId).toBe("basic");
+			expect(grant.planId).toBe("basic");
 			expect(grant.resourceId).toBe("default");
 			expect(grant.txHash).toBe(txHash);
 			expect(grant.accessToken).toBeDefined();
@@ -732,7 +742,7 @@ describe("x402-http-middleware", () => {
 
 			await expect(
 				engine.processHttpPayment("req-1", "invalid-tier", "default", txHash),
-			).rejects.toThrow('Tier "invalid-tier" not found');
+			).rejects.toThrow('Plan "invalid-tier" not found');
 		});
 
 		test("should reject nonexistent resource via verifyResource (pre-settlement check)", async () => {

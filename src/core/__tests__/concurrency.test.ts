@@ -8,7 +8,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",

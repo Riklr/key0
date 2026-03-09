@@ -17,7 +17,7 @@ describe("Happy Path with State Verification", () => {
 
 		// Step 1: Request access → PENDING
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -28,7 +28,7 @@ describe("Happy Path with State Verification", () => {
 		const pendingRecord = await readChallengeRecord(challengeId);
 		expect(pendingRecord).not.toBeNull();
 		expect(pendingRecord!["requestId"]).toBe(requestId);
-		expect(pendingRecord!["tierId"]).toBe(DEFAULT_TIER_ID);
+		expect(pendingRecord!["planId"]).toBe(DEFAULT_TIER_ID);
 		expect(pendingRecord!["destination"]).toBe(key2aWalletAddress());
 		expect(pendingRecord!["asset"]).toBe("USDC");
 		expect(pendingRecord!["chainId"]).toBe("84532");
@@ -41,7 +41,7 @@ describe("Happy Path with State Verification", () => {
 		});
 
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,

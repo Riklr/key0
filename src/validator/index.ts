@@ -4,7 +4,7 @@ export type AccessTokenPayload = JWTPayload & {
 	readonly sub: string; // requestId
 	readonly jti: string; // challengeId
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly txHash: string;
 };
 
@@ -60,7 +60,7 @@ export async function validateKey2aToken(
 		});
 
 		// Validate required claims
-		const required = ["sub", "jti", "resourceId", "tierId", "txHash"];
+		const required = ["sub", "jti", "resourceId", "planId", "txHash"];
 		for (const claim of required) {
 			if (!payload[claim]) {
 				throw new Error(`Invalid token: missing claim ${claim}`);

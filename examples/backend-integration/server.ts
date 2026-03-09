@@ -22,14 +22,14 @@ const app = express();
 app.use(express.json());
 
 // Mock database
-const resources = new Map<string, { tierId: string }>([
-	["default", { tierId: "basic" }], // Accept general API access
-	["photo-1", { tierId: "basic" }],
-	["photo-2", { tierId: "basic" }],
-	["album-1", { tierId: "premium" }],
+const resources = new Map<string, { planId: string }>([
+	["default", { planId: "basic" }], // Accept general API access
+	["photo-1", { planId: "basic" }],
+	["photo-2", { planId: "basic" }],
+	["album-1", { planId: "premium" }],
 ]);
 
-const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; tierId: string }>();
+const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; planId: string }>();
 
 // ============================================================================
 // Internal Endpoints (called by Key2a Service)
@@ -50,7 +50,7 @@ function verifyInternalAuth(
 
 // Verify resource exists
 app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
-	const { resourceId, tierId } = req.body;
+	const { resourceId, planId } = req.body;
 
 	// Accept "default" for any tier (general API access)
 	if (resourceId === "default") {
@@ -59,22 +59,22 @@ app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
 
 	// Validate specific resources
 	const resource = resources.get(resourceId);
-	const valid = resource !== undefined && resource.tierId === tierId;
+	const valid = resource !== undefined && resource.planId === planId;
 	res.json({ valid });
 });
 
 // Issue token (only used if Key2a tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
-	const { requestId, resourceId, tierId, txHash } = req.body;
+	const { requestId, resourceId, planId, txHash } = req.body;
 
 	// Generate a custom API key (in production, use your actual key generation)
 	const apiKey = `ak_${crypto.randomUUID().replace(/-/g, "")}`;
 	const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour
 
 	// Store the key
-	apiKeys.set(apiKey, { expiresAt, resourceId, tierId });
+	apiKeys.set(apiKey, { expiresAt, resourceId, planId });
 
-	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${tierId}`);
+	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${planId}`);
 
 	res.json({
 		token: apiKey,
@@ -86,7 +86,7 @@ app.post("/internal/issue-token", (req, res) => {
 // Payment received notification
 app.post("/internal/payment-received", verifyInternalAuth, (req, res) => {
 	const grant = req.body;
-	console.log(`[Backend] Payment received: ${grant.resourceId} (${grant.tierId})`);
+	console.log(`[Backend] Payment received: ${grant.resourceId} (${grant.planId})`);
 	console.log(`  TX: ${grant.explorerUrl}`);
 
 	// Your payment handling logic here
@@ -123,11 +123,11 @@ async function validateToken(
 				// Valid API key
 				(
 					req as express.Request & {
-						key2aToken: { resourceId: string; tierId: string; type: string };
+						key2aToken: { resourceId: string; planId: string; type: string };
 					}
 				).key2aToken = {
 					resourceId: keyData.resourceId,
-					tierId: keyData.tierId,
+					planId: keyData.planId,
 					type: "api-key",
 				};
 				return next();
@@ -160,13 +160,13 @@ app.get("/api/photos/:id", (req, res) => {
 	}
 
 	// Verify tier access
-	if (token.tierId !== resource.tierId) {
+	if (token.planId !== resource.planId) {
 		return res.status(403).json({ error: "Token tier does not grant access to this resource" });
 	}
 
 	res.json({
 		id: req.params.id,
-		tierId: token.tierId,
+		planId: token.planId,
 		url: `https://cdn.example.com/photos/${req.params.id}.jpg`,
 		title: `Photo ${req.params.id}`,
 		resolution: "4K",
@@ -180,7 +180,7 @@ app.get("/api/data/:id", (req, res) => {
 	res.json({
 		id: req.params.id,
 		data: "premium content",
-		tierId: token.tierId,
+		planId: token.planId,
 		resourceId: token.resourceId,
 	});
 });

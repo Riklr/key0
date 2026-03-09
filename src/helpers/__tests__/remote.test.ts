@@ -33,7 +33,7 @@ function makeParams(overrides?: Partial<IssueTokenParams>): IssueTokenParams {
 		requestId: crypto.randomUUID(),
 		challengeId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: "0xdeadbeef",
 		...overrides,
 	};
@@ -158,7 +158,7 @@ describe("createRemoteResourceVerifier", () => {
 	);
 
 	test(
-		"sends POST body with { resourceId, tierId }",
+		"sends POST body with { resourceId, planId }",
 		withFetch(
 			mock(async () => makeJsonResponse({ valid: true })),
 			async () => {
@@ -170,7 +170,7 @@ describe("createRemoteResourceVerifier", () => {
 				];
 				expect(init.method).toBe("POST");
 				const body = JSON.parse(init.body as string);
-				expect(body).toEqual({ resourceId: "photo-42", tierId: "single" });
+				expect(body).toEqual({ resourceId: "photo-42", planId: "single" });
 			},
 		),
 	);

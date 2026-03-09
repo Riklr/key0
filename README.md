@@ -58,7 +58,7 @@ docker compose -f docker/docker-compose.yml up
 # Open http://localhost:3000 → redirects to /setup
 ```
 
-The Setup UI lets you configure everything visually: wallet address, network, product tiers, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
+The Setup UI lets you configure everything visually: wallet address, network, pricing plans, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
 
 Configuration is persisted in a Docker volume (`key2a-config`), so it survives `docker compose down` / `up` cycles.
 
@@ -116,7 +116,7 @@ Build from source: `docker build -t riklr/key2a .`
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
 | `PROVIDER_NAME` | | `Key2a` | Your organization name shown in the agent card `provider` field |
 | `PROVIDER_URL` | | `https://key2a.dev` | Your organization URL shown in the agent card `provider` field |
-| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
+| `PLANS` | | `[{"planId":"basic","displayName":"Basic","unitAmount":"$0.10","resourceType":"api","expiresIn":3600}]` | JSON array of pricing plans — each with `planId`, `displayName`, `unitAmount`, `resourceType`, and optional `expiresIn` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
@@ -134,23 +134,23 @@ See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
 ### ISSUE_TOKEN_API Contract
 
-After on-chain payment is verified, Key2a POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching product tier:
+After on-chain payment is verified, Key2a POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching plan:
 
 ```json
 {
   "requestId": "uuid",
   "challengeId": "uuid",
   "resourceId": "photo-42",
-  "tierId": "basic",
+  "planId": "basic",
   "txHash": "0x...",
-  "label": "Basic",
-  "amount": "$0.10",
+  "displayName": "Basic",
+  "unitAmount": "$0.10",
   "resourceType": "api",
-  "accessDurationSeconds": 3600
+  "expiresIn": 3600
 }
 ```
 
-Any extra fields you add to your `PRODUCTS` tiers are included automatically.
+Any extra fields you add to your `PLANS` plans are included automatically.
 
 Your endpoint can return any credential shape — the response is passed through to the client as-is:
 
@@ -266,22 +266,22 @@ app.use(
       providerUrl: "https://example.com",
       walletAddress: "0xYourWalletAddress" as `0x${string}`,
       network: "testnet",
-      products: [
+      plans: [
         {
-          tierId: "basic",
-          label: "Basic Access",
-          amount: "$0.10",
+          planId: "basic",
+          displayName: "Basic Access",
+          unitAmount: "$0.10",
           resourceType: "api-call",
-          accessDurationSeconds: 3600,
+          expiresIn: 3600,
         },
       ],
-      onVerifyResource: async (resourceId, tierId) => {
+      onVerifyResource: async (resourceId, planId) => {
         return true; // check your DB here
       },
       onIssueToken: async (params) => {
         return tokenIssuer.sign(
           { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-          params.accessDurationSeconds,
+          params.expiresIn,
         );
       },
     },
@@ -362,8 +362,8 @@ fastify.listen({ port: 3000 });
 | `providerUrl` | `string` | ✅ | — | Your company/org URL |
 | `walletAddress` | `0x${string}` | ✅ | — | USDC-receiving wallet |
 | `network` | `"testnet" \| "mainnet"` | ✅ | — | Base Sepolia or Base |
-| `products` | `ProductTier[]` | ✅ | — | Pricing tiers |
-| `onVerifyResource` | `(resourceId, tierId) => Promise<boolean>` | ✅ | — | Check the resource exists and tier is valid |
+| `plans` | `Plan[]` | ✅ | — | Pricing plans |
+| `onVerifyResource` | `(resourceId, planId) => Promise<boolean>` | ✅ | — | Check the resource exists and plan is valid |
 | `onIssueToken` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
 | `resourceVerifyTimeoutMs` | `number` | | `5000` | Timeout for `onVerifyResource` |
@@ -376,15 +376,15 @@ fastify.listen({ port: 3000 });
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | — | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server — mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
-#### ProductTier
+#### Plan
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `tierId` | `string` | ✅ | Unique tier identifier |
-| `label` | `string` | ✅ | Display name |
-| `amount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
+| `planId` | `string` | ✅ | Unique plan identifier |
+| `displayName` | `string` | ✅ | Display name |
+| `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
 | `resourceType` | `string` | ✅ | Category (e.g. `"photo"`, `"api-call"`) |
-| `accessDurationSeconds` | `number` | | Token validity; omit for single-use |
+| `expiresIn` | `number` | | Token validity; omit for single-use |
 
 #### IssueTokenParams
 
@@ -393,7 +393,7 @@ fastify.listen({ port: 3000 });
 | `challengeId` | `string` | Use as JWT `jti` for replay prevention |
 | `requestId` | `string` | Use as JWT `sub` |
 | `resourceId` | `string` | Purchased resource |
-| `tierId` | `string` | Purchased tier |
+| `planId` | `string` | Purchased plan |
 | `txHash` | `0x${string}` | On-chain transaction hash |
 
 ### Refund Cron (Embedded)
@@ -495,8 +495,8 @@ Client Agent                          Seller Server
      |  <-- Protected content               |
 ```
 
-1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available products and pricing
-2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired tier
+1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available plans and pricing
+2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired plan
 3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
 4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
 5. **Proof** — Client submits a `PaymentProof` with the transaction hash
@@ -511,11 +511,11 @@ Client                                Seller Server
      |                                      |
      |  1. POST /x402/access  {}            |
      |------------------------------------->|
-     |  <-- HTTP 402 + all tiers            |
+     |  <-- HTTP 402 + all plans            |
      |      (discovery, no PENDING record)  |
      |                                      |
      |  2. POST /x402/access               |
-     |     { tierId, requestId? }           |
+     |     { planId, requestId? }           |
      |------------------------------------->|
      |  <-- HTTP 402 + PaymentRequirements  |
      |       + challengeId                  |
@@ -523,7 +523,7 @@ Client                                Seller Server
      |       if omitted)                    |
      |                                      |
      |  3. POST /x402/access               |
-     |     { tierId, requestId }            |
+     |     { planId, requestId }            |
      |     + PAYMENT-SIGNATURE header       |
      |       (signed EIP-3009 auth)         |
      |------------------------------------->|
@@ -537,9 +537,9 @@ Client                                Seller Server
      |  <-- Protected content               |
 ```
 
-1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available tiers and pricing. No `PENDING` record is created.
-2. **Challenge** — Client POSTs `{ tierId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that tier. `requestId` is auto-generated if omitted.
-3. **Payment + Settlement** — Client resends with the same `{ tierId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
+1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available plans and pricing. No `PENDING` record is created.
+2. **Challenge** — Client POSTs `{ planId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that plan. `requestId` is auto-generated if omitted.
+3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
 4. **Access** — Client uses the token as a Bearer header to access the protected resource.
 
 If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
@@ -582,7 +582,7 @@ This adds:
 - `POST /mcp` — Streamable HTTP transport endpoint
 
 **Two tools are exposed:**
-- `discover_products` — returns the product catalog (tiers, pricing, wallet, chainId)
+- `discover_plans` — returns the plan catalog (plans, pricing, wallet, chainId)
 - `request_access` — x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint. Includes pre-settlement resource verification, Zod payload validation, and deterministic request IDs for idempotent retry recovery
 
 **Connect from Claude Code** (`.mcp.json`):
@@ -652,7 +652,7 @@ const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 onIssueToken: async (params) => {
   return tokenIssuer.sign(
     { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-    params.accessDurationSeconds, // token TTL in seconds
+    params.expiresIn,  // token TTL in seconds
   );
 },
 ```
@@ -714,7 +714,7 @@ bun run start
 
 | Example | Description |
 |---|---|
-| [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing tiers |
+| [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing plans |
 | [`examples/hono-seller`](./examples/hono-seller) | Same features using Hono |
 | [`examples/standalone-service`](./examples/standalone-service) | Key2a as a separate service with Redis + gas wallet |
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |

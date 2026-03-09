@@ -54,7 +54,7 @@ export async function writePaidChallengeRecord(
 		requestId: string;
 		clientAgentId: string;
 		resourceId: string;
-		tierId: string;
+		planId: string;
 		amount: string;
 		amountRaw: bigint;
 		destination: `0x${string}`;
@@ -72,7 +72,7 @@ export async function writePaidChallengeRecord(
 		requestId: record.requestId,
 		clientAgentId: record.clientAgentId,
 		resourceId: record.resourceId,
-		tierId: record.tierId,
+		planId: record.planId,
 		amount: record.amount,
 		amountRaw: record.amountRaw.toString(),
 		asset: "USDC",

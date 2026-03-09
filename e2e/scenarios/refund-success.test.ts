@@ -39,7 +39,7 @@ describe("Refund Success", () => {
 				requestId: crypto.randomUUID(),
 				clientAgentId: `agent://${clientAddr}`,
 				resourceId: "refund-test-resource",
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				amount: "$0.01",
 				amountRaw: REFUND_AMOUNT_RAW,
 				destination: key2aAddr,

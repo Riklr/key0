@@ -24,7 +24,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": "this-is-not-valid-base64-json!!!",
 			},
 			body: JSON.stringify({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});
@@ -45,7 +45,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": nonJsonBase64,
 			},
 			body: JSON.stringify({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});
@@ -67,7 +67,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": encoded,
 			},
 			body: JSON.stringify({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});

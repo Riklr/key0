@@ -1,48 +1,48 @@
-import type { ProductTier } from "../types";
+import type { Plan } from "../types";
 import { Field, Input, Select } from "./Field";
 
-interface ProductEditorProps {
-	products: ProductTier[];
-	onChange: (products: ProductTier[]) => void;
+interface PlanEditorProps {
+	plans: Plan[];
+	onChange: (plans: Plan[]) => void;
 }
 
-export function ProductEditor({ products, onChange }: ProductEditorProps) {
-	const update = (index: number, field: keyof ProductTier, value: string | number) => {
-		const next = [...products];
+export function PlanEditor({ plans, onChange }: PlanEditorProps) {
+	const update = (index: number, field: keyof Plan, value: string | number) => {
+		const next = [...plans];
 		next[index] = { ...next[index], [field]: value };
 		onChange(next);
 	};
 
 	const add = () => {
 		onChange([
-			...products,
+			...plans,
 			{
-				tierId: "",
-				label: "",
-				amount: "$0.10",
+				planId: "",
+				displayName: "",
+				unitAmount: "$0.10",
 				resourceType: "api",
-				accessDurationSeconds: 3600,
+				expiresIn: 3600,
 			},
 		]);
 	};
 
 	const remove = (index: number) => {
-		onChange(products.filter((_, i) => i !== index));
+		onChange(plans.filter((_, i) => i !== index));
 	};
 
 	return (
 		<div className="space-y-4">
-			{products.map((p, i) => (
+			{plans.map((p, i) => (
 				<div
-					key={p.tierId || i}
+					key={p.planId || i}
 					className="relative rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-3"
 				>
-					{products.length > 1 && (
+					{plans.length > 1 && (
 						<button
 							type="button"
 							onClick={() => remove(i)}
 							className="absolute top-3 right-3 text-neutral-500 hover:text-red-400 transition-colors"
-							title="Remove tier"
+							title="Remove plan"
 						>
 							<svg
 								className="h-4 w-4"
@@ -58,27 +58,27 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 					)}
 
 					<div className="grid grid-cols-2 gap-3">
-						<Field label="Tier ID" required>
+						<Field label="Plan ID" required>
 							<Input
-								value={p.tierId}
-								onChange={(e) => update(i, "tierId", e.target.value)}
+								value={p.planId}
+								onChange={(e) => update(i, "planId", e.target.value)}
 								placeholder="basic"
 							/>
 						</Field>
-						<Field label="Label" required>
+						<Field label="Display Name" required>
 							<Input
-								value={p.label}
-								onChange={(e) => update(i, "label", e.target.value)}
+								value={p.displayName}
+								onChange={(e) => update(i, "displayName", e.target.value)}
 								placeholder="Basic Access"
 							/>
 						</Field>
 					</div>
 
 					<div className="grid grid-cols-3 gap-3">
-						<Field label="Amount" required hint="e.g. $0.10">
+						<Field label="Unit Amount" required hint="e.g. $0.10">
 							<Input
-								value={p.amount}
-								onChange={(e) => update(i, "amount", e.target.value)}
+								value={p.unitAmount}
+								onChange={(e) => update(i, "unitAmount", e.target.value)}
 								placeholder="$0.10"
 							/>
 						</Field>
@@ -97,13 +97,9 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 						<Field label="Duration (s)" hint="Blank = single-use">
 							<Input
 								type="number"
-								value={p.accessDurationSeconds}
+								value={p.expiresIn}
 								onChange={(e) =>
-									update(
-										i,
-										"accessDurationSeconds",
-										e.target.value === "" ? "" : Number(e.target.value),
-									)
+									update(i, "expiresIn", e.target.value === "" ? "" : Number(e.target.value))
 								}
 								placeholder="3600"
 							/>
@@ -127,7 +123,7 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 				>
 					<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 				</svg>
-				Add Tier
+				Add Plan
 			</button>
 		</div>
 	);

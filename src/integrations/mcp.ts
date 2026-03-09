@@ -24,14 +24,14 @@ import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
 function buildPaymentRequiredResult(
-	tierId: string,
+	planId: string,
 	resourceId: string,
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
 ) {
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const x402PaymentUrl = `${baseUrl}/x402/access`;
-	const paymentRequired = buildHttpPaymentRequirements(tierId, resourceId, config, networkConfig);
+	const paymentRequired = buildHttpPaymentRequirements(planId, resourceId, config, networkConfig);
 
 	const structuredContent = {
 		...paymentRequired,
@@ -53,7 +53,7 @@ function buildPaymentRequiredResult(
 					{
 						...structuredContent,
 						x402PaymentUrl,
-						paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body={"tierId":"${tierId}","resourceId":"${resourceId}"}, and pass the accepts array as paymentRequirements.`,
+						paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body={"planId":"${planId}","resourceId":"${resourceId}"}, and pass the accepts array as paymentRequirements.`,
 					},
 					null,
 					2,
@@ -130,7 +130,7 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
  * Create an McpServer with Key2a tools registered.
  *
  * Tools:
- * - `discover_products` (free) — browse the product catalog
+ * - `discover_plans` (free) — browse the plan catalog
  * - `request_access` (x402-gated) — purchase an access token
  *
  * Payment follows the x402 MCP transport spec:
@@ -147,12 +147,12 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		version: config.version ?? "1.0.0",
 	});
 
-	// Tool 1: discover_products (free)
+	// Tool 1: discover_plans (free)
 	server.registerTool(
-		"discover_products",
+		"discover_plans",
 		{
-			title: "Discover Products",
-			description: `Discover available products and pricing for ${config.agentName}. Returns the product catalog with tier IDs, prices (USDC), wallet address, and chain ID needed for payment.`,
+			title: "Discover Plans",
+			description: `Discover available plans and pricing for ${config.agentName}. Returns the plan catalog with plan IDs, prices (USDC), wallet address, and chain ID needed for payment.`,
 		},
 		async () => {
 			const catalog = {
@@ -162,12 +162,12 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 				chainId: networkConfig.chainId,
 				walletAddress: config.walletAddress,
 				asset: "USDC",
-				products: config.products.map((tier) => ({
-					tierId: tier.tierId,
-					label: tier.label,
-					amount: tier.amount,
+				plans: config.plans.map((tier) => ({
+					planId: tier.planId,
+					displayName: tier.displayName,
+					unitAmount: tier.unitAmount,
 					resourceType: tier.resourceType,
-					accessDurationSeconds: tier.accessDurationSeconds,
+					expiresIn: tier.expiresIn,
 				})),
 			};
 			return { content: [{ type: "text" as const, text: JSON.stringify(catalog, null, 2) }] };
@@ -180,35 +180,35 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		{
 			title: "Request Access",
 			description: [
-				`Purchase access to a ${config.agentName} product tier.`,
+				`Purchase access to a ${config.agentName} plan.`,
 				"This tool is x402 payment-gated.",
 				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
-				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {tierId, resourceId} in the body and the accepts array as paymentRequirements.",
+				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resourceId} in the body and the accepts array as paymentRequirements.",
 				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
 			].join(" "),
 			inputSchema: {
-				tierId: z.string().describe("Product tier ID from discover_products"),
+				planId: z.string().describe("Plan ID from discover_plans"),
 				resourceId: z
 					.string()
 					.default("default")
 					.describe("Specific resource ID (defaults to 'default')"),
 			},
 		},
-		async ({ tierId, resourceId }, extra) => {
+		async ({ planId, resourceId }, extra) => {
 			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
 
 			try {
 				if (!paymentPayload) {
 					// No payment — return x402 PaymentRequired signal
-					const tier = config.products.find((t) => t.tierId === tierId);
+					const tier = config.plans.find((t) => t.planId === planId);
 					if (!tier) {
-						throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
+						throw new Key2aError("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
 					}
-					return buildPaymentRequiredResult(tierId, resourceId, config, networkConfig);
+					return buildPaymentRequiredResult(planId, resourceId, config, networkConfig);
 				}
 
 				// Has payment — verify resource before settlement to avoid money-at-risk (S2)
-				await engine.verifyResource(resourceId, tierId);
+				await engine.verifyResource(resourceId, planId);
 
 				const { txHash, settleResponse, payer } = await settlePayment(
 					paymentPayload,
@@ -220,7 +220,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 				const requestId = deriveRequestId(paymentPayload);
 				const grant = await engine.processHttpPayment(
 					requestId,
-					tierId,
+					planId,
 					resourceId,
 					txHash,
 					payer as `0x${string}` | undefined,
@@ -262,7 +262,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					// Settlement / payment errors — return PaymentRequired with error reason
 					if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
 						const failResult = buildPaymentRequiredResult(
-							tierId,
+							planId,
 							resourceId,
 							config,
 							networkConfig,

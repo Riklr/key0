@@ -11,7 +11,7 @@ import {
 	Key2aError,
 	type NetworkConfig,
 	type PaymentProof,
-	type ProductTier,
+	type Plan,
 	type SellerConfig,
 	type X402Challenge,
 	type X402PaymentRequiredResponse,
@@ -95,8 +95,8 @@ export class ChallengeEngine {
 		throw lastError;
 	}
 
-	private findTier(tierId: string): ProductTier | undefined {
-		return this.config.products.find((t: ProductTier) => t.tierId === tierId);
+	private findPlan(planId: string): Plan | undefined {
+		return this.config.plans.find((t: Plan) => t.planId === planId);
 	}
 
 	private challengeToResponse(record: ChallengeRecord): X402Challenge {
@@ -104,7 +104,7 @@ export class ChallengeEngine {
 			type: "X402Challenge",
 			challengeId: record.challengeId,
 			requestId: record.requestId,
-			tierId: record.tierId,
+			planId: record.planId,
 			amount: record.amount,
 			asset: "USDC",
 			chainId: record.chainId,
@@ -144,11 +144,11 @@ export class ChallengeEngine {
 					extra: {
 						challengeId: record.challengeId,
 						requestId: record.requestId,
-						tierId: record.tierId,
+						planId: record.planId,
 						amount: record.amount,
 						chainId: record.chainId,
 						expiresAt: record.expiresAt.toISOString(),
-						description: `${record.tierId} tier access — ${record.amount} USDC`,
+						description: `${record.planId} plan access — ${record.amount} USDC`,
 					},
 				},
 			],
@@ -183,7 +183,7 @@ export class ChallengeEngine {
 	}
 
 	async requestAccess(req: AccessRequest): Promise<X402Challenge> {
-		// 1. Validate input - only requestId and tierId are mandatory
+		// 1. Validate input - only requestId and planId are mandatory
 		validateUUID(req.requestId, "requestId");
 
 		// Provide defaults for optional fields
@@ -192,20 +192,16 @@ export class ChallengeEngine {
 
 		// 2. Validate tier
 		//TODO This should be validated by onVerifyResource hook no need here
-		const tier = this.findTier(req.tierId);
+		const tier = this.findPlan(req.planId);
 		if (!tier) {
-			throw new Key2aError(
-				"TIER_NOT_FOUND",
-				`Tier "${req.tierId}" not found in product catalog`,
-				400,
-			);
+			throw new Key2aError("TIER_NOT_FOUND", `Plan "${req.planId}" not found in plan catalog`, 400);
 		}
 
 		// 3. Pre-flight resource check (with 5s timeout)
 		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
 		let timer: ReturnType<typeof setTimeout>;
 		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, req.tierId).finally(() => clearTimeout(timer)),
+			this.config.onVerifyResource(resourceId, req.planId).finally(() => clearTimeout(timer)),
 			new Promise<never>((_, reject) => {
 				timer = setTimeout(
 					() =>
@@ -219,7 +215,7 @@ export class ChallengeEngine {
 		if (!exists) {
 			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${req.tierId}"`,
+				`Resource "${resourceId}" not found or not available for tier "${req.planId}"`,
 				404,
 			);
 		}
@@ -247,8 +243,8 @@ export class ChallengeEngine {
 		const payload = await this.adapter.issueChallenge({
 			requestId: req.requestId,
 			resourceId: resourceId,
-			tierId: req.tierId,
-			amount: tier.amount,
+			planId: req.planId,
+			amount: tier.unitAmount,
 			destination: this.config.walletAddress,
 			expiresAt,
 			metadata: { clientAgentId: clientAgentId },
@@ -260,9 +256,9 @@ export class ChallengeEngine {
 			requestId: req.requestId,
 			clientAgentId: clientAgentId,
 			resourceId: resourceId,
-			tierId: req.tierId,
-			amount: tier.amount,
-			amountRaw: parseDollarToUsdcMicro(tier.amount),
+			planId: req.planId,
+			amount: tier.unitAmount,
+			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -416,7 +412,7 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId: challenge.resourceId,
-			tierId: challenge.tierId,
+			planId: challenge.planId,
 			txHash: proof.txHash,
 		});
 
@@ -433,7 +429,7 @@ export class ChallengeEngine {
 			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId: challenge.resourceId,
-			tierId: challenge.tierId,
+			planId: challenge.planId,
 			txHash: proof.txHash,
 			explorerUrl,
 		};
@@ -542,20 +538,20 @@ export class ChallengeEngine {
 	 */
 	async requestHttpAccess(
 		requestId: string,
-		tierId: string,
+		planId: string,
 		resourceId: string,
 	): Promise<{ challengeId: string }> {
 		// 1. Validate tier
-		const tier = this.findTier(tierId);
+		const tier = this.findPlan(planId);
 		if (!tier) {
-			throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
+			throw new Key2aError("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
 		}
 
 		// 2. Verify resource exists
 		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
 		let timer: ReturnType<typeof setTimeout>;
 		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			this.config.onVerifyResource(resourceId, planId).finally(() => clearTimeout(timer)),
 			new Promise<never>((_, reject) => {
 				timer = setTimeout(
 					() =>
@@ -569,7 +565,7 @@ export class ChallengeEngine {
 		if (!exists) {
 			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				`Resource "${resourceId}" not found or not available for tier "${planId}"`,
 				404,
 			);
 		}
@@ -600,9 +596,9 @@ export class ChallengeEngine {
 			requestId,
 			clientAgentId: "x402-http",
 			resourceId,
-			tierId,
-			amount: tier.amount,
-			amountRaw: parseDollarToUsdcMicro(tier.amount),
+			planId,
+			amount: tier.unitAmount,
+			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -619,11 +615,11 @@ export class ChallengeEngine {
 	 * Verify that a resource exists and is available for the given tier.
 	 * Call this BEFORE settlement to avoid money-at-risk if the resource disappears.
 	 */
-	async verifyResource(resourceId: string, tierId: string): Promise<void> {
+	async verifyResource(resourceId: string, planId: string): Promise<void> {
 		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
 		let timer: ReturnType<typeof setTimeout>;
 		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			this.config.onVerifyResource(resourceId, planId).finally(() => clearTimeout(timer)),
 			new Promise<never>((_, reject) => {
 				timer = setTimeout(
 					() =>
@@ -637,7 +633,7 @@ export class ChallengeEngine {
 		if (!exists) {
 			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				`Resource "${resourceId}" not found or not available for tier "${planId}"`,
 				404,
 			);
 		}
@@ -658,15 +654,15 @@ export class ChallengeEngine {
 	 */
 	async processHttpPayment(
 		requestId: string,
-		tierId: string,
+		planId: string,
 		resourceId: string,
 		txHash: `0x${string}`,
 		fromAddress?: `0x${string}`,
 	): Promise<AccessGrant> {
 		// 1. Validate tier
-		const tier = this.findTier(tierId);
+		const tier = this.findPlan(planId);
 		if (!tier) {
-			throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
+			throw new Key2aError("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
 		}
 
 		// 3. Double-spend guard
@@ -711,9 +707,9 @@ export class ChallengeEngine {
 				requestId,
 				clientAgentId: "x402-http",
 				resourceId,
-				tierId,
-				amount: tier.amount,
-				amountRaw: parseDollarToUsdcMicro(tier.amount),
+				planId,
+				amount: tier.unitAmount,
+				amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
 				asset: "USDC",
 				chainId: this.networkConfig.chainId,
 				destination: this.config.walletAddress,
@@ -763,7 +759,7 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId,
-			tierId,
+			planId,
 			txHash,
 		});
 
@@ -781,7 +777,7 @@ export class ChallengeEngine {
 			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId,
-			tierId,
+			planId,
 			txHash,
 			explorerUrl,
 		};

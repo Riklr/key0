@@ -18,7 +18,9 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
+		plans: [
+			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
+		],
 		challengeTTLSeconds: 900,
 		onVerifyResource: async () => true,
 		onIssueToken: async (params) => ({
@@ -57,7 +59,7 @@ function makeRequest(overrides?: Partial<AccessRequest>): AccessRequest {
 	return {
 		requestId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		clientAgentId: "agent://test-client",
 		...overrides,
 	};
@@ -82,7 +84,7 @@ describe("ChallengeEngine.requestAccess", () => {
 
 		expect(challenge.type).toBe("X402Challenge");
 		expect(challenge.requestId).toBe(req.requestId);
-		expect(challenge.tierId).toBe("single");
+		expect(challenge.planId).toBe("single");
 		expect(challenge.amount).toBe("$0.10");
 		expect(challenge.asset).toBe("USDC");
 		expect(challenge.chainId).toBe(84532);
@@ -114,7 +116,7 @@ describe("ChallengeEngine.requestAccess", () => {
 
 	test("tier not found: throws TIER_NOT_FOUND", async () => {
 		const { engine } = makeEngine();
-		const req = makeRequest({ tierId: "nonexistent" });
+		const req = makeRequest({ planId: "nonexistent" });
 		try {
 			await engine.requestAccess(req);
 			expect(true).toBe(false);

@@ -170,7 +170,7 @@ if (tokenMode === "remote") {
 				sub: params.requestId,
 				jti: params.challengeId,
 				resourceId: params.resourceId,
-				tierId: params.tierId,
+				planId: params.planId,
 				txHash: params.txHash,
 			},
 			3600, // Default TTL, could be made configurable
@@ -179,20 +179,20 @@ if (tokenMode === "remote") {
 }
 
 // Product catalog
-const products = [
+const plans = [
 	{
-		tierId: "basic",
-		label: "Basic Access",
-		amount: "$0.99",
+		planId: "basic",
+		displayName: "Basic Access",
+		unitAmount: "$0.99",
 		resourceType: "api-call",
-		accessDurationSeconds: 3600,
+		expiresIn: 3600,
 	},
 	{
-		tierId: "premium",
-		label: "Premium Access",
-		amount: "$4.99",
+		planId: "premium",
+		displayName: "Premium Access",
+		unitAmount: "$4.99",
 		resourceType: "api-call",
-		accessDurationSeconds: 86400,
+		expiresIn: 86400,
 	},
 ] as const;
 
@@ -209,7 +209,7 @@ app.use(
 				"0x0000000000000000000000000000000000000000") as `0x${string}`,
 			network: NETWORK,
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
-			products,
+			plans,
 			onVerifyResource: remoteVerifier,
 			onIssueToken,
 			onPaymentReceived: async (grant) => {

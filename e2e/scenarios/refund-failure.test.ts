@@ -98,7 +98,7 @@ describe("Refund Failure", () => {
 				requestId: crypto.randomUUID(),
 				clientAgentId: `agent://${clientAddr}`,
 				resourceId: "refund-fail-resource",
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				amount: "$0.10",
 				amountRaw: 100_000n,
 				destination: key2aAddr,

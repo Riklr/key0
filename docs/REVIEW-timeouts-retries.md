@@ -143,7 +143,7 @@ const receipt = await publicClient.waitForTransactionReceipt({
 **Current code**:
 ```ts
 const exists = await Promise.race([
-  this.config.onVerifyResource(resourceId, req.tierId),
+  this.config.onVerifyResource(resourceId, req.planId),
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(...), timeoutMs)
   ),
@@ -155,7 +155,7 @@ const exists = await Promise.race([
 ```ts
 let timer: ReturnType<typeof setTimeout>;
 const exists = await Promise.race([
-  this.config.onVerifyResource(resourceId, req.tierId).finally(() => clearTimeout(timer)),
+  this.config.onVerifyResource(resourceId, req.planId).finally(() => clearTimeout(timer)),
   new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(...), timeoutMs);
   }),

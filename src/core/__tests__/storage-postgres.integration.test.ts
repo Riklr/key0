@@ -25,7 +25,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://itest",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",
@@ -48,7 +48,7 @@ function makeGrant(): AccessGrant {
 		expiresAt: "2025-01-01T13:00:00.000Z",
 		resourceEndpoint: "https://example.com/api/photos/42",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
 		explorerUrl: "https://sepolia.basescan.org/tx/0x...",
 	};

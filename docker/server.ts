@@ -110,12 +110,12 @@ interface SetupBody {
 	agentUrl: string;
 	providerName: string;
 	providerUrl: string;
-	products: Array<{
-		tierId: string;
-		label: string;
-		amount: string;
+	plans: Array<{
+		planId: string;
+		displayName: string;
+		unitAmount: string;
 		resourceType: string;
-		accessDurationSeconds?: number;
+		expiresIn?: number;
 	}>;
 	challengeTtlSeconds: string;
 	issueTokenApiSecret: string;
@@ -153,11 +153,11 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	}
 	if (body.providerName) lines.push(`PROVIDER_NAME=${q(body.providerName)}`);
 	if (body.providerUrl) lines.push(`PROVIDER_URL=${body.providerUrl}`);
-	if (body.products?.length > 0) {
+	if (body.plans?.length > 0) {
 		// Base64-encode JSON to avoid shell quoting issues
-		const json = JSON.stringify(body.products);
+		const json = JSON.stringify(body.plans);
 		const b64 = Buffer.from(json).toString("base64");
-		lines.push(`PRODUCTS_B64=${b64}`);
+		lines.push(`PLANS_B64=${b64}`);
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
@@ -226,7 +226,7 @@ if (!isConfigured) {
 	type IChallengeStore = key2a.IChallengeStore;
 	type ISeenTxStore = key2a.ISeenTxStore;
 	type NetworkName = key2a.NetworkName;
-	type ProductTier = key2a.ProductTier;
+	type Plan = key2a.Plan;
 	const {
 		processRefunds,
 		PostgresChallengeStore,
@@ -255,28 +255,28 @@ if (!isConfigured) {
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
 
-	// Products — support both PRODUCTS (raw JSON) and PRODUCTS_B64 (base64-encoded JSON)
-	const DEFAULT_PRODUCTS: ProductTier[] = [
+	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
+	const _DEFAULT_PLANS: Plan[] = [
 		{
-			tierId: "basic",
-			label: "Basic",
-			amount: "$0.10",
+			planId: "basic",
+			displayName: "Basic",
+			unitAmount: "$0.10",
 			resourceType: "api",
-			accessDurationSeconds: 3600,
+			expiresIn: 3600,
 		},
 	];
 
-	let products: ProductTier[];
+	let plans: Plan[];
 	try {
-		if (process.env.PRODUCTS_B64) {
-			products = JSON.parse(Buffer.from(process.env.PRODUCTS_B64, "base64").toString("utf-8"));
-		} else if (process.env.PRODUCTS) {
-			products = JSON.parse(process.env.PRODUCTS) as ProductTier[];
+		if (process.env.PLANS_B64) {
+			plans = JSON.parse(Buffer.from(process.env.PLANS_B64, "base64").toString("utf-8"));
+		} else if (process.env.PLANS) {
+			plans = JSON.parse(process.env.PLANS) as Plan[];
 		} else {
-			products = DEFAULT_PRODUCTS;
+			plans = _DEFAULT_PLANS;
 		}
 	} catch {
-		console.error("FATAL: PRODUCTS / PRODUCTS_B64 env var is not valid JSON");
+		console.error("FATAL: PLANS / PLANS_B64 env var is not valid JSON");
 		process.exit(1);
 	}
 
@@ -318,7 +318,7 @@ if (!isConfigured) {
 	// Token issuance
 	const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
 		apiSecret: ISSUE_TOKEN_API_SECRET,
-		products,
+		plans,
 	});
 
 	// Adapter & routes
@@ -365,7 +365,7 @@ if (!isConfigured) {
 			requestId,
 			clientAgentId,
 			resourceId,
-			tierId,
+			planId,
 			amount,
 			amountRaw,
 			destination,
@@ -377,7 +377,7 @@ if (!isConfigured) {
 			requestId: string;
 			clientAgentId: string;
 			resourceId: string;
-			tierId: string;
+			planId: string;
 			amount: string;
 			amountRaw: string | number;
 			destination: `0x${string}`;
@@ -391,7 +391,7 @@ if (!isConfigured) {
 			!requestId ||
 			!clientAgentId ||
 			!resourceId ||
-			!tierId ||
+			!planId ||
 			!amount ||
 			!amountRaw ||
 			!destination ||
@@ -408,7 +408,7 @@ if (!isConfigured) {
 				requestId,
 				clientAgentId,
 				resourceId,
-				tierId,
+				planId,
 				amount,
 				amountRaw: BigInt(amountRaw),
 				asset: "USDC",
@@ -522,7 +522,7 @@ if (!isConfigured) {
 				providerUrl: PROVIDER_URL,
 				walletAddress: WALLET_ADDRESS as `0x${string}`,
 				network: NETWORK,
-				products,
+				plans,
 				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 				basePath: BASE_PATH,
 				onVerifyResource: async () => true,

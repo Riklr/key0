@@ -62,7 +62,7 @@ So that I get paid instantly without invoicing, chargebacks, or card processing 
 
 ```
 As an API provider,
-I want to define product tiers (e.g. single photo vs. full album),
+I want to define pricing plans (e.g. single photo vs. full album),
 So that agents pay the right price for the right level of access.
 ```
 
@@ -165,9 +165,9 @@ type AgentSkill = {
 };
 
 type SkillPricing = {
-  tierId: string;
-  label: string;
-  amount: string;          // "$0.10" (USD, settled as USDC)
+  planId: string;
+  displayName: string;
+  unitAmount: string;      // "$0.10" (USD, settled as USDC)
   asset: "USDC";
   chainId: number;         // 8453 (Base mainnet) | 84532 (Base Sepolia)
   walletAddress: `0x${string}`;
@@ -182,7 +182,7 @@ Sent as an A2A task message.
 type AccessRequest = {
   requestId: string;      // UUID, client-generated, used for idempotency
   resourceId: string;     // e.g. albumId, reportId, datasetId
-  tierId: string;         // must match a ProductTier.tierId
+  planId: string;         // must match a Plan.planId
   clientAgentId: string;  // DID or URL identifying the client agent
   callbackUrl?: string;   // optional webhook for async fulfillment
 };
@@ -197,7 +197,7 @@ type X402Challenge = {
   type: "X402Challenge";
   challengeId: string;       // server-generated UUID, stable for same requestId
   requestId: string;         // echoed from AccessRequest (idempotency key)
-  tierId: string;
+  planId: string;
   amount: string;            // "$0.10"
   asset: "USDC";
   chainId: number;           // 8453 or 84532 — MUST be validated on submission
@@ -237,7 +237,7 @@ type AccessGrant = {
   expiresAt: string;         // ISO-8601
   resourceEndpoint: string;  // actual API endpoint to call
   resourceId: string;
-  tierId: string;
+  planId: string;
   txHash: `0x${string}`;
   explorerUrl: string;
 };
@@ -270,14 +270,14 @@ type SellerConfig = {
   walletAddress: `0x${string}`;  // public receive address (in agent card)
   network: "mainnet" | "testnet";
 
-  // Product catalog
-  products: readonly ProductTier[];
+  // Pricing plans
+  plans: readonly Plan[];
 
   // Challenge
   challengeTTLSeconds?: number;         // default: 900 (15 min)
 
   // Callbacks (mandatory)
-  onVerifyResource: (resourceId: string, tierId: string) => Promise<boolean>;
+  onVerifyResource: (resourceId: string, planId: string) => Promise<boolean>;
   onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
   // Callbacks (optional)
@@ -294,21 +294,21 @@ type SellerConfig = {
   facilitatorUrl?: string;             // override default CDP facilitator URL
 };
 
-type ProductTier = {
-  tierId: string;
-  label: string;
-  amount: string;           // "$0.10"
+type Plan = {
+  planId: string;
+  displayName: string;
+  unitAmount: string;       // "$0.10"
   resourceType: string;     // "photo" | "report" | "api-call"
-  accessDurationSeconds?: number;
+  expiresIn?: number;
 };
 
 type IssueTokenParams = {
   challengeId: string;      // use as JWT jti for replay prevention
   requestId: string;        // use as JWT sub
   resourceId: string;
-  tierId: string;
+  planId: string;
   txHash: `0x${string}`;
-  accessDurationSeconds: number;
+  expiresIn: number;
   clientAgentId: string;
 };
 
@@ -348,7 +348,7 @@ Returns the agent card. No auth required.
 **Output (resource not found)**: `Key2aError` with `code: "RESOURCE_NOT_FOUND"`
 
 **Pre-flight checks**:
-1. Validate `tierId` is a known product tier.
+1. Validate `planId` is a known plan.
 2. Verify `resourceId` exists via `onVerifyResource` (with timeout).
 3. Check for active challenge for `requestId` → return it (idempotency).
 
@@ -389,26 +389,26 @@ After verification: mark challenge as `PAID`, call `onIssueToken`, fire `onPayme
 In addition to A2A, Key2a mounts a standard x402 HTTP endpoint at `POST /x402/access`.
 The endpoint handles three cases based on the request body and headers:
 
-**Case 1 — Discovery** (no `tierId` in body):
+**Case 1 — Discovery** (no `planId` in body):
 ```
 Client POST /x402/access  {}
-  → Server responds HTTP 402 with PaymentRequirements for all tiers
+  → Server responds HTTP 402 with PaymentRequirements for all plans
   → No PENDING record created — pure discovery
   → Sets payment-required and www-authenticate headers
 ```
 
-**Case 2 — Challenge** (`tierId` present, no `PAYMENT-SIGNATURE` header):
+**Case 2 — Challenge** (`planId` present, no `PAYMENT-SIGNATURE` header):
 ```
-Client POST /x402/access  { tierId, requestId?, resourceId? }
+Client POST /x402/access  { planId, requestId?, resourceId? }
   → Server creates PENDING record
-  → Server responds HTTP 402 with PaymentRequirements for that tier + schema
+  → Server responds HTTP 402 with PaymentRequirements for that plan + schema
   → requestId is auto-generated if omitted
   → Sets payment-required and www-authenticate headers
 ```
 
-**Case 3 — Settlement** (`tierId` + `PAYMENT-SIGNATURE` header):
+**Case 3 — Settlement** (`planId` + `PAYMENT-SIGNATURE` header):
 ```
-Client POST /x402/access  { tierId, requestId, resourceId? }
+Client POST /x402/access  { planId, requestId, resourceId? }
     + PAYMENT-SIGNATURE: <base64-encoded EIP-3009 authorization>
   → Server settles payment on-chain (facilitator or gas wallet)
   → Server responds 200 with AccessGrant (JWT + resource endpoint)
@@ -437,7 +437,7 @@ The JWT payload (when using `AccessTokenIssuer`):
   sub: requestId,
   jti: challengeId,     // replay detection — each token redeemable once
   resourceId: string,
-  tierId: string,
+  planId: string,
   txHash: string,
   iat: number,
   exp: number
@@ -497,7 +497,7 @@ type VerificationResult = {
 
 ### 9.3 Pre-flight Resource Check
 
-Before issuing a challenge, `onVerifyResource` confirms the resource exists and the tier grants access. If it fails → return `RESOURCE_NOT_FOUND` (no challenge issued, no billing risk). The callback has a configurable timeout (default 5s) via `resourceVerifyTimeoutMs`.
+Before issuing a challenge, `onVerifyResource` confirms the resource exists and the plan grants access. If it fails → return `RESOURCE_NOT_FOUND` (no challenge issued, no billing risk). The callback has a configurable timeout (default 5s) via `resourceVerifyTimeoutMs`.
 
 ### 9.4 Payment Expiration
 
@@ -540,11 +540,11 @@ Step 2: Configure
   - Set ACCESS_TOKEN_SECRET in .env (minimum 32 chars)
   - Set NETWORK=mainnet|testnet
 
-Step 3: Define product catalog
-  products: [{ tierId, label, amount, resourceType, accessDurationSeconds }]
+Step 3: Define pricing plans
+  plans: [{ planId, displayName, unitAmount, resourceType, expiresIn }]
 
 Step 4: Implement callbacks
-  onVerifyResource(resourceId, tierId): Promise<boolean>
+  onVerifyResource(resourceId, planId): Promise<boolean>
   onIssueToken(params): Promise<TokenIssuanceResult>
   onPaymentReceived?(grant): Promise<void>   // optional
 

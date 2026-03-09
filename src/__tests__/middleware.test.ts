@@ -8,7 +8,7 @@ const CLAIMS = {
 	sub: "550e8400-e29b-41d4-a716-446655440000",
 	jti: "660e8400-e29b-41d4-a716-446655440000",
 	resourceId: "photo-42",
-	tierId: "single",
+	planId: "single",
 	txHash: `0x${"ab".repeat(32)}`,
 };
 
@@ -22,7 +22,7 @@ describe("validateToken", () => {
 		expect(payload.sub).toBe(CLAIMS.sub);
 		expect(payload.jti).toBe(CLAIMS.jti);
 		expect(payload.resourceId).toBe(CLAIMS.resourceId);
-		expect(payload.tierId).toBe(CLAIMS.tierId);
+		expect(payload.planId).toBe(CLAIMS.planId);
 		expect(payload.txHash).toBe(CLAIMS.txHash);
 	});
 

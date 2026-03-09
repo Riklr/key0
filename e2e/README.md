@@ -120,23 +120,23 @@ Signs an EIP-3009 authorization with the `to` field set to a random address inst
 
 ---
 
-### `invalid-tier.test.ts` — Invalid Tier (2 tests)
+### `invalid-tier.test.ts` — Invalid Plan (2 tests)
 
-Verifies tier validation on `POST /x402/access`.
+Verifies plan validation on `POST /x402/access`.
 
-- **Nonexistent tierId**: returns `400 TIER_NOT_FOUND` — challenge creation fails before any PENDING record is written.
-- **Missing tierId**: returns `402` discovery response with all available tiers — this is the discovery mode (no PENDING record, just a list of tiers to choose from).
+- **Nonexistent planId**: returns `400 TIER_NOT_FOUND` — challenge creation fails before any PENDING record is written.
+- **Missing planId**: returns `402` discovery response with all available plans — this is the discovery mode (no PENDING record, just a list of plans to choose from).
 
 ---
 
 ### `x402-discovery.test.ts` — x402 Discovery (3 tests)
 
-Verifies the discovery flow: `POST /x402/access` with no `tierId`.
+Verifies the discovery flow: `POST /x402/access` with no `planId`.
 
 The `/x402/access` endpoint has three modes:
-1. **No tierId** → discovery 402: returns all tiers in the `accepts` array with `tierId` in each tier's `extra`. No PENDING record is created. Also validates the `payment-required` header, `www-authenticate` header, and `key2a` extensions (inputSchema, outputSchema).
-2. **tierId, no signature** → challenge 402 (covered by happy-path)
-3. **tierId + signature** → settle and grant (covered by happy-path)
+1. **No planId** → discovery 402: returns all plans in the `accepts` array with `planId` in each plan's `extra`. No PENDING record is created. Also validates the `payment-required` header, `www-authenticate` header, and `key2a` extensions (inputSchema, outputSchema).
+2. **planId, no signature** → challenge 402 (covered by happy-path)
+3. **planId + signature** → settle and grant (covered by happy-path)
 
 ---
 
@@ -226,7 +226,7 @@ Verifies proof submission is rejected after a challenge expires (distinct from `
 
 Extends the basic happy-path test with Redis state assertions at each lifecycle step.
 
-- **PENDING → DELIVERED with fields**: After requesting access, verifies the Redis hash contains correct `requestId`, `tierId`, `resourceId`, `destination`, `asset`, `chainId`. After payment, verifies `DELIVERED` state with `txHash`, `paidAt`, and the stored `accessGrant` JSON matching the returned grant.
+- **PENDING → DELIVERED with fields**: After requesting access, verifies the Redis hash contains correct `requestId`, `planId`, `resourceId`, `destination`, `asset`, `chainId`. After payment, verifies `DELIVERED` state with `txHash`, `paidAt`, and the stored `accessGrant` JSON matching the returned grant.
 - **resourceEndpoint format**: Verifies the grant's `resourceEndpoint` contains the requested `resourceId`.
 - **explorerUrl format**: Verifies the grant's `explorerUrl` contains `sepolia` (Base Sepolia) and the `txHash`.
 

@@ -6,7 +6,7 @@ const CLAIMS = {
 	sub: "550e8400-e29b-41d4-a716-446655440000",
 	jti: "660e8400-e29b-41d4-a716-446655440000",
 	resourceId: "photo-42",
-	tierId: "single",
+	planId: "single",
 	txHash: `0x${"ab".repeat(32)}`,
 };
 
@@ -34,7 +34,7 @@ describe("AccessTokenIssuer", () => {
 		expect(decoded.sub).toBe(CLAIMS.sub);
 		expect(decoded.jti).toBe(CLAIMS.jti);
 		expect(decoded.resourceId).toBe(CLAIMS.resourceId);
-		expect(decoded.tierId).toBe(CLAIMS.tierId);
+		expect(decoded.planId).toBe(CLAIMS.planId);
 		expect(decoded.txHash).toBe(CLAIMS.txHash);
 	});
 

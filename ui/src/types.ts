@@ -1,9 +1,9 @@
-export interface ProductTier {
-	tierId: string;
-	label: string;
-	amount: string;
+export interface Plan {
+	planId: string;
+	displayName: string;
+	unitAmount: string;
 	resourceType: string;
-	accessDurationSeconds: number | "";
+	expiresIn: number | "";
 }
 
 export interface Config {
@@ -24,8 +24,8 @@ export interface Config {
 	providerName: string;
 	providerUrl: string;
 
-	// Products
-	products: ProductTier[];
+	// Plans
+	plans: Plan[];
 
 	// Challenge
 	challengeTtlSeconds: string;
@@ -57,13 +57,13 @@ export const defaultConfig: Config = {
 	providerName: "",
 	providerUrl: "",
 
-	products: [
+	plans: [
 		{
-			tierId: "basic",
-			label: "Basic",
-			amount: "$0.10",
+			planId: "basic",
+			displayName: "Basic",
+			unitAmount: "$0.10",
 			resourceType: "api",
-			accessDurationSeconds: 3600,
+			expiresIn: 3600,
 		},
 	],
 

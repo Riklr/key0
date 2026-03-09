@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { IssueTokenParams, ProductTier } from "../../types/index.js";
+import type { IssueTokenParams, Plan } from "../../types/index.js";
 import { buildDockerTokenIssuer } from "../docker-token-issuer.js";
 
 // ---------------------------------------------------------------------------
@@ -32,19 +32,19 @@ function makeParams(overrides?: Partial<IssueTokenParams>): IssueTokenParams {
 		requestId: crypto.randomUUID(),
 		challengeId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: "0xdeadbeef",
 		...overrides,
 	};
 }
 
-function makeProduct(overrides?: Partial<ProductTier>): ProductTier {
+function makeProduct(overrides?: Partial<Plan>): Plan {
 	return {
-		tierId: "single",
-		label: "Single Photo",
-		amount: ".10",
+		planId: "single",
+		displayName: "Single Photo",
+		unitAmount: ".10",
 		resourceType: "photo",
-		accessDurationSeconds: 7200,
+		expiresIn: 7200,
 		...overrides,
 	};
 }
@@ -84,14 +84,14 @@ describe("response parsing — passthrough (token field present)", () => {
 	);
 
 	test(
-		"falls back to tier.accessDurationSeconds when expiresAt absent from response",
+		"falls back to tier.expiresIn when expiresAt absent from response",
 		withFetch(
 			mock(async () => makeJsonResponse({ token: "tok-123" })),
 			async () => {
-				const product = makeProduct({ accessDurationSeconds: 1800 });
-				const issuer = buildDockerTokenIssuer(API_URL, { products: [product] });
+				const product = makeProduct({ expiresIn: 1800 });
+				const issuer = buildDockerTokenIssuer(API_URL, { plans: [product] });
 				const before = Date.now();
-				const result = await issuer(makeParams({ tierId: "single" }));
+				const result = await issuer(makeParams({ planId: "single" }));
 				const after = Date.now();
 				const expectedMs = 1800 * 1000;
 				expect(Math.abs(result.expiresAt.getTime() - (before + expectedMs))).toBeLessThan(1000);
@@ -106,9 +106,9 @@ describe("response parsing — passthrough (token field present)", () => {
 		withFetch(
 			mock(async () => makeJsonResponse({ token: "tok-123" })),
 			async () => {
-				const issuer = buildDockerTokenIssuer(API_URL, { products: [] });
+				const issuer = buildDockerTokenIssuer(API_URL, { plans: [] });
 				const before = Date.now();
-				const result = await issuer(makeParams({ tierId: "unknown-tier" }));
+				const result = await issuer(makeParams({ planId: "unknown-tier" }));
 				const after = Date.now();
 				const expectedMs = 3600 * 1000;
 				expect(Math.abs(result.expiresAt.getTime() - (before + expectedMs))).toBeLessThan(1000);
@@ -162,14 +162,14 @@ describe("response parsing — JSON-stringify fallback (no token field)", () => 
 	);
 
 	test(
-		"uses tier.accessDurationSeconds for expiresAt in fallback path",
+		"uses tier.expiresIn for expiresAt in fallback path",
 		withFetch(
 			mock(async () => makeJsonResponse({ apiKey: "k1" })),
 			async () => {
-				const product = makeProduct({ accessDurationSeconds: 900 });
-				const issuer = buildDockerTokenIssuer(API_URL, { products: [product] });
+				const product = makeProduct({ expiresIn: 900 });
+				const issuer = buildDockerTokenIssuer(API_URL, { plans: [product] });
 				const before = Date.now();
-				const result = await issuer(makeParams({ tierId: "single" }));
+				const result = await issuer(makeParams({ planId: "single" }));
 				const after = Date.now();
 				const expectedMs = 900 * 1000;
 				expect(Math.abs(result.expiresAt.getTime() - (before + expectedMs))).toBeLessThan(1000);
@@ -191,12 +191,12 @@ describe("request body", () => {
 			mock(async () => makeJsonResponse({ token: "tok-123" })),
 			async () => {
 				const product = makeProduct({
-					tierId: "single",
-					label: "Single Photo",
-					accessDurationSeconds: 7200,
+					planId: "single",
+					displayName: "Single Photo",
+					expiresIn: 7200,
 				});
-				const issuer = buildDockerTokenIssuer(API_URL, { products: [product] });
-				const params = makeParams({ tierId: "single" });
+				const issuer = buildDockerTokenIssuer(API_URL, { plans: [product] });
+				const params = makeParams({ planId: "single" });
 				await issuer(params);
 
 				const [, init] = (global.fetch as unknown as ReturnType<typeof mock>).mock.calls[0] as [
@@ -204,10 +204,10 @@ describe("request body", () => {
 					RequestInit,
 				];
 				const body = JSON.parse(init.body as string);
-				expect(body.label).toBe("Single Photo");
-				expect(body.accessDurationSeconds).toBe(7200);
+				expect(body.displayName).toBe("Single Photo");
+				expect(body.expiresIn).toBe(7200);
 				// IssueTokenParams fields are also present
-				expect(body.tierId).toBe("single");
+				expect(body.planId).toBe("single");
 				expect(body.resourceId).toBe("photo-42");
 			},
 		),

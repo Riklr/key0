@@ -28,7 +28,7 @@ export type {
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,
-	ProductTier,
+	Plan,
 	ResourceVerifier,
 	SellerConfig,
 	TokenIssuanceResult,

@@ -1,6 +1,6 @@
 # MCP Integration
 
-`src/integrations/mcp.ts` exposes Key2a's payment-gated products as MCP tools. Any MCP client — Claude Desktop, Cursor, Claude Code, or custom agents — can discover products and purchase access tokens through the x402 payment protocol.
+`src/integrations/mcp.ts` exposes Key2a's payment-gated plans as MCP tools. Any MCP client — Claude Desktop, Cursor, Claude Code, or custom agents — can discover plans and purchase access tokens through the x402 payment protocol.
 
 Reference spec: https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
 
@@ -24,7 +24,7 @@ MCP Client (Claude/Cursor/Claude Code)
 │            │                                         │
 │            ▼                                         │
 │       Tool dispatch                                  │
-│       ├─ discover_products        ← free, reads config
+│       ├─ discover_plans            ← free, reads config
 │       └─ request_access           ← x402 payment-gated
 │            │                                         │
 │            ├─ No payment? → isError + PaymentRequired│
@@ -48,12 +48,12 @@ MCP Client (Claude/Cursor/Claude Code)
 
 ### Seller Config
 
-No new config fields. Set `mcp: true` in `SellerConfig` and define `products` as usual:
+No new config fields. Set `mcp: true` in `SellerConfig` and define `plans` as usual:
 
 ```ts
 const config: SellerConfig = {
   mcp: true,
-  products: [{ tierId: "basic", amount: "$0.99", label: "Basic Access", resourceType: "api-call" }],
+  plans: [{ planId: "basic", unitAmount: "$0.99", displayName: "Basic Access", resourceType: "api-call" }],
   // ... standard config
 };
 ```
@@ -64,8 +64,8 @@ const config: SellerConfig = {
 
 | Tool | Gated? | Purpose |
 |------|--------|---------|
-| `discover_products` | Free | Browse catalog: tiers, prices, wallet, chainId |
-| `request_access` | x402 | Purchase an access token for a tier |
+| `discover_plans` | Free | Browse catalog: plans, prices, wallet, chainId |
+| `request_access` | x402 | Purchase an access token for a plan |
 
 ---
 
@@ -78,17 +78,17 @@ Two paths are supported. Both produce the same result: an `AccessGrant` with a J
 Current MCP clients (Claude, Cursor) are NOT natively x402-aware — they can't inject `_meta["x402/payment"]`. Instead, the agent uses `payments-mcp` to complete payment via the HTTPS x402 endpoint.
 
 ```
-1. Agent → discover_products
+1. Agent → discover_plans
    ← catalog JSON (free)
 
-2. Agent → request_access({ tierId: "basic" })
+2. Agent → request_access({ planId: "basic" })
    ← isError: true + structuredContent (x402 PaymentRequired)
      includes x402PaymentUrl and paymentInstructions
 
 3. Agent → payments-mcp make_http_request_with_x402:
      URL:    x402PaymentUrl (e.g. https://server.com/x402/access)
      method: POST
-     body:   { tierId: "basic", resourceId: "default" }
+     body:   { planId: "basic", resourceId: "default" }
      paymentRequirements: accepts array from step 2
 
 4. payments-mcp signs EIP-3009 off-chain, sends PAYMENT-SIGNATURE header
@@ -101,7 +101,7 @@ Current MCP clients (Claude, Cursor) are NOT natively x402-aware — they can't 
 For clients implementing the x402 MCP transport spec (e.g. Cloudflare `withX402Client`):
 
 ```
-1. Agent → request_access({ tierId: "basic" })
+1. Agent → request_access({ planId: "basic" })
    ← isError: true + structuredContent (x402 PaymentRequired)
 
 2. Client automatically signs EIP-3009 and retries with _meta["x402/payment"]
@@ -185,7 +185,7 @@ For clients implementing the x402 MCP transport spec (e.g. Cloudflare `withX402C
 | Resource not found (`RESOURCE_NOT_FOUND`) | `isError: true` + `Key2aError` JSON (checked before settlement) |
 | Payment failed / settlement error | `isError: true` + `structuredContent` with error message and `accepts[]` (client can retry) |
 | Already redeemed (`PROOF_ALREADY_REDEEMED`) | Returns cached `AccessGrant` (idempotent) |
-| Tier not found | `isError: true` + `Key2aError` JSON |
+| Plan not found | `isError: true` + `Key2aError` JSON |
 | Unknown error | Re-thrown (MCP SDK returns JSON-RPC error) |
 
 ---
@@ -271,7 +271,7 @@ In Path A (HTTP x402), the MCP tool only returns payment requirements — the ac
 Before settlement, the native payment path performs:
 
 1. **Zod payload validation** — `_meta["x402/payment"]` is validated against a schema requiring `x402Version` (number), `network` (string), and `payload` (object). Malformed payloads throw `INVALID_REQUEST` (400).
-2. **Resource verification** — `engine.verifyResource(resourceId, tierId)` is called before `settlePayment()` to prevent burning USDC for non-existent or suspended resources (security invariant S2).
+2. **Resource verification** — `engine.verifyResource(resourceId, planId)` is called before `settlePayment()` to prevent burning USDC for non-existent or suspended resources (security invariant S2).
 
 ### Testing with curl
 

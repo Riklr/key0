@@ -171,7 +171,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",
@@ -194,7 +194,7 @@ function makeGrant(): AccessGrant {
 		expiresAt: "2025-01-01T13:00:00.000Z",
 		resourceEndpoint: "https://example.com/api/photos/42",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
 		explorerUrl: "https://sepolia.basescan.org/tx/0x...",
 	};
@@ -224,7 +224,7 @@ describe("RedisChallengeStore", () => {
 		expect(loaded!.requestId).toBe(record.requestId);
 		expect(loaded!.clientAgentId).toBe(record.clientAgentId);
 		expect(loaded!.resourceId).toBe(record.resourceId);
-		expect(loaded!.tierId).toBe(record.tierId);
+		expect(loaded!.planId).toBe(record.planId);
 		expect(loaded!.amount).toBe(record.amount);
 		expect(loaded!.amountRaw).toBe(record.amountRaw);
 		expect(loaded!.asset).toBe(record.asset);

@@ -21,9 +21,9 @@ export type AgentCard = {
 		id: string;
 		name?: string;
 		pricing?: Array<{
-			tierId: string;
-			label: string;
-			amount: string;
+			planId: string;
+			displayName: string;
+			unitAmount: string;
 			chainId: number;
 		}>;
 	}>;
@@ -57,7 +57,7 @@ export type AccessGrant = {
 	expiresAt: string;
 	resourceEndpoint: string;
 	resourceId: string;
-	tierId: string;
+	planId: string;
 	txHash: `0x${string}`;
 	explorerUrl: string;
 };
@@ -108,7 +108,7 @@ export class E2eTestClient {
 	// ── Step 1: Request access ────────────────────────────────────────────
 
 	async requestAccess(opts: {
-		tierId: string;
+		planId: string;
 		requestId: string;
 		resourceId?: string;
 	}): Promise<ChallengeResponse> {
@@ -116,7 +116,7 @@ export class E2eTestClient {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				tierId: opts.tierId,
+				planId: opts.planId,
 				requestId: opts.requestId,
 				resourceId: opts.resourceId ?? "default",
 				clientAgentId: `agent://${this.account}`,
@@ -190,7 +190,7 @@ export class E2eTestClient {
 	// ── Step 3: Submit payment ────────────────────────────────────────────
 
 	async submitPayment(opts: {
-		tierId: string;
+		planId: string;
 		requestId: string;
 		resourceId?: string;
 		auth: EIP3009Auth;
@@ -220,7 +220,7 @@ export class E2eTestClient {
 				"payment-signature": paymentSignature,
 			},
 			body: JSON.stringify({
-				tierId: opts.tierId,
+				planId: opts.planId,
 				requestId: opts.requestId,
 				resourceId: opts.resourceId ?? "default",
 				clientAgentId: `agent://${this.account}`,
@@ -236,14 +236,14 @@ export class E2eTestClient {
 
 	// ── Convenience: full purchase ────────────────────────────────────────
 
-	async purchaseAccess(opts: { tierId: string; requestId?: string; resourceId?: string }): Promise<{
+	async purchaseAccess(opts: { planId: string; requestId?: string; resourceId?: string }): Promise<{
 		requestId: string;
 		challengeId: string;
 		grant: AccessGrant;
 	}> {
 		const requestId = opts.requestId ?? crypto.randomUUID();
 		const { challengeId, paymentRequired } = await this.requestAccess({
-			tierId: opts.tierId,
+			planId: opts.planId,
 			requestId,
 			...(opts.resourceId !== undefined ? { resourceId: opts.resourceId } : {}),
 		});
@@ -256,7 +256,7 @@ export class E2eTestClient {
 		const auth = await this.signEIP3009({ destination, amountRaw });
 
 		const result = await this.submitPayment({
-			tierId: opts.tierId,
+			planId: opts.planId,
 			requestId,
 			...(opts.resourceId !== undefined ? { resourceId: opts.resourceId } : {}),
 			auth,

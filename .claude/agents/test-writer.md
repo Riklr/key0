@@ -42,7 +42,7 @@ PAID → PAID                     (idempotent re-verification)
 |------|------|------|
 | `INVALID_REQUEST` | 400 | Invalid UUID, cancel non-PENDING |
 | `RESOURCE_NOT_FOUND` | 404 | `onVerifyResource` returns false |
-| `TIER_NOT_FOUND` | 400 | tierId not in product catalog |
+| `TIER_NOT_FOUND` | 400 | planId not in plan catalog |
 | `RESOURCE_VERIFY_TIMEOUT` | 504 | `onVerifyResource` never resolves |
 | `CHALLENGE_NOT_FOUND` | 404 | Unknown challengeId |
 | `CHALLENGE_EXPIRED` | 410 | TTL elapsed before payment |
@@ -66,7 +66,7 @@ Happy path:
 Error paths:
 4. Expired challenge is rejected (`CHALLENGE_EXPIRED`)
 5. Unknown `challengeId` is rejected (`CHALLENGE_NOT_FOUND`)
-6. Unknown `tierId` is rejected (`TIER_NOT_FOUND`)
+6. Unknown `planId` is rejected (`TIER_NOT_FOUND`)
 7. Payment verification failure is rejected (`INVALID_PROOF`)
 8. Already-delivered proof returns cached grant (`PROOF_ALREADY_REDEEMED`)
 

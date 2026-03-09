@@ -173,12 +173,12 @@ const { requestHandler } = createKey2a({
   config: {
     walletAddress: process.env.SELLER_ADDRESS,
     network: 'mainnet',
-    products: [
-      { tierId: 'report-v1', amount: '$2.00' },
+    plans: [
+      { planId: 'report-v1', unitAmount: '$2.00' },
     ],
     onVerifyResource: async (id) => db.resources.exists(id),
-    onIssueToken: async ({ challengeId, resourceId, tierId }) => ({
-      token: jwt.sign({ jti: challengeId, sub: resourceId, tier: tierId }, SECRET, { expiresIn: '2h' }),
+    onIssueToken: async ({ challengeId, resourceId, planId }) => ({
+      token: jwt.sign({ jti: challengeId, sub: resourceId, plan: planId }, SECRET, { expiresIn: '2h' }),
       expiresAt: new Date(Date.now() + 7200_000),
     }),
   },

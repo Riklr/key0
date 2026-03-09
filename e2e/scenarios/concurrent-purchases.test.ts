@@ -17,8 +17,8 @@ describe("Concurrent Purchases", () => {
 		const clientB = makeGasE2eClient();
 
 		const [resultA, resultB] = await Promise.all([
-			clientA.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
-			clientB.purchaseAccess({ tierId: DEFAULT_TIER_ID }),
+			clientA.purchaseAccess({ planId: DEFAULT_TIER_ID }),
+			clientB.purchaseAccess({ planId: DEFAULT_TIER_ID }),
 		]);
 
 		// Both must succeed

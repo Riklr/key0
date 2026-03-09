@@ -41,26 +41,24 @@ export function generateEnv(config: Config): string {
 		lines.push(`PROVIDER_URL=${config.providerUrl}`);
 	}
 
-	// Products
-	if (config.products.length > 0) {
-		const productsJson = JSON.stringify(
-			config.products.map((p) => ({
-				tierId: p.tierId,
-				label: p.label,
-				amount: p.amount,
+	// Plans
+	if (config.plans.length > 0) {
+		const plansJson = JSON.stringify(
+			config.plans.map((p) => ({
+				planId: p.planId,
+				displayName: p.displayName,
+				unitAmount: p.unitAmount,
 				resourceType: p.resourceType,
-				...(p.accessDurationSeconds !== ""
-					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
-					: {}),
+				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
 			})),
 			null,
 			2,
 		);
 		lines.push(
 			"",
-			"# ── Product Catalog ───────────────────────────────────────────────────────────",
+			"# ── Pricing Plans ─────────────────────────────────────────────────────────────",
 			"",
-			`PRODUCTS='${productsJson}'`,
+			`PLANS='${plansJson}'`,
 		);
 	}
 
@@ -131,19 +129,17 @@ export function generateDockerRun(config: Config): string {
 	if (config.providerUrl) {
 		envFlags.push(`-e PROVIDER_URL=${config.providerUrl}`);
 	}
-	if (config.products.length > 0) {
+	if (config.plans.length > 0) {
 		const json = JSON.stringify(
-			config.products.map((p) => ({
-				tierId: p.tierId,
-				label: p.label,
-				amount: p.amount,
+			config.plans.map((p) => ({
+				planId: p.planId,
+				displayName: p.displayName,
+				unitAmount: p.unitAmount,
 				resourceType: p.resourceType,
-				...(p.accessDurationSeconds !== ""
-					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
-					: {}),
+				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
 			})),
 		);
-		envFlags.push(`-e PRODUCTS='${json}'`);
+		envFlags.push(`-e PLANS='${json}'`);
 	}
 	if (config.challengeTtlSeconds !== "900") {
 		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
@@ -178,16 +174,14 @@ export function generateDockerCompose(config: Config): string {
 	}
 	if (config.providerName) envVars.PROVIDER_NAME = config.providerName;
 	if (config.providerUrl) envVars.PROVIDER_URL = config.providerUrl;
-	if (config.products.length > 0) {
-		envVars.PRODUCTS = JSON.stringify(
-			config.products.map((p) => ({
-				tierId: p.tierId,
-				label: p.label,
-				amount: p.amount,
+	if (config.plans.length > 0) {
+		envVars.PLANS = JSON.stringify(
+			config.plans.map((p) => ({
+				planId: p.planId,
+				displayName: p.displayName,
+				unitAmount: p.unitAmount,
 				resourceType: p.resourceType,
-				...(p.accessDurationSeconds !== ""
-					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
-					: {}),
+				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
 			})),
 		);
 	}

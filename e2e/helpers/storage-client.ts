@@ -79,7 +79,7 @@ export async function readChallengeRecord(
 			requestId: record.requestId,
 			clientAgentId: record.clientAgentId,
 			resourceId: record.resourceId,
-			tierId: record.tierId,
+			planId: record.planId,
 			amount: record.amount,
 			amountRaw: String(record.amountRaw),
 			asset: record.asset,
@@ -116,7 +116,7 @@ export async function writePaidChallengeRecord(record: {
 	requestId: string;
 	clientAgentId: string;
 	resourceId: string;
-	tierId: string;
+	planId: string;
 	amount: string;
 	amountRaw: bigint;
 	destination: `0x${string}`;

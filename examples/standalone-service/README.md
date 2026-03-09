@@ -31,7 +31,7 @@ This example demonstrates how to deploy Key2a as a **separate service** that com
    - `INTERNAL_AUTH_SECRET`: Shared secret for service-to-service auth
    - `USE_GAS_WALLET`: Set to `true` to enable gas wallet facilitation mode
    - `GAS_WALLET_PRIVATE_KEY`: Private key for gas wallet (required if USE_GAS_WALLET=true)
-   - `PRODUCTS`: JSON array of product tiers
+   - `PLANS`: JSON array of pricing plans
 
 3. **Install dependencies:**
    ```bash
@@ -112,7 +112,7 @@ TOKEN_MODE=remote
 
 1. `POST /internal/verify-resource` - Verify resource exists
    ```json
-   { "resourceId": "photo-1", "tierId": "basic" }
+   { "resourceId": "photo-1", "planId": "basic" }
    ```
    Response: `{ "valid": true }`
 
@@ -122,7 +122,7 @@ TOKEN_MODE=remote
      "requestId": "uuid",
      "challengeId": "uuid",
      "resourceId": "photo-1",
-     "tierId": "basic",
+     "planId": "basic",
      "txHash": "0x..."
    }
    ```

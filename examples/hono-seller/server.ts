@@ -30,42 +30,42 @@ const gate = key2aApp({
 		walletAddress: WALLET,
 		network: NETWORK,
 		challengeTTLSeconds: 900,
-		products: [
+		plans: [
 			{
-				tierId: "single-photo",
-				label: "Single Photo",
-				amount: "$0.10",
+				planId: "single-photo",
+				displayName: "Single Photo",
+				unitAmount: "$0.10",
 				resourceType: "photo",
-				accessDurationSeconds: 3600,
+				expiresIn: 3600,
 			},
 			{
-				tierId: "full-album",
-				label: "Full Album Access",
-				amount: "$1.00",
+				planId: "full-album",
+				displayName: "Full Album Access",
+				unitAmount: "$1.00",
 				resourceType: "album",
-				accessDurationSeconds: 86400,
+				expiresIn: 86400,
 			},
 		],
-		onVerifyResource: async (resourceId: string, _tierId: string) => {
+		onVerifyResource: async (resourceId: string, _planId: string) => {
 			const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
 			return validResources.includes(resourceId);
 		},
 		onIssueToken: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
-			const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+			const ttl = params.planId === "single-photo" ? 3600 : 86400;
 			return tokenIssuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				ttl,
 			);
 		},
 		onPaymentReceived: async (grant) => {
-			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
+			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
 			console.log(`  TX: ${grant.explorerUrl}`);
 		},
 		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,

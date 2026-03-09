@@ -1,16 +1,16 @@
 /**
- * x402 Discovery — verifies the discovery flow via POST /x402/access with no tierId.
+ * x402 Discovery — verifies the discovery flow via POST /x402/access with no planId.
  *
- * When a client POSTs to /x402/access without a tierId, Key2a returns HTTP 402
- * with all available tiers in the accepts array. No PENDING record is created.
- * This is the entry point for clients that don't yet know which tier to purchase.
+ * When a client POSTs to /x402/access without a planId, Key2a returns HTTP 402
+ * with all available plans in the accepts array. No PENDING record is created.
+ * This is the entry point for clients that don't yet know which plan to purchase.
  */
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, KEY2A_URL } from "../fixtures/constants.ts";
 
 describe("x402 Discovery", () => {
-	test("POST /x402/access with no body returns 402 with all tiers", async () => {
+	test("POST /x402/access with no body returns 402 with all plans", async () => {
 		const res = await fetch(`${KEY2A_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -25,19 +25,19 @@ describe("x402 Discovery", () => {
 		expect(Array.isArray(accepts)).toBe(true);
 		expect(accepts.length).toBeGreaterThan(0);
 
-		// Each tier in accepts must have required x402 fields
-		const tier = accepts[0]!;
-		expect(tier["scheme"]).toBe("exact");
-		expect(tier["network"]).toBe("eip155:84532");
-		expect(typeof tier["asset"]).toBe("string");
-		expect(typeof tier["amount"]).toBe("string");
-		expect(BigInt(tier["amount"] as string)).toBeGreaterThan(0n);
-		expect(typeof tier["payTo"]).toBe("string");
+		// Each plan in accepts must have required x402 fields
+		const plan = accepts[0]!;
+		expect(plan["scheme"]).toBe("exact");
+		expect(plan["network"]).toBe("eip155:84532");
+		expect(typeof plan["asset"]).toBe("string");
+		expect(typeof plan["amount"]).toBe("string");
+		expect(BigInt(plan["amount"] as string)).toBeGreaterThan(0n);
+		expect(typeof plan["payTo"]).toBe("string");
 
-		// Discovery tiers include tierId in extra
-		const extra = tier["extra"] as Record<string, unknown> | undefined;
-		expect(typeof extra?.["tierId"]).toBe("string");
-		expect(extra?.["tierId"]).toBe(DEFAULT_TIER_ID);
+		// Discovery plans include planId in extra
+		const extra = plan["extra"] as Record<string, unknown> | undefined;
+		expect(typeof extra?.["planId"]).toBe("string");
+		expect(extra?.["planId"]).toBe(DEFAULT_TIER_ID);
 
 		// No challengeId — pure discovery, no PENDING record created
 		expect(body["challengeId"]).toBeUndefined();

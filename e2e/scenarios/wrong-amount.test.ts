@@ -15,7 +15,7 @@ describe("Wrong Amount", () => {
 		const requestId = crypto.randomUUID();
 
 		const { paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -29,7 +29,7 @@ describe("Wrong Amount", () => {
 		});
 
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,

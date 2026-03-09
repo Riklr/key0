@@ -23,7 +23,7 @@ const JSONRPC_URL = `${KEY2A_URL}/a2a/jsonrpc`;
 
 /** Build a JSON-RPC message/send body with an AccessRequest data part */
 function buildJsonRpcRequest(
-	tierId: string,
+	planId: string,
 	requestId: string,
 	resourceId = "default",
 ): Record<string, unknown> {
@@ -39,7 +39,7 @@ function buildJsonRpcRequest(
 						data: {
 							type: "AccessRequest",
 							requestId,
-							tierId,
+							planId,
 							resourceId,
 							clientAgentId: "agent://e2e-test",
 						},

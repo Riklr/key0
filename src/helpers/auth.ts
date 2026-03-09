@@ -41,7 +41,7 @@ export function signedJwtAuth(
 				sub: "key2a-service",
 				jti: crypto.randomUUID(),
 				resourceId: audience,
-				tierId: "system",
+				planId: "system",
 				txHash: "system-auth",
 			},
 			ttlSeconds,

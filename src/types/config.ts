@@ -12,7 +12,7 @@ export type IssueTokenParams = {
 	readonly requestId: string;
 	readonly challengeId: string;
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly txHash: string;
 };
 
@@ -30,15 +30,15 @@ export type NetworkConfig = {
 	};
 };
 
-export type ProductTier = {
-	readonly tierId: string;
-	readonly label: string;
-	readonly amount: string; // "$0.10"
+export type Plan = {
+	readonly planId: string;
+	readonly displayName: string;
+	readonly unitAmount: string; // "$0.10"
 	readonly resourceType: string; // "photo" | "report" | "api-call"
-	readonly accessDurationSeconds?: number; // undefined = single-use
+	readonly expiresIn?: number; // undefined = single-use
 };
 
-export type ResourceVerifier = (resourceId: string, tierId: string) => Promise<boolean>;
+export type ResourceVerifier = (resourceId: string, planId: string) => Promise<boolean>;
 
 /**
  * Minimal Redis interface required for distributed gas wallet lock.
@@ -63,7 +63,7 @@ export type SellerConfig = {
 	readonly network: NetworkName;
 
 	// Product catalog
-	readonly products: readonly ProductTier[];
+	readonly plans: readonly Plan[];
 
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900

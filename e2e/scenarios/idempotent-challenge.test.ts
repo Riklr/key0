@@ -14,9 +14,9 @@ describe("Idempotent Challenge", () => {
 		const client = makeClientE2eClient();
 		const requestId = crypto.randomUUID();
 
-		const first = await client.requestAccess({ tierId: DEFAULT_TIER_ID, requestId });
-		const second = await client.requestAccess({ tierId: DEFAULT_TIER_ID, requestId });
-		const third = await client.requestAccess({ tierId: DEFAULT_TIER_ID, requestId });
+		const first = await client.requestAccess({ planId: DEFAULT_TIER_ID, requestId });
+		const second = await client.requestAccess({ planId: DEFAULT_TIER_ID, requestId });
+		const third = await client.requestAccess({ planId: DEFAULT_TIER_ID, requestId });
 
 		expect(first.challengeId).toBe(second.challengeId);
 		expect(second.challengeId).toBe(third.challengeId);
@@ -32,11 +32,11 @@ describe("Idempotent Challenge", () => {
 		const client = makeClientE2eClient();
 
 		const first = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: crypto.randomUUID(),
 		});
 		const second = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: crypto.randomUUID(),
 		});
 

@@ -1,7 +1,7 @@
 export type IssueChallengeParams = {
 	readonly requestId: string;
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly amount: string; // "$0.10"
 	readonly destination: `0x${string}`;
 	readonly expiresAt: Date;

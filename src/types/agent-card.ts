@@ -1,9 +1,9 @@
 export type PaymentProtocol = "x402" | "stripe" | "lightning";
 
 export type SkillPricing = {
-	readonly tierId: string;
-	readonly label: string;
-	readonly amount: string; // "$0.10" — human-readable USD, settled as USDC
+	readonly planId: string;
+	readonly displayName: string;
+	readonly unitAmount: string; // "$0.10" — human-readable USD, settled as USDC
 	readonly asset: "USDC";
 	readonly chainId: number; // 8453 (Base) or 84532 (Base Sepolia)
 	readonly walletAddress: `0x${string}`;

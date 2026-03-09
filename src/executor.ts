@@ -65,7 +65,7 @@ export class Key2aExecutor implements AgentExecutor {
 					contextId,
 					"failed",
 					"Unknown message type",
-					`Unsupported message type: "${payload["type"]}". Expected type="AccessRequest" with tierId and requestId.`,
+					`Unsupported message type: "${payload["type"]}". Expected type="AccessRequest" with planId and requestId.`,
 				);
 			}
 		} catch (err: unknown) {
@@ -174,7 +174,7 @@ export class Key2aExecutor implements AgentExecutor {
 			);
 		}
 
-		// 2. Look up the challenge record to get tierId, resourceId, requestId
+		// 2. Look up the challenge record to get planId, resourceId, requestId
 		const record = await this.engine.getChallengeRecord(challengeId);
 		if (!record) {
 			throw new Key2aError(
@@ -184,7 +184,7 @@ export class Key2aExecutor implements AgentExecutor {
 			);
 		}
 
-		const { tierId, resourceId, requestId } = record;
+		const { planId, resourceId, requestId } = record;
 
 		// 3. Emit payment-submitted (working state)
 		this.publishWorkingTask(
@@ -227,7 +227,7 @@ export class Key2aExecutor implements AgentExecutor {
 		// 6. Issue access grant via the engine
 		const grant: AccessGrant = await this.engine.processHttpPayment(
 			requestId,
-			tierId,
+			planId,
 			resourceId,
 			txHash,
 			payer as `0x${string}` | undefined,
@@ -411,6 +411,6 @@ export class Key2aExecutor implements AgentExecutor {
 	}
 
 	private isAccessRequest(data: Record<string, unknown>): boolean {
-		return typeof data["requestId"] === "string" && typeof data["tierId"] === "string";
+		return typeof data["requestId"] === "string" && typeof data["planId"] === "string";
 	}
 }

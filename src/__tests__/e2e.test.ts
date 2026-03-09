@@ -26,9 +26,9 @@ function makeConfig(): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [
-			{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" },
-			{ tierId: "album", label: "Full Album", amount: "$1.00", resourceType: "album" },
+		plans: [
+			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
+			{ planId: "album", displayName: "Full Album", unitAmount: "$1.00", resourceType: "album" },
 		],
 		challengeTTLSeconds: 900,
 		onVerifyResource: async (resourceId: string) => {
@@ -40,7 +40,7 @@ function makeConfig(): SellerConfig {
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				3600,
@@ -175,7 +175,7 @@ describe("E2E: Full Key2a lifecycle (x402 Extension)", () => {
 			type: "AccessRequest",
 			requestId,
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
 
@@ -217,7 +217,7 @@ describe("E2E: Full Key2a lifecycle (x402 Extension)", () => {
 			type: "AccessRequest",
 			requestId,
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			clientAgentId: "agent://e2e-test",
 		};
 
@@ -243,7 +243,7 @@ describe("E2E: Full Key2a lifecycle (x402 Extension)", () => {
 			type: "AccessRequest",
 			requestId: uuidv4(),
 			resourceId: "nonexistent",
-			tierId: "single",
+			planId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
 
@@ -267,7 +267,7 @@ describe("E2E: Full Key2a lifecycle (x402 Extension)", () => {
 		const events = await runTask(executor, {
 			type: "AccessRequest",
 			requestId: uuidv4(),
-			tierId: "single",
+			planId: "single",
 		});
 
 		expect(extractTaskState(events)).toBe("input-required");
