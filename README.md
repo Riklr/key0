@@ -10,8 +10,8 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker run riklr/agentgate:latest` | `bun add @riklr/agentgate` |
-| **Config** | Environment variables | TypeScript config |
+| **Setup** | `docker compose up` → browser Setup UI | `bun add @riklr/agentgate` |
+| **Config** | Setup UI or environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
 
@@ -19,7 +19,7 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 ## Standalone Mode
 
-Run AgentGate as a pre-built Docker container. No code required — configure entirely via environment variables and point it at your own token-issuance endpoint.
+Run AgentGate as a pre-built Docker container. No code required — configure via the built-in Setup UI or environment variables, and point it at your own token-issuance endpoint.
 
 ```
 ┌──────────────┐        ┌───────────────────────────┐        ┌──────────────────┐
@@ -47,7 +47,26 @@ Run AgentGate as a pre-built Docker container. No code required — configure en
 
 ### Quick Start
 
-**Two required environment variables:**
+There are two ways to configure Standalone mode:
+
+#### Option A: Setup UI (zero-config start)
+
+Just start the container with no environment variables — AgentGate boots into **Setup Mode** and serves a browser-based configuration wizard:
+
+```bash
+docker compose -f docker/docker-compose.yml up
+# Open http://localhost:3000 → redirects to /setup
+```
+
+The Setup UI lets you configure everything visually: wallet address, network, product tiers, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
+
+Configuration is persisted in a Docker volume (`agentgate-config`), so it survives `docker compose down` / `up` cycles.
+
+The Setup UI also works as a **standalone config generator** — open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy.
+
+#### Option B: Environment variables
+
+Set the two required variables and start immediately:
 
 | Variable | Description |
 |---|---|
@@ -69,6 +88,8 @@ cp docker/.env.example docker/.env
 # Edit docker/.env: set AGENTGATE_WALLET_ADDRESS and ISSUE_TOKEN_API
 docker compose -f docker/docker-compose.yml up
 ```
+
+> Even with env vars pre-configured, the Setup UI is still available at `/setup` for reconfiguration. To protect it in production, set `SETUP_SECRET` — see [Environment Variables](#environment-variables).
 
 ### Docker Image
 
@@ -107,6 +128,7 @@ Build from source: `docker build -t riklr/agentgate .`
 | `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
 | `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
+| `SETUP_SECRET` | | — | Protects the `/api/setup` endpoint in running mode. Without it, the setup API is disabled once configured. Set this to allow reconfiguration via the Setup UI in production. |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 

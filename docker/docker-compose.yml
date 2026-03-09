@@ -1,15 +1,18 @@
 services:
   agentgate:
-    image: ${AGENTGATE_IMAGE:-riklr/agentgate:latest}
+    build: ..
     ports:
-      - "${PORT:-3001}:${PORT:-3001}"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      - PORT=${PORT:-3001}
+      - PORT=${PORT:-3000}
+      - REDIS_URL=redis://redis:6379
     env_file:
       - path: .env
         required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - agentgate-config:/app/config
     depends_on:
       redis:
         condition: service_healthy
@@ -26,3 +29,4 @@ services:
 
 volumes:
   redis-data:
+  agentgate-config:

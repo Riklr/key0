@@ -17,19 +17,19 @@ const PORT = Number(process.env.PORT ?? 3000);
 const WALLET_ADDRESS = process.env.AGENTGATE_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 const REDIS_URL = process.env.REDIS_URL;
+const SETUP_SECRET = process.env.SETUP_SECRET;
 
 const isConfigured = Boolean(WALLET_ADDRESS && ISSUE_TOKEN_API && REDIS_URL);
 
 const app = express();
 app.use(express.json());
 
-// ─── Setup UI (served in both modes) ──────────────────────────────────────
+// ─── Setup UI (served at /setup only) ─────────────────────────────────────
 
 const UI_DIR = resolve(import.meta.dir, "../ui/dist");
 const hasUI = existsSync(UI_DIR);
 
 if (hasUI) {
-	app.use(express.static(UI_DIR));
 	app.use("/setup", express.static(UI_DIR));
 
 	// SPA fallback — serve index.html for any /setup/* route
@@ -40,15 +40,46 @@ if (hasUI) {
 
 // ─── Setup API ────────────────────────────────────────────────────────────
 
-app.get("/api/setup/status", (_req, res) => {
+// In running mode, require SETUP_SECRET to prevent unauthorized reconfiguration.
+// In setup mode (not configured), allow unauthenticated access.
+function requireSetupAuth(
+	req: express.Request,
+	res: express.Response,
+	next: express.NextFunction,
+): void {
+	if (!isConfigured) {
+		next();
+		return;
+	}
+	if (!SETUP_SECRET) {
+		res.status(403).json({
+			error: "Setup API is disabled in running mode. Set SETUP_SECRET env var to enable.",
+		});
+		return;
+	}
+	const auth = req.headers.authorization;
+	if (auth !== `Bearer ${SETUP_SECRET}`) {
+		res.status(401).json({ error: "Invalid setup secret" });
+		return;
+	}
+	next();
+}
+
+app.get("/api/setup/status", (req, res) => {
+	const authed =
+		!isConfigured || (SETUP_SECRET && req.headers.authorization === `Bearer ${SETUP_SECRET}`);
+
 	res.json({
 		configured: isConfigured,
-		config: isConfigured
+		setupProtected: !!(isConfigured && !SETUP_SECRET),
+		// Only expose full config to unauthenticated requests in setup mode,
+		// or to authenticated requests in running mode.
+		config: authed
 			? {
-					walletAddress: WALLET_ADDRESS,
-					issueTokenApi: ISSUE_TOKEN_API,
+					walletAddress: WALLET_ADDRESS ?? "",
+					issueTokenApi: ISSUE_TOKEN_API ?? "",
 					network: process.env.AGENTGATE_NETWORK ?? "testnet",
-					redisUrl: REDIS_URL,
+					redisUrl: REDIS_URL ?? "",
 					port: PORT.toString(),
 					basePath: process.env.BASE_PATH ?? "/a2a",
 					agentName: process.env.AGENT_NAME ?? "AgentGate Server",
@@ -57,7 +88,7 @@ app.get("/api/setup/status", (_req, res) => {
 					providerName: process.env.PROVIDER_NAME ?? "",
 					providerUrl: process.env.PROVIDER_URL ?? "",
 					challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
-					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ?? "",
+					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 					gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
 					walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY ? "••••••" : "",
 					refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
@@ -94,7 +125,7 @@ interface SetupBody {
 	refundMinAgeMs: string;
 }
 
-app.post("/api/setup", async (req, res) => {
+app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	const body = req.body as SetupBody;
 
 	if (!body.walletAddress || !body.issueTokenApi || !body.redisUrl) {
@@ -104,9 +135,8 @@ app.post("/api/setup", async (req, res) => {
 		return;
 	}
 
-	const q = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
-
-	// Build .env content
+	// Build .env content — values with spaces must be double-quoted for shell sourcing
+	const q = (v: string) => (v.includes(" ") ? `"${v.replace(/"/g, '\\"')}"` : v);
 	const lines: string[] = [
 		`AGENTGATE_WALLET_ADDRESS=${body.walletAddress}`,
 		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
@@ -124,7 +154,10 @@ app.post("/api/setup", async (req, res) => {
 	if (body.providerName) lines.push(`PROVIDER_NAME=${q(body.providerName)}`);
 	if (body.providerUrl) lines.push(`PROVIDER_URL=${body.providerUrl}`);
 	if (body.products?.length > 0) {
-		lines.push(`PRODUCTS='${JSON.stringify(body.products)}'`);
+		// Base64-encode JSON to avoid shell quoting issues
+		const json = JSON.stringify(body.products);
+		const b64 = Buffer.from(json).toString("base64");
+		lines.push(`PRODUCTS_B64=${b64}`);
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
@@ -146,11 +179,11 @@ app.post("/api/setup", async (req, res) => {
 	}
 
 	const envContent = `${lines.join("\n")}\n`;
-	const envPath = resolve("/app/.env.runtime");
+	const envPath = resolve("/app/config/.env.runtime");
 
 	try {
 		await writeFile(envPath, envContent, "utf-8");
-		console.log("[agentgate] Configuration saved to .env.runtime — restarting...");
+		console.log("[agentgate] Configuration saved to config/.env.runtime — restarting...");
 		res.json({ success: true, message: "Configuration saved. Restarting..." });
 
 		// Give the response time to flush, then exit with code 42 to trigger restart
@@ -212,7 +245,7 @@ if (!isConfigured) {
 	const TOKEN_ISSUE_TIMEOUT_MS = Number(process.env.TOKEN_ISSUE_TIMEOUT_MS ?? 15_000);
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 
-	// Products
+	// Products — support both PRODUCTS (raw JSON) and PRODUCTS_B64 (base64-encoded JSON)
 	const DEFAULT_PRODUCTS: ProductTier[] = [
 		{
 			tierId: "basic",
@@ -225,11 +258,15 @@ if (!isConfigured) {
 
 	let products: ProductTier[];
 	try {
-		products = process.env.PRODUCTS
-			? (JSON.parse(process.env.PRODUCTS) as ProductTier[])
-			: DEFAULT_PRODUCTS;
+		if (process.env.PRODUCTS_B64) {
+			products = JSON.parse(Buffer.from(process.env.PRODUCTS_B64, "base64").toString("utf-8"));
+		} else if (process.env.PRODUCTS) {
+			products = JSON.parse(process.env.PRODUCTS) as ProductTier[];
+		} else {
+			products = DEFAULT_PRODUCTS;
+		}
 	} catch {
-		console.error("FATAL: PRODUCTS env var is not valid JSON");
+		console.error("FATAL: PRODUCTS / PRODUCTS_B64 env var is not valid JSON");
 		process.exit(1);
 	}
 

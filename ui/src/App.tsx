@@ -10,6 +10,7 @@ type ServerStatus = "loading" | "setup" | "running" | "standalone";
 export default function App() {
 	const [config, setConfig] = useState<Config>(defaultConfig);
 	const [serverStatus, setServerStatus] = useState<ServerStatus>("loading");
+	const [setupProtected, setSetupProtected] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [saveMessage, setSaveMessage] = useState<{
 		type: "success" | "error";
@@ -22,6 +23,7 @@ export default function App() {
 			.then((r) => r.json())
 			.then((data) => {
 				setServerStatus(data.configured ? "running" : "setup");
+				if (data.setupProtected) setSetupProtected(true);
 				if (data.config) {
 					setConfig((prev) => ({
 						...prev,
@@ -381,21 +383,31 @@ export default function App() {
 										{saveMessage.text}
 									</div>
 								)}
-								<button
-									onClick={handleSaveAndLaunch}
-									disabled={!isValid || saving}
-									className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
-										isValid && !saving
-											? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
-											: "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-									}`}
-								>
-									{saving
-										? "Saving..."
-										: serverStatus === "running"
-											? "Save & Restart"
-											: "Save & Launch"}
-								</button>
+								{setupProtected ? (
+									<div className="rounded-lg px-4 py-3 text-sm bg-amber-500/10 text-amber-400 border border-amber-500/20">
+										Setup API is locked. Set{" "}
+										<code className="font-mono text-xs bg-neutral-800 px-1 py-0.5 rounded">
+											SETUP_SECRET
+										</code>{" "}
+										env var to enable reconfiguration.
+									</div>
+								) : (
+									<button
+										onClick={handleSaveAndLaunch}
+										disabled={!isValid || saving}
+										className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
+											isValid && !saving
+												? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
+												: "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+										}`}
+									>
+										{saving
+											? "Saving..."
+											: serverStatus === "running"
+												? "Save & Restart"
+												: "Save & Launch"}
+									</button>
+								)}
 							</div>
 						)}
 					</div>

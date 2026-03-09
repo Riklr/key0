@@ -2,6 +2,8 @@
 
 This example demonstrates how to deploy AgentGate as a **separate service** that communicates with your backend via HTTP.
 
+> **Tip:** For the simplest standalone deployment, use the Docker image directly — run `docker compose -f docker/docker-compose.yml up` and configure everything via the built-in Setup UI at `http://localhost:3000/setup`. This example is for when you need to customize the server code beyond what env vars provide.
+
 ## Architecture
 
 ```

@@ -3,7 +3,11 @@
 # Loads saved config if present, then starts the server.
 # Exit code 42 = restart (used after setup UI saves config).
 
-ENV_FILE="/app/.env.runtime"
+CONFIG_DIR="/app/config"
+ENV_FILE="$CONFIG_DIR/.env.runtime"
+
+# Ensure config dir exists (volume mount point)
+mkdir -p "$CONFIG_DIR"
 
 while true; do
   # Source saved env vars if they exist

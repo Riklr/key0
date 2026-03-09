@@ -21,6 +21,9 @@ RUN chmod +x ./docker/entrypoint.sh
 # Copy built UI
 COPY --from=ui-build /ui/dist ./ui/dist
 
+# Config directory for persisted .env.runtime (volume mount point)
+RUN mkdir -p /app/config
+
 ENV PORT=3000
 EXPOSE 3000
 
