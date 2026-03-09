@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { NextFunction, Request, Response } from "express";
-import { ChallengeEngine } from "../core/challenge-engine.js";
 import { AccessTokenIssuer } from "../core/access-token.js";
+import { ChallengeEngine } from "../core/challenge-engine.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,

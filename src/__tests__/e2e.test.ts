@@ -6,11 +6,11 @@ import type {
 	RequestContext,
 } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
+import { AccessTokenIssuer } from "../core/access-token.js";
 import { createAgentGate } from "../factory.js";
 import { MockPaymentAdapter, TestChallengeStore, TestSeenTxStore } from "../test-utils";
 import type { SellerConfig } from "../types";
 import { X402_METADATA_KEYS } from "../types";
-import { AccessTokenIssuer } from "../core/access-token.js";
 
 const _SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;

@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { AccessGrant, ChallengeRecord } from "../../types";
 import { PostgresChallengeStore, PostgresSeenTxStore } from "../storage/postgres.js";
 
@@ -191,4 +191,3 @@ describeIfPg("PostgresChallengeStore (real Postgres)", () => {
 if (!PG_URL) {
 	test.skip("Postgres integration tests (AGENTGATE_TEST_PG_URL not set)", () => {});
 }
-
