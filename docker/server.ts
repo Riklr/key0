@@ -1,9 +1,9 @@
 /**
- * AgentGate Docker Standalone Server
+ * Key2a Docker Standalone Server
  *
  * Two modes:
  *   1. Setup mode — if required env vars are missing, serves the setup UI at /setup
- *   2. Running mode — full AgentGate server with /setup still accessible for reconfiguration
+ *   2. Running mode — full Key2a server with /setup still accessible for reconfiguration
  *
  * See docker/.env.example for the full list of env vars.
  */
@@ -14,7 +14,7 @@ import { resolve } from "node:path";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const WALLET_ADDRESS = process.env.AGENTGATE_WALLET_ADDRESS;
+const WALLET_ADDRESS = process.env.KEY2A_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 const REDIS_URL = process.env.REDIS_URL;
 const SETUP_SECRET = process.env.SETUP_SECRET;
@@ -78,11 +78,11 @@ app.get("/api/setup/status", (req, res) => {
 			? {
 					walletAddress: WALLET_ADDRESS ?? "",
 					issueTokenApi: ISSUE_TOKEN_API ?? "",
-					network: process.env.AGENTGATE_NETWORK ?? "testnet",
+					network: process.env.KEY2A_NETWORK ?? "testnet",
 					redisUrl: REDIS_URL ?? "",
 					port: PORT.toString(),
 					basePath: process.env.BASE_PATH ?? "/a2a",
-					agentName: process.env.AGENT_NAME ?? "AgentGate Server",
+					agentName: process.env.AGENT_NAME ?? "Key2a Server",
 					agentDescription: process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint",
 					agentUrl: process.env.AGENT_URL ?? `http://localhost:${PORT}`,
 					providerName: process.env.PROVIDER_NAME ?? "",
@@ -90,7 +90,7 @@ app.get("/api/setup/status", (req, res) => {
 					challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
 					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 					gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
-					walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY ? "••••••" : "",
+					walletPrivateKey: process.env.KEY2A_WALLET_PRIVATE_KEY ? "••••••" : "",
 					refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
 					refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
 				}
@@ -138,12 +138,12 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	// Build .env content — values with spaces must be double-quoted for shell sourcing
 	const q = (v: string) => (v.includes(" ") ? `"${v.replace(/"/g, '\\"')}"` : v);
 	const lines: string[] = [
-		`AGENTGATE_WALLET_ADDRESS=${body.walletAddress}`,
+		`KEY2A_WALLET_ADDRESS=${body.walletAddress}`,
 		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
 		`REDIS_URL=${body.redisUrl}`,
-		`AGENTGATE_NETWORK=${body.network || "testnet"}`,
+		`KEY2A_NETWORK=${body.network || "testnet"}`,
 		`PORT=${body.port || PORT}`,
-		`AGENT_NAME=${q(body.agentName || "AgentGate Server")}`,
+		`AGENT_NAME=${q(body.agentName || "Key2a Server")}`,
 		`AGENT_DESCRIPTION=${q(body.agentDescription || "Payment-gated A2A endpoint")}`,
 		`AGENT_URL=${body.agentUrl || `http://localhost:${body.port || PORT}`}`,
 	];
@@ -169,7 +169,7 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 		lines.push(`GAS_WALLET_PRIVATE_KEY=${body.gasWalletPrivateKey}`);
 	}
 	if (body.walletPrivateKey && !body.walletPrivateKey.includes("•")) {
-		lines.push(`AGENTGATE_WALLET_PRIVATE_KEY=${body.walletPrivateKey}`);
+		lines.push(`KEY2A_WALLET_PRIVATE_KEY=${body.walletPrivateKey}`);
 		if (body.refundIntervalMs && body.refundIntervalMs !== "60000") {
 			lines.push(`REFUND_INTERVAL_MS=${body.refundIntervalMs}`);
 		}
@@ -183,13 +183,13 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 
 	try {
 		await writeFile(envPath, envContent, "utf-8");
-		console.log("[agentgate] Configuration saved to config/.env.runtime — restarting...");
+		console.log("[key2a] Configuration saved to config/.env.runtime — restarting...");
 		res.json({ success: true, message: "Configuration saved. Restarting..." });
 
 		// Give the response time to flush, then exit with code 42 to trigger restart
 		setTimeout(() => process.exit(42), 500);
 	} catch (err) {
-		console.error("[agentgate] Failed to write config:", err);
+		console.error("[key2a] Failed to write config:", err);
 		res.status(500).json({ error: "Failed to save configuration" });
 	}
 });
@@ -198,7 +198,7 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 
 if (!isConfigured) {
 	app.get("/health", (_req, res) => {
-		res.json({ status: "setup", message: "AgentGate is not configured yet. Visit /setup" });
+		res.json({ status: "setup", message: "Key2a is not configured yet. Visit /setup" });
 	});
 
 	app.get("/", (_req, res) => {
@@ -207,26 +207,26 @@ if (!isConfigured) {
 		} else {
 			res.json({
 				status: "setup_required",
-				message: "AgentGate is not configured. UI not found — set env vars manually.",
+				message: "Key2a is not configured. UI not found — set env vars manually.",
 			});
 		}
 	});
 
 	app.listen(PORT, () => {
-		console.log("\n[agentgate] Setup mode — no configuration found");
+		console.log("\n[key2a] Setup mode — no configuration found");
 		console.log(`  Open http://localhost:${PORT}/setup to configure\n`);
 	});
 } else {
-	// ─── Running mode: full AgentGate ──────────────────────────────────────
+	// ─── Running mode: full Key2a ──────────────────────────────────────
 
-	const agentgate = await import("@riklr/agentgate");
-	const { agentGateRouter } = await import("@riklr/agentgate/express");
+	const key2a = await import("@riklr/key2a");
+	const { key2aRouter } = await import("@riklr/key2a/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
 
-	type IChallengeStore = agentgate.IChallengeStore;
-	type ISeenTxStore = agentgate.ISeenTxStore;
-	type NetworkName = agentgate.NetworkName;
-	type ProductTier = agentgate.ProductTier;
+	type IChallengeStore = key2a.IChallengeStore;
+	type ISeenTxStore = key2a.ISeenTxStore;
+	type NetworkName = key2a.NetworkName;
+	type ProductTier = key2a.ProductTier;
 	const {
 		processRefunds,
 		PostgresChallengeStore,
@@ -234,19 +234,19 @@ if (!isConfigured) {
 		RedisChallengeStore,
 		RedisSeenTxStore,
 		X402Adapter,
-	} = agentgate;
+	} = key2a;
 
-	const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
-	const AGENT_NAME = process.env.AGENT_NAME ?? "AgentGate Server";
+	const NETWORK = (process.env.KEY2A_NETWORK ?? "testnet") as NetworkName;
+	const AGENT_NAME = process.env.AGENT_NAME ?? "Key2a Server";
 	const AGENT_DESCRIPTION = process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint";
 	const AGENT_URL = process.env.AGENT_URL ?? `http://localhost:${PORT}`;
-	const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "AgentGate";
-	const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://agentgate.dev";
+	const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "Key2a";
+	const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://key2a.dev";
 	const BASE_PATH = process.env.BASE_PATH ?? "/a2a";
 	const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
 	const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 	const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
-	const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+	const WALLET_PRIVATE_KEY = process.env.KEY2A_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 	const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 	const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
 	const REFUND_BATCH_SIZE = Number(process.env.REFUND_BATCH_SIZE ?? 50);
@@ -303,7 +303,7 @@ if (!isConfigured) {
 		const Redis = (await import("ioredis")).default;
 		redis = new Redis(REDIS_URL!);
 
-		console.log("[agentgate] Using Postgres storage:", DATABASE_URL);
+		console.log("[key2a] Using Postgres storage:", DATABASE_URL);
 	} else {
 		const Redis = (await import("ioredis")).default;
 		redis = new Redis(REDIS_URL!);
@@ -312,7 +312,7 @@ if (!isConfigured) {
 			challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 		});
 		seenTxStore = new RedisSeenTxStore({ redis });
-		console.log("[agentgate] Using Redis storage:", REDIS_URL);
+		console.log("[key2a] Using Redis storage:", REDIS_URL);
 	}
 
 	// Token issuance
@@ -513,7 +513,7 @@ if (!isConfigured) {
 	});
 
 	app.use(
-		agentGateRouter({
+		key2aRouter({
 			config: {
 				agentName: AGENT_NAME,
 				agentDescription: AGENT_DESCRIPTION,
@@ -540,7 +540,7 @@ if (!isConfigured) {
 	);
 
 	app.listen(PORT, () => {
-		console.log("\n[agentgate] Server started");
+		console.log("\n[key2a] Server started");
 		console.log(`  Network:    ${NETWORK}`);
 		console.log(`  Port:       ${PORT}`);
 		console.log(`  Wallet:     ${WALLET_ADDRESS}`);
@@ -549,7 +549,7 @@ if (!isConfigured) {
 		console.log(`  Setup UI:   http://localhost:${PORT}/setup`);
 		console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
 		console.log(
-			`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+			`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set KEY2A_WALLET_PRIVATE_KEY)"}\n`,
 		);
 	});
 

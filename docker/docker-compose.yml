@@ -1,5 +1,5 @@
 services:
-  agentgate:
+  key2a:
     build: ..
     ports:
       - "${PORT:-3000}:${PORT:-3000}"

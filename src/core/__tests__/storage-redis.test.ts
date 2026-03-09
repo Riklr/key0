@@ -293,8 +293,8 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const challengeKey = `agentgate:challenge:${record.challengeId}`;
-		const requestKey = `agentgate:request:${record.requestId}`;
+		const challengeKey = `key2a:challenge:${record.challengeId}`;
+		const requestKey = `key2a:request:${record.requestId}`;
 
 		// Challenge hash key uses the full 7-day lifecycle TTL
 		expect(redis._ttls.get(challengeKey)).toBe(604_800);
@@ -379,7 +379,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key2a:challenge:${record.challengeId}`;
 		expect(redis._ttls.get(key)).toBe(604_800); // 7 days
 	});
 
@@ -393,7 +393,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const reqKey = `agentgate:request:${record.requestId}`;
+		const reqKey = `key2a:request:${record.requestId}`;
 		expect(redis._ttls.get(reqKey)).toBe(1800);
 	});
 
@@ -404,7 +404,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord({ state: "PAID" });
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key2a:challenge:${record.challengeId}`;
 		expect(redis._ttls.get(key)).toBe(604_800); // 7 days at creation
 
 		await store.transition(record.challengeId, "PAID", "DELIVERED", {
@@ -421,7 +421,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord({ state: "REFUND_PENDING" });
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key2a:challenge:${record.challengeId}`;
 		const ttlBefore = redis._ttls.get(key);
 
 		await store.transition(record.challengeId, "REFUND_PENDING", "REFUNDED", {
@@ -491,7 +491,7 @@ describe("RedisSeenTxStore", () => {
 		const store = new RedisSeenTxStore({ redis: redis as never });
 
 		await store.markUsed(TX_HASH, "challenge-1");
-		const key = `agentgate:seentx:${TX_HASH}`;
+		const key = `key2a:seentx:${TX_HASH}`;
 		expect(redis._ttls.get(key)).toBe(604800);
 	});
 

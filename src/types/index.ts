@@ -35,12 +35,12 @@ export type {
 } from "./config.js";
 
 export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
-export type { AgentGateErrorCode } from "./errors.js";
-export { AgentGateError } from "./errors.js";
+export type { Key2aErrorCode } from "./errors.js";
+export { Key2aError } from "./errors.js";
 
 export type { ChallengeTransitionUpdates, IChallengeStore, ISeenTxStore } from "./storage.js";
 export type {
-	AgentGateExtension,
+	Key2aExtension,
 	EIP3009Authorization,
 	FacilitatorVerifyResponse,
 	PaymentRequirements,

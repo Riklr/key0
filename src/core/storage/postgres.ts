@@ -35,7 +35,7 @@ type Sql = {
 
 export type PostgresStoreConfig = {
 	readonly sql: Sql;
-	readonly tablePrefix?: string | undefined; // default: "agentgate"
+	readonly tablePrefix?: string | undefined; // default: "key2a"
 	readonly autoMigrate?: boolean | undefined; // default: true — set false to manage migrations externally
 	readonly challengeTTLSeconds?: number | undefined; // default: 900 (15 min) — request index TTL for findActiveByRequestId
 	readonly recordTTLSeconds?: number | undefined; // default: 604_800 (7 days) — general record lifecycle TTL
@@ -115,7 +115,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 
 	constructor(config: PostgresStoreConfig) {
 		this.sql = config.sql;
-		this.tablePrefix = config.tablePrefix ?? "agentgate";
+		this.tablePrefix = config.tablePrefix ?? "key2a";
 		this.tableName = `${this.tablePrefix}_challenges`;
 		this.recordTTL = config.recordTTLSeconds ?? 604_800; // 7 days
 		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
@@ -393,7 +393,7 @@ export class PostgresSeenTxStore implements ISeenTxStore {
 
 	constructor(config: Pick<PostgresStoreConfig, "sql" | "tablePrefix" | "autoMigrate">) {
 		this.sql = config.sql;
-		this.tablePrefix = config.tablePrefix ?? "agentgate";
+		this.tablePrefix = config.tablePrefix ?? "key2a";
 		this.tableName = `${this.tablePrefix}_seen_txs`;
 		this.ready = config.autoMigrate !== false ? this.createSchema() : Promise.resolve();
 	}

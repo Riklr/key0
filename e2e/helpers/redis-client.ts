@@ -6,13 +6,16 @@
 import Redis from "ioredis";
 
 export const REDIS_URL = "redis://localhost:6380";
-const KEY_PREFIX = "agentgate";
+const KEY_PREFIX = "key2a";
 
 let client: Redis | null = null;
 
 export function connectRedis(url = REDIS_URL): Redis {
 	if (client) return client;
 	client = new Redis(url, { lazyConnect: true });
+	client.on("error", (err) => {
+		console.error("[e2e redis] connection error:", err.message);
+	});
 	return client;
 }
 

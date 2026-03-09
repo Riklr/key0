@@ -1,9 +1,9 @@
 ---
 name: test-conventions
-description: Exact bun:test conventions for the AgentGate SDK. Covers imports, factory helpers, injectable clock, store patterns, concurrency assertions, error assertions, and mock adapter usage.
+description: Exact bun:test conventions for the Key2a SDK. Covers imports, factory helpers, injectable clock, store patterns, concurrency assertions, error assertions, and mock adapter usage.
 ---
 
-# AgentGate Test Conventions
+# Key2a Test Conventions
 
 All tests use `bun:test`. Never use jest or vitest.
 
@@ -16,7 +16,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { MockPaymentAdapter } from "../../test-utils";
 import {
 	type AccessRequest,
-	AgentGateError,
+	Key2aError,
 	type PaymentProof,
 	type SellerConfig,
 } from "../../types";
@@ -175,11 +175,11 @@ expect(results.filter(Boolean).length).toBe(1);
 
 ## Error Assertions
 
-Always assert both `.code` and `.httpStatus` on `AgentGateError`:
+Always assert both `.code` and `.httpStatus` on `Key2aError`:
 
 ```ts
 const err = await engine.submitProof(proof).catch((e) => e);
-expect(err).toBeInstanceOf(AgentGateError);
+expect(err).toBeInstanceOf(Key2aError);
 expect(err.code).toBe("CHALLENGE_NOT_FOUND");
 expect(err.httpStatus).toBe(404);
 ```

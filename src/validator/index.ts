@@ -23,13 +23,13 @@ export type ValidatorConfig = {
  *
  * @example
  * ```typescript
- * const payload = await validateAgentGateToken(
+ * const payload = await validateKey2aToken(
  *   req.headers.authorization,
- *   { secret: process.env.AGENTGATE_SECRET }
+ *   { secret: process.env.KEY2A_SECRET }
  * );
  * ```
  */
-export async function validateAgentGateToken(
+export async function validateKey2aToken(
 	authHeader: string | null | undefined,
 	config: ValidatorConfig,
 ): Promise<AccessTokenPayload> {
