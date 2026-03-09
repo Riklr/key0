@@ -92,7 +92,7 @@ if (!REDIS_URL) {
 }
 
 let store: IChallengeStore;
-let _seenTxStore: ISeenTxStore;
+let seenTxStore: ISeenTxStore;
 // biome-ignore lint/suspicious/noExplicitAny: Redis client for BullMQ and gas wallet lock (if needed)
 let redis: any = null;
 
@@ -107,7 +107,7 @@ if (STORAGE_BACKEND === "postgres") {
 	const sql = postgres(DATABASE_URL);
 
 	store = new PostgresChallengeStore({ sql });
-	_seenTxStore = new PostgresSeenTxStore({ sql });
+	seenTxStore = new PostgresSeenTxStore({ sql });
 
 	// Still need Redis for BullMQ refund cron queue
 	const Redis = (await import("ioredis")).default;
@@ -121,20 +121,20 @@ if (STORAGE_BACKEND === "postgres") {
 		redis,
 		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 	});
-	_seenTxStore = new RedisSeenTxStore({ redis });
+	seenTxStore = new RedisSeenTxStore({ redis });
 	console.log("[agentgate] Using Redis storage:", REDIS_URL);
 }
 
 // ─── Token issuance ────────────────────────────────────────────────────────
 
-const _onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API, {
+const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API, {
 	apiSecret: ISSUE_TOKEN_API_SECRET,
 	products,
 });
 
 // ─── App ───────────────────────────────────────────────────────────────────
 
-const _adapter = new X402Adapter({ network: NETWORK });
+const adapter = new X402Adapter({ network: NETWORK });
 
 const app = express();
 app.use(express.json());
