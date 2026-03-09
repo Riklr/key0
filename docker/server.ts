@@ -208,6 +208,9 @@ if (!isConfigured) {
 	const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 	const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 	const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
+	const REFUND_BATCH_SIZE = Number(process.env.REFUND_BATCH_SIZE ?? 50);
+	const TOKEN_ISSUE_TIMEOUT_MS = Number(process.env.TOKEN_ISSUE_TIMEOUT_MS ?? 15_000);
+	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 
 	// Products
 	const DEFAULT_PRODUCTS: ProductTier[] = [
@@ -268,6 +271,8 @@ if (!isConfigured) {
 				basePath: BASE_PATH,
 				onVerifyResource: async () => true,
 				onIssueToken,
+				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
+				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
 				...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
 				redis,
 			},
@@ -301,6 +306,7 @@ if (!isConfigured) {
 			gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
 			network: NETWORK,
 			minAgeMs: REFUND_MIN_AGE_MS,
+			batchSize: REFUND_BATCH_SIZE,
 		});
 
 		for (const result of results) {
