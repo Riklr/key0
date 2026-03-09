@@ -33,13 +33,27 @@ function createMockSql() {
 	};
 
 	// biome-ignore lint/suspicious/noExplicitAny: mock implementation
-	const sql = (strings: TemplateStringsArray | string, ...values: any[]): any => {
+	const sql = (strings: any, ...values: any[]): any => {
 		// Handle sql(identifier) — used for table/column names
 		if (typeof strings === "string") {
 			return strings;
 		}
-		
-		const query = strings.join("?").toLowerCase();
+
+		// Handle sql(updateObj, ...columns) helper used for SET clause
+		// Return a special object that the outer template handler can interpret.
+		if (!Array.isArray(strings)) {
+			const updateObj = strings as Row;
+			const columns = values as string[];
+			const updates: Row = {};
+			for (const col of columns) {
+				if (col in updateObj) {
+					updates[col] = updateObj[col];
+				}
+			}
+			return { __updates: updates };
+		}
+
+		const query = (strings as TemplateStringsArray).join("?").toLowerCase();
 
 		let result: Row[] = [];
 		let count = 0;
@@ -174,57 +188,17 @@ function createMockSql() {
 		}
 		// UPDATE
 		else if (query.includes("update") && query.includes("where challenge_id")) {
-			// Parse the unsafe SQL fragment to extract SET clause
-			// This is a simplified mock - in real tests you'd parse more carefully
 			const tableName = values[0];
-			// values[1] is the SET clause (from sql.unsafe)
-			const setClause = typeof values[1] === 'string' ? values[1] : '';
+			const setArg = values[1];
 			const challengeId = values[2];
 			const fromState = values[3];
 
-			const updates: Partial<Row> = {};
-
-			// Simple parsing for common patterns
-			if (setClause.includes("state = ")) {
-				// Extract state value from values array or unsafe clause
-				const stateMatch = setClause.match(/state = '([^']+)'/);
-				if (stateMatch) updates.state = stateMatch[1];
-			}
-			if (setClause.includes("tx_hash = ")) {
-				const txHashMatch = setClause.match(/tx_hash = '([^']+)'/);
-				if (txHashMatch) updates.tx_hash = txHashMatch[1];
-			}
-			if (setClause.includes("paid_at = ")) {
-				const paidAtMatch = setClause.match(/paid_at = '([^']+)'/);
-				if (paidAtMatch) updates.paid_at = new Date(paidAtMatch[1]);
-			}
-			if (setClause.includes("access_grant = ")) {
-				const grantMatch = setClause.match(/access_grant = '(\{.+\})'::jsonb/);
-				if (grantMatch) updates.access_grant = JSON.parse(grantMatch[1]);
-			}
-			if (setClause.includes("from_address = ")) {
-				const fromMatch = setClause.match(/from_address = '([^']+)'/);
-				if (fromMatch) updates.from_address = fromMatch[1];
-			}
-			if (setClause.includes("delivered_at = ")) {
-				const deliveredMatch = setClause.match(/delivered_at = '([^']+)'/);
-				if (deliveredMatch) updates.delivered_at = new Date(deliveredMatch[1]);
-			}
-			if (setClause.includes("refund_tx_hash = ")) {
-				const refundTxMatch = setClause.match(/refund_tx_hash = '([^']+)'/);
-				if (refundTxMatch) updates.refund_tx_hash = refundTxMatch[1];
-			}
-			if (setClause.includes("refunded_at = ")) {
-				const refundedMatch = setClause.match(/refunded_at = '([^']+)'/);
-				if (refundedMatch) updates.refunded_at = new Date(refundedMatch[1]);
-			}
-			if (setClause.includes("refund_error = ")) {
-				const errorMatch = setClause.match(/refund_error = '([^']+)'/);
-				if (errorMatch) {
-					// Unescape double single quotes
-					updates.refund_error = errorMatch[1].replace(/''/g, "'");
-				}
-			}
+			// For updates we expect setArg to be the special object produced by
+			// sql(updateObj, ...columns) above.
+			const updates: Partial<Row> =
+				setArg && typeof setArg === "object" && "__updates" in setArg
+					? (setArg.__updates as Partial<Row>)
+					: {};
 
 			count = updateRows(
 				tableName,

@@ -17,6 +17,9 @@ type Sql = {
 	// Helper to safely insert identifiers (table/column names)
 	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	(value: string): any;
+	// Helper to build SET clauses from an object map, e.g. sql({ col: 1 }, "col")
+	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
+	(values: Record<string, unknown>, ...columns: string[]): any;
 	// Helper for unsafe raw SQL fragments
 	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	unsafe(value: string): any;
@@ -235,46 +238,45 @@ export class PostgresChallengeStore implements IChallengeStore {
 		`;
 	}
 
-	async transition(
+async transition(
 		challengeId: string,
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
 	): Promise<boolean> {
 		await this.ready;
-		// Build SET clause parts
-		const setParts: string[] = [`state = '${toState}'`];
+		// Build a parameterized SET clause using an update object so postgres.js
+		// can safely escape all values.
+		const updateObj: Record<string, unknown> = { state: toState };
 
 		if (updates?.txHash) {
-			setParts.push(`tx_hash = '${updates.txHash}'`);
+			updateObj["tx_hash"] = updates.txHash;
 		}
 		if (updates?.paidAt) {
-			setParts.push(`paid_at = '${updates.paidAt.toISOString()}'`);
+			updateObj["paid_at"] = updates.paidAt;
 		}
 		if (updates?.accessGrant) {
-			setParts.push(`access_grant = '${JSON.stringify(updates.accessGrant)}'::jsonb`);
+			updateObj["access_grant"] = updates.accessGrant;
 		}
 		if (updates?.fromAddress) {
-			setParts.push(`from_address = '${updates.fromAddress}'`);
+			updateObj["from_address"] = updates.fromAddress;
 		}
 		if (updates?.deliveredAt) {
-			setParts.push(`delivered_at = '${updates.deliveredAt.toISOString()}'`);
+			updateObj["delivered_at"] = updates.deliveredAt;
 		}
 		if (updates?.refundTxHash) {
-			setParts.push(`refund_tx_hash = '${updates.refundTxHash}'`);
+			updateObj["refund_tx_hash"] = updates.refundTxHash;
 		}
 		if (updates?.refundedAt) {
-			setParts.push(`refunded_at = '${updates.refundedAt.toISOString()}'`);
+			updateObj["refunded_at"] = updates.refundedAt;
 		}
 		if (updates?.refundError) {
-			// Escape single quotes in error message
-			const escapedError = updates.refundError.replace(/'/g, "''");
-			setParts.push(`refund_error = '${escapedError}'`);
+			updateObj["refund_error"] = updates.refundError;
 		}
 
 		const result = await this.sql`
 			UPDATE ${this.sql(this.tableName)}
-			SET ${this.sql.unsafe(setParts.join(", "))}
+			SET ${this.sql(updateObj, ...Object.keys(updateObj))}
 			WHERE challenge_id = ${challengeId} AND state = ${fromState}
 		`;
 
