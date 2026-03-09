@@ -1,0 +1,237 @@
+import type { Config } from "./types";
+
+export function generateEnv(config: Config): string {
+	const lines: string[] = [
+		"# ──────────────────────────────────────────────────────────────────────────────",
+		"# AgentGate Docker — Generated Configuration",
+		"# ──────────────────────────────────────────────────────────────────────────────",
+		"",
+		"# ── Required ──────────────────────────────────────────────────────────────────",
+		"",
+		`AGENTGATE_WALLET_ADDRESS=${config.walletAddress}`,
+		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
+		`REDIS_URL=${config.redisUrl}`,
+		"",
+		"# ── Network ───────────────────────────────────────────────────────────────────",
+		"",
+		`AGENTGATE_NETWORK=${config.network}`,
+		"",
+		"# ── Server ────────────────────────────────────────────────────────────────────",
+		"",
+		`PORT=${config.port}`,
+	];
+
+	if (config.basePath && config.basePath !== "/a2a") {
+		lines.push(`BASE_PATH=${config.basePath}`);
+	}
+
+	lines.push(
+		"",
+		"# ── Agent Card ────────────────────────────────────────────────────────────────",
+		"",
+		`AGENT_NAME=${config.agentName}`,
+		`AGENT_DESCRIPTION=${config.agentDescription}`,
+		`AGENT_URL=${config.agentUrl}`,
+	);
+
+	if (config.providerName) {
+		lines.push(`PROVIDER_NAME=${config.providerName}`);
+	}
+	if (config.providerUrl) {
+		lines.push(`PROVIDER_URL=${config.providerUrl}`);
+	}
+
+	// Products
+	if (config.products.length > 0) {
+		const productsJson = JSON.stringify(
+			config.products.map((p) => ({
+				tierId: p.tierId,
+				label: p.label,
+				amount: p.amount,
+				resourceType: p.resourceType,
+				...(p.accessDurationSeconds !== ""
+					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
+					: {}),
+			})),
+			null,
+			2,
+		);
+		lines.push(
+			"",
+			"# ── Product Catalog ───────────────────────────────────────────────────────────",
+			"",
+			`PRODUCTS='${productsJson}'`,
+		);
+	}
+
+	if (config.challengeTtlSeconds && config.challengeTtlSeconds !== "900") {
+		lines.push(
+			"",
+			"# ── Challenge ─────────────────────────────────────────────────────────────────",
+			"",
+			`CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`,
+		);
+	}
+
+	if (config.issueTokenApiSecret) {
+		lines.push(
+			"",
+			"# ── Token API Auth ────────────────────────────────────────────────────────────",
+			"",
+			`ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`,
+		);
+	}
+
+	if (config.gasWalletPrivateKey) {
+		lines.push(
+			"",
+			"# ── Settlement ────────────────────────────────────────────────────────────────",
+			"",
+			`GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`,
+		);
+	}
+
+	if (config.walletPrivateKey) {
+		lines.push(
+			"",
+			"# ── Refund Cron ───────────────────────────────────────────────────────────────",
+			"",
+			`AGENTGATE_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
+		);
+		if (config.refundIntervalMs !== "60000") {
+			lines.push(`REFUND_INTERVAL_MS=${config.refundIntervalMs}`);
+		}
+		if (config.refundMinAgeMs !== "300000") {
+			lines.push(`REFUND_MIN_AGE_MS=${config.refundMinAgeMs}`);
+		}
+	}
+
+	lines.push("");
+	return lines.join("\n");
+}
+
+export function generateDockerRun(config: Config): string {
+	const envFlags: string[] = [];
+
+	envFlags.push(`-e AGENTGATE_WALLET_ADDRESS=${config.walletAddress}`);
+	envFlags.push(`-e ISSUE_TOKEN_API=${config.issueTokenApi}`);
+	envFlags.push(`-e REDIS_URL=${config.redisUrl}`);
+	envFlags.push(`-e AGENTGATE_NETWORK=${config.network}`);
+	envFlags.push(`-e PORT=${config.port}`);
+	envFlags.push(`-e AGENT_NAME="${config.agentName}"`);
+	envFlags.push(`-e AGENT_DESCRIPTION="${config.agentDescription}"`);
+	envFlags.push(`-e AGENT_URL=${config.agentUrl}`);
+
+	if (config.basePath && config.basePath !== "/a2a") {
+		envFlags.push(`-e BASE_PATH=${config.basePath}`);
+	}
+	if (config.providerName) {
+		envFlags.push(`-e PROVIDER_NAME="${config.providerName}"`);
+	}
+	if (config.providerUrl) {
+		envFlags.push(`-e PROVIDER_URL=${config.providerUrl}`);
+	}
+	if (config.products.length > 0) {
+		const json = JSON.stringify(
+			config.products.map((p) => ({
+				tierId: p.tierId,
+				label: p.label,
+				amount: p.amount,
+				resourceType: p.resourceType,
+				...(p.accessDurationSeconds !== ""
+					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
+					: {}),
+			})),
+		);
+		envFlags.push(`-e PRODUCTS='${json}'`);
+	}
+	if (config.challengeTtlSeconds !== "900") {
+		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
+	}
+	if (config.issueTokenApiSecret) {
+		envFlags.push(`-e ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`);
+	}
+	if (config.gasWalletPrivateKey) {
+		envFlags.push(`-e GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`);
+	}
+	if (config.walletPrivateKey) {
+		envFlags.push(`-e AGENTGATE_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
+	}
+
+	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/agentgate:latest`;
+}
+
+export function generateDockerCompose(config: Config): string {
+	const envVars: Record<string, string> = {
+		AGENTGATE_WALLET_ADDRESS: config.walletAddress,
+		ISSUE_TOKEN_API: config.issueTokenApi,
+		AGENTGATE_NETWORK: config.network,
+		PORT: config.port,
+		AGENT_NAME: config.agentName,
+		AGENT_DESCRIPTION: config.agentDescription,
+		AGENT_URL: config.agentUrl,
+		REDIS_URL: "redis://redis:6379",
+	};
+
+	if (config.basePath && config.basePath !== "/a2a") {
+		envVars.BASE_PATH = config.basePath;
+	}
+	if (config.providerName) envVars.PROVIDER_NAME = config.providerName;
+	if (config.providerUrl) envVars.PROVIDER_URL = config.providerUrl;
+	if (config.products.length > 0) {
+		envVars.PRODUCTS = JSON.stringify(
+			config.products.map((p) => ({
+				tierId: p.tierId,
+				label: p.label,
+				amount: p.amount,
+				resourceType: p.resourceType,
+				...(p.accessDurationSeconds !== ""
+					? { accessDurationSeconds: Number(p.accessDurationSeconds) }
+					: {}),
+			})),
+		);
+	}
+	if (config.challengeTtlSeconds !== "900") {
+		envVars.CHALLENGE_TTL_SECONDS = config.challengeTtlSeconds;
+	}
+	if (config.issueTokenApiSecret) {
+		envVars.ISSUE_TOKEN_API_SECRET = config.issueTokenApiSecret;
+	}
+	if (config.gasWalletPrivateKey) {
+		envVars.GAS_WALLET_PRIVATE_KEY = config.gasWalletPrivateKey;
+	}
+	if (config.walletPrivateKey) {
+		envVars.AGENTGATE_WALLET_PRIVATE_KEY = config.walletPrivateKey;
+		if (config.refundIntervalMs !== "60000") {
+			envVars.REFUND_INTERVAL_MS = config.refundIntervalMs;
+		}
+		if (config.refundMinAgeMs !== "300000") {
+			envVars.REFUND_MIN_AGE_MS = config.refundMinAgeMs;
+		}
+	}
+
+	const envLines = Object.entries(envVars)
+		.map(([k, v]) => `      ${k}: "${v}"`)
+		.join("\n");
+
+	return `services:
+  agentgate:
+    image: riklr/agentgate:latest
+    ports:
+      - "${config.port}:${config.port}"
+    environment:
+${envLines}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+`;
+}

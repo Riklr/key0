@@ -1,200 +1,343 @@
 /**
  * AgentGate Docker Standalone Server
  *
- * Configured entirely via environment variables.
- * Set AGENTGATE_WALLET_ADDRESS + ISSUE_TOKEN_API and you're done.
+ * Two modes:
+ *   1. Setup mode — if required env vars are missing, serves the setup UI at /setup
+ *   2. Running mode — full AgentGate server with /setup still accessible for reconfiguration
  *
  * See docker/.env.example for the full list of env vars.
  */
 
-import {
-	type IChallengeStore,
-	type NetworkName,
-	type ProductTier,
-	processRefunds,
-	RedisChallengeStore,
-	RedisSeenTxStore,
-	X402Adapter,
-} from "@riklr/agentgate";
-import { agentGateRouter } from "@riklr/agentgate/express";
+import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import express from "express";
-import { buildDockerTokenIssuer } from "../src/helpers/docker-token-issuer.js";
 
-// ─── Required env vars ─────────────────────────────────────────────────────
-
+const PORT = Number(process.env.PORT ?? 3000);
 const WALLET_ADDRESS = process.env.AGENTGATE_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
-
-if (!WALLET_ADDRESS) {
-	console.error("FATAL: AGENTGATE_WALLET_ADDRESS is required (e.g. 0xYourWallet...)");
-	process.exit(1);
-}
-
-if (!ISSUE_TOKEN_API) {
-	console.error("FATAL: ISSUE_TOKEN_API is required (e.g. https://api.example.com/issue-token)");
-	process.exit(1);
-}
-
-// ─── Optional env vars ─────────────────────────────────────────────────────
-
-const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
-const PORT = Number(process.env.PORT ?? 3000);
-const AGENT_NAME = process.env.AGENT_NAME ?? "AgentGate Server";
-const AGENT_DESCRIPTION = process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint";
-const AGENT_URL = process.env.AGENT_URL ?? `http://localhost:${PORT}`;
-const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "AgentGate";
-const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://agentgate.dev";
-const BASE_PATH = process.env.BASE_PATH ?? "/a2a";
-const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
-const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 const REDIS_URL = process.env.REDIS_URL;
-const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
-const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
-const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
-const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
 
-// ─── Products ──────────────────────────────────────────────────────────────
-
-const DEFAULT_PRODUCTS: ProductTier[] = [
-	{
-		tierId: "basic",
-		label: "Basic",
-		amount: "$0.10",
-		resourceType: "api",
-		accessDurationSeconds: 3600,
-	},
-];
-
-let products: ProductTier[];
-try {
-	products = process.env.PRODUCTS
-		? (JSON.parse(process.env.PRODUCTS) as ProductTier[])
-		: DEFAULT_PRODUCTS;
-} catch {
-	console.error("FATAL: PRODUCTS env var is not valid JSON");
-	process.exit(1);
-}
-
-// ─── Storage ───────────────────────────────────────────────────────────────
-
-if (!REDIS_URL) {
-	console.error("FATAL: REDIS_URL is required (e.g. redis://localhost:6379)");
-	process.exit(1);
-}
-
-const Redis = (await import("ioredis")).default;
-const redis = new Redis(REDIS_URL);
-const store: IChallengeStore = new RedisChallengeStore({
-	redis,
-	challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
-});
-const seenTxStore = new RedisSeenTxStore({ redis });
-console.log("[agentgate] Using Redis storage:", REDIS_URL);
-
-// ─── Token issuance ────────────────────────────────────────────────────────
-
-const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API, {
-	apiSecret: ISSUE_TOKEN_API_SECRET,
-	products,
-});
-
-// ─── App ───────────────────────────────────────────────────────────────────
-
-const adapter = new X402Adapter({ network: NETWORK });
+const isConfigured = Boolean(WALLET_ADDRESS && ISSUE_TOKEN_API && REDIS_URL);
 
 const app = express();
 app.use(express.json());
 
-app.get("/health", (_req, res) => {
-	res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS });
-});
+// ─── Setup UI (served in both modes) ──────────────────────────────────────
 
-app.use(
-	agentGateRouter({
-		config: {
-			agentName: AGENT_NAME,
-			agentDescription: AGENT_DESCRIPTION,
-			agentUrl: AGENT_URL,
-			providerName: PROVIDER_NAME,
-			providerUrl: PROVIDER_URL,
-			walletAddress: WALLET_ADDRESS as `0x${string}`,
-			network: NETWORK,
-			products,
-			challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
-			basePath: BASE_PATH,
-			onVerifyResource: async () => true,
-			onIssueToken,
-			...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
-			redis,
-		},
-		adapter,
-		store,
-		seenTxStore,
-	}),
-);
+const UI_DIR = resolve(import.meta.dir, "../ui/dist");
+const hasUI = existsSync(UI_DIR);
 
-app.listen(PORT, () => {
-	console.log("\n[agentgate] Server started");
-	console.log(`  Network:    ${NETWORK}`);
-	console.log(`  Port:       ${PORT}`);
-	console.log(`  Wallet:     ${WALLET_ADDRESS}`);
-	console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
-	console.log(`  Storage:    Redis`);
-	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
-	console.log(
-		`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
-	);
-});
+if (hasUI) {
+	app.use(express.static(UI_DIR));
+	app.use("/setup", express.static(UI_DIR));
 
-// ─── Refund cron ───────────────────────────────────────────────────────────
-
-async function runRefundCron(): Promise<void> {
-	if (!WALLET_PRIVATE_KEY) return;
-
-	const results = await processRefunds({
-		store,
-		walletPrivateKey: WALLET_PRIVATE_KEY,
-		gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
-		network: NETWORK,
-		minAgeMs: REFUND_MIN_AGE_MS,
+	// SPA fallback — serve index.html for any /setup/* route
+	app.get("/setup/*path", (_req, res) => {
+		res.sendFile(resolve(UI_DIR, "index.html"));
 	});
+}
 
-	for (const result of results) {
-		if (result.success) {
-			console.log(`[refund] ✓ ${result.amount} → ${result.toAddress}  tx=${result.refundTxHash}`);
-		} else {
-			console.error(`[refund] ✗ challengeId=${result.challengeId}  error=${result.error}`);
+// ─── Setup API ────────────────────────────────────────────────────────────
+
+app.get("/api/setup/status", (_req, res) => {
+	res.json({
+		configured: isConfigured,
+		config: isConfigured
+			? {
+					walletAddress: WALLET_ADDRESS,
+					issueTokenApi: ISSUE_TOKEN_API,
+					network: process.env.AGENTGATE_NETWORK ?? "testnet",
+					redisUrl: REDIS_URL,
+					port: PORT.toString(),
+					basePath: process.env.BASE_PATH ?? "/a2a",
+					agentName: process.env.AGENT_NAME ?? "AgentGate Server",
+					agentDescription: process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint",
+					agentUrl: process.env.AGENT_URL ?? `http://localhost:${PORT}`,
+					providerName: process.env.PROVIDER_NAME ?? "",
+					providerUrl: process.env.PROVIDER_URL ?? "",
+					challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
+					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ?? "",
+					gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
+					walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY ? "••••••" : "",
+					refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
+					refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
+				}
+			: null,
+	});
+});
+
+interface SetupBody {
+	walletAddress: string;
+	issueTokenApi: string;
+	network: string;
+	redisUrl: string;
+	port: string;
+	basePath: string;
+	agentName: string;
+	agentDescription: string;
+	agentUrl: string;
+	providerName: string;
+	providerUrl: string;
+	products: Array<{
+		tierId: string;
+		label: string;
+		amount: string;
+		resourceType: string;
+		accessDurationSeconds?: number;
+	}>;
+	challengeTtlSeconds: string;
+	issueTokenApiSecret: string;
+	gasWalletPrivateKey: string;
+	walletPrivateKey: string;
+	refundIntervalMs: string;
+	refundMinAgeMs: string;
+}
+
+app.post("/api/setup", async (req, res) => {
+	const body = req.body as SetupBody;
+
+	if (!body.walletAddress || !body.issueTokenApi || !body.redisUrl) {
+		res.status(400).json({
+			error: "walletAddress, issueTokenApi, and redisUrl are required",
+		});
+		return;
+	}
+
+	const q = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
+
+	// Build .env content
+	const lines: string[] = [
+		`AGENTGATE_WALLET_ADDRESS=${body.walletAddress}`,
+		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
+		`REDIS_URL=${body.redisUrl}`,
+		`AGENTGATE_NETWORK=${body.network || "testnet"}`,
+		`PORT=${body.port || PORT}`,
+		`AGENT_NAME=${q(body.agentName || "AgentGate Server")}`,
+		`AGENT_DESCRIPTION=${q(body.agentDescription || "Payment-gated A2A endpoint")}`,
+		`AGENT_URL=${body.agentUrl || `http://localhost:${body.port || PORT}`}`,
+	];
+
+	if (body.basePath && body.basePath !== "/a2a") {
+		lines.push(`BASE_PATH=${body.basePath}`);
+	}
+	if (body.providerName) lines.push(`PROVIDER_NAME=${q(body.providerName)}`);
+	if (body.providerUrl) lines.push(`PROVIDER_URL=${body.providerUrl}`);
+	if (body.products?.length > 0) {
+		lines.push(`PRODUCTS='${JSON.stringify(body.products)}'`);
+	}
+	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
+		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
+	}
+	if (body.issueTokenApiSecret) {
+		lines.push(`ISSUE_TOKEN_API_SECRET=${body.issueTokenApiSecret}`);
+	}
+	if (body.gasWalletPrivateKey && !body.gasWalletPrivateKey.includes("•")) {
+		lines.push(`GAS_WALLET_PRIVATE_KEY=${body.gasWalletPrivateKey}`);
+	}
+	if (body.walletPrivateKey && !body.walletPrivateKey.includes("•")) {
+		lines.push(`AGENTGATE_WALLET_PRIVATE_KEY=${body.walletPrivateKey}`);
+		if (body.refundIntervalMs && body.refundIntervalMs !== "60000") {
+			lines.push(`REFUND_INTERVAL_MS=${body.refundIntervalMs}`);
+		}
+		if (body.refundMinAgeMs && body.refundMinAgeMs !== "300000") {
+			lines.push(`REFUND_MIN_AGE_MS=${body.refundMinAgeMs}`);
 		}
 	}
-}
 
-// ─── Start ─────────────────────────────────────────────────────────────────
+	const envContent = `${lines.join("\n")}\n`;
+	const envPath = resolve("/app/.env.runtime");
 
-// BullMQ: only one worker processes the cron across replicas
-const { Queue, Worker } = await import("bullmq");
-const parsed = new URL(REDIS_URL);
-const bullConnection = {
-	host: parsed.hostname,
-	port: Number(parsed.port) || 6379,
-	maxRetriesPerRequest: null,
-};
+	try {
+		await writeFile(envPath, envContent, "utf-8");
+		console.log("[agentgate] Configuration saved to .env.runtime — restarting...");
+		res.json({ success: true, message: "Configuration saved. Restarting..." });
 
-const refundQueue = new Queue("refund-cron", { connection: bullConnection });
-const repeatables = await refundQueue.getRepeatableJobs();
-for (const job of repeatables) {
-	await refundQueue.removeRepeatableByKey(job.key);
-}
-await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
-await refundQueue.close();
-
-const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
-	connection: bullConnection,
+		// Give the response time to flush, then exit with code 42 to trigger restart
+		setTimeout(() => process.exit(42), 500);
+	} catch (err) {
+		console.error("[agentgate] Failed to write config:", err);
+		res.status(500).json({ error: "Failed to save configuration" });
+	}
 });
-cronWorker.on("error", (err) => console.error("[refund] Worker error:", err));
 
-const shutdown = async () => {
-	await cronWorker.close();
-	process.exit(0);
-};
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+// ─── Setup mode: redirect root to /setup ──────────────────────────────────
+
+if (!isConfigured) {
+	app.get("/health", (_req, res) => {
+		res.json({ status: "setup", message: "AgentGate is not configured yet. Visit /setup" });
+	});
+
+	app.get("/", (_req, res) => {
+		if (hasUI) {
+			res.redirect("/setup");
+		} else {
+			res.json({
+				status: "setup_required",
+				message: "AgentGate is not configured. UI not found — set env vars manually.",
+			});
+		}
+	});
+
+	app.listen(PORT, () => {
+		console.log("\n[agentgate] Setup mode — no configuration found");
+		console.log(`  Open http://localhost:${PORT}/setup to configure\n`);
+	});
+} else {
+	// ─── Running mode: full AgentGate ──────────────────────────────────────
+
+	const agentgate = await import("@riklr/agentgate");
+	const { agentGateRouter } = await import("@riklr/agentgate/express");
+	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
+
+	type IChallengeStore = agentgate.IChallengeStore;
+	type NetworkName = agentgate.NetworkName;
+	type ProductTier = agentgate.ProductTier;
+	const { processRefunds, RedisChallengeStore, RedisSeenTxStore, X402Adapter } = agentgate;
+
+	const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
+	const AGENT_NAME = process.env.AGENT_NAME ?? "AgentGate Server";
+	const AGENT_DESCRIPTION = process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint";
+	const AGENT_URL = process.env.AGENT_URL ?? `http://localhost:${PORT}`;
+	const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "AgentGate";
+	const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://agentgate.dev";
+	const BASE_PATH = process.env.BASE_PATH ?? "/a2a";
+	const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
+	const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
+	const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+	const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+	const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
+	const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
+
+	// Products
+	const DEFAULT_PRODUCTS: ProductTier[] = [
+		{
+			tierId: "basic",
+			label: "Basic",
+			amount: "$0.10",
+			resourceType: "api",
+			accessDurationSeconds: 3600,
+		},
+	];
+
+	let products: ProductTier[];
+	try {
+		products = process.env.PRODUCTS
+			? (JSON.parse(process.env.PRODUCTS) as ProductTier[])
+			: DEFAULT_PRODUCTS;
+	} catch {
+		console.error("FATAL: PRODUCTS env var is not valid JSON");
+		process.exit(1);
+	}
+
+	// Storage
+	const Redis = (await import("ioredis")).default;
+	const redis = new Redis(REDIS_URL!);
+	const store: IChallengeStore = new RedisChallengeStore({
+		redis,
+		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
+	});
+	const seenTxStore = new RedisSeenTxStore({ redis });
+	console.log("[agentgate] Using Redis storage:", REDIS_URL);
+
+	// Token issuance
+	const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
+		apiSecret: ISSUE_TOKEN_API_SECRET,
+		products,
+	});
+
+	// Adapter & routes
+	const adapter = new X402Adapter({ network: NETWORK });
+
+	app.get("/health", (_req, res) => {
+		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS });
+	});
+
+	app.use(
+		agentGateRouter({
+			config: {
+				agentName: AGENT_NAME,
+				agentDescription: AGENT_DESCRIPTION,
+				agentUrl: AGENT_URL,
+				providerName: PROVIDER_NAME,
+				providerUrl: PROVIDER_URL,
+				walletAddress: WALLET_ADDRESS as `0x${string}`,
+				network: NETWORK,
+				products,
+				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
+				basePath: BASE_PATH,
+				onVerifyResource: async () => true,
+				onIssueToken,
+				...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
+				redis,
+			},
+			adapter,
+			store,
+			seenTxStore,
+		}),
+	);
+
+	app.listen(PORT, () => {
+		console.log("\n[agentgate] Server started");
+		console.log(`  Network:    ${NETWORK}`);
+		console.log(`  Port:       ${PORT}`);
+		console.log(`  Wallet:     ${WALLET_ADDRESS}`);
+		console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
+		console.log(`  Storage:    Redis`);
+		console.log(`  Setup UI:   http://localhost:${PORT}/setup`);
+		console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
+		console.log(
+			`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+		);
+	});
+
+	// Refund cron
+	async function runRefundCron(): Promise<void> {
+		if (!WALLET_PRIVATE_KEY) return;
+
+		const results = await processRefunds({
+			store,
+			walletPrivateKey: WALLET_PRIVATE_KEY,
+			gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
+			network: NETWORK,
+			minAgeMs: REFUND_MIN_AGE_MS,
+		});
+
+		for (const result of results) {
+			if (result.success) {
+				console.log(`[refund] ✓ ${result.amount} → ${result.toAddress}  tx=${result.refundTxHash}`);
+			} else {
+				console.error(`[refund] ✗ challengeId=${result.challengeId}  error=${result.error}`);
+			}
+		}
+	}
+
+	// BullMQ cron
+	const { Queue, Worker } = await import("bullmq");
+	const parsed = new URL(REDIS_URL!);
+	const bullConnection = {
+		host: parsed.hostname,
+		port: Number(parsed.port) || 6379,
+		maxRetriesPerRequest: null,
+	};
+
+	const refundQueue = new Queue("refund-cron", { connection: bullConnection });
+	const repeatables = await refundQueue.getRepeatableJobs();
+	for (const job of repeatables) {
+		await refundQueue.removeRepeatableByKey(job.key);
+	}
+	await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
+	await refundQueue.close();
+
+	const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
+		connection: bullConnection,
+	});
+	cronWorker.on("error", (err) => console.error("[refund] Worker error:", err));
+
+	const shutdown = async () => {
+		await cronWorker.close();
+		process.exit(0);
+	};
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+}

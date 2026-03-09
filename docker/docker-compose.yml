@@ -1,9 +1,13 @@
 services:
   agentgate:
-    build: ..
+    image: ${AGENTGATE_IMAGE:-riklr/agentgate:latest}
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
-    env_file: .env
+    environment:
+      - PORT=${PORT:-3001}
+    env_file:
+      - path: .env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
