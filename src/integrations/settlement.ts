@@ -12,7 +12,7 @@ import type {
 	X402PaymentRequiredResponse,
 	X402SettleResponse,
 } from "../types/index.js";
-import { AgentGateError } from "../types/index.js";
+import { Key2aError } from "../types/index.js";
 
 export type SettlementResult = {
 	txHash: `0x${string}`;
@@ -51,7 +51,7 @@ async function retryWithBackoff<T>(
 			lastError = err;
 			// Don't retry deterministic rejections (invalid sig, insufficient funds, nonce consumed).
 			// Only transient errors (network timeouts, 5xx) are worth retrying.
-			if (err instanceof AgentGateError && err.code === "PAYMENT_FAILED") {
+			if (err instanceof Key2aError && err.code === "PAYMENT_FAILED") {
 				throw err;
 			}
 			if (attempt < maxRetries) {
@@ -77,7 +77,7 @@ export function decodePaymentSignature(paymentSignature: string): X402PaymentPay
 		try {
 			return JSON.parse(Buffer.from(paymentSignature, "base64").toString("utf-8"));
 		} catch {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"INVALID_REQUEST",
 				"Invalid PAYMENT-SIGNATURE header: must be base64url-encoded JSON",
 				400,
@@ -107,7 +107,7 @@ export function buildHttpPaymentRequirements(
 ): X402PaymentRequiredResponse {
 	const tier = config.products.find((t: ProductTier) => t.tierId === tierId);
 	if (!tier) {
-		throw new AgentGateError("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
+		throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
 	}
 
 	const basePath = config.basePath ?? "/a2a";
@@ -120,7 +120,7 @@ export function buildHttpPaymentRequirements(
 	const extensions =
 		options?.inputSchema || options?.outputSchema || options?.description
 			? {
-					agentgate: {
+					key2a: {
 						...(options.inputSchema && { inputSchema: options.inputSchema }),
 						...(options.outputSchema && { outputSchema: options.outputSchema }),
 						...(options.description && { description: options.description }),
@@ -200,7 +200,7 @@ export function buildDiscoveryResponse(
 		},
 		accepts,
 		extensions: {
-			agentgate: {
+			key2a: {
 				inputSchema: {
 					type: "object",
 					properties: {
@@ -277,12 +277,12 @@ export async function settleViaFacilitator(
 		} catch {
 			if (errorText) errorMessage = errorText;
 		}
-		throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
+		throw new Key2aError("PAYMENT_FAILED", errorMessage, 402);
 	}
 
 	const verifyResult = (await verifyRes.json()) as FacilitatorVerifyResponse;
 	if (!verifyResult.isValid) {
-		throw new AgentGateError(
+		throw new Key2aError(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}. ${verifyResult.invalidMessage || ""}`.trim(),
 			402,
@@ -314,19 +314,19 @@ export async function settleViaFacilitator(
 				} catch {
 					if (errorText) errorMessage = errorText;
 				}
-				throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
+				throw new Key2aError("PAYMENT_FAILED", errorMessage, 402);
 			}
 
 			const res = (await settleRes.json()) as X402SettleResponse;
 			if (!res.success) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PAYMENT_FAILED",
 					res.errorReason || "Payment settlement failed",
 					402,
 				);
 			}
 			if (!res.transaction) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PAYMENT_FAILED",
 					"Facilitator did not return transaction hash",
 					500,
@@ -360,7 +360,7 @@ export async function settleViaGasWallet(
 	let payer: string | undefined = paymentPayload.payload?.authorization?.from ?? undefined;
 	const requirement = paymentPayload.accepted;
 	if (!requirement) {
-		throw new AgentGateError(
+		throw new Key2aError(
 			"INVALID_REQUEST",
 			"Payment payload missing 'accepted' requirement",
 			400,
@@ -391,11 +391,11 @@ export async function settleViaGasWallet(
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown verification error";
-		throw new AgentGateError("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
+		throw new Key2aError("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
 	}
 
 	if (!verifyResult.isValid) {
-		throw new AgentGateError(
+		throw new Key2aError(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}`,
 			402,
@@ -419,18 +419,18 @@ export async function settleViaGasWallet(
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown settlement error";
-		throw new AgentGateError("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
+		throw new Key2aError("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
 	}
 
 	if (!settlement.success) {
-		throw new AgentGateError(
+		throw new Key2aError(
 			"PAYMENT_FAILED",
 			settlement.errorReason || "Payment settlement failed",
 			500,
 		);
 	}
 	if (!settlement.transaction) {
-		throw new AgentGateError("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
+		throw new Key2aError("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
 	}
 
 	console.log(`[settleViaGasWallet] ✓ Settled: ${settlement.transaction}`);
@@ -479,7 +479,7 @@ async function acquireRedisLock(
 		if (ok === "OK") return;
 		await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
 	}
-	throw new AgentGateError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
+	throw new Key2aError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
 }
 
 async function releaseRedisLock(
@@ -527,7 +527,7 @@ export async function settlePayment(
 
 		if (config.redis) {
 			// Distributed lock — safe across multiple instances
-			const lockKey = `agentgate:settle-lock:${privateKeyToAccount(privateKey).address}`;
+			const lockKey = `key2a:settle-lock:${privateKeyToAccount(privateKey).address}`;
 			const lockToken = crypto.randomUUID();
 			await acquireRedisLock(config.redis, lockKey, lockToken);
 			try {
@@ -537,7 +537,7 @@ export async function settlePayment(
 					await releaseRedisLock(config.redis, lockKey, lockToken);
 				} catch (releaseErr) {
 					console.warn(
-						`[AgentGate] Failed to release settlement lock ${lockKey} — will expire via TTL:`,
+						`[Key2a] Failed to release settlement lock ${lockKey} — will expire via TTL:`,
 						releaseErr,
 					);
 				}

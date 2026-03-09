@@ -2,7 +2,7 @@
  * Controllable backend server for e2e tests.
  *
  * Endpoints:
- *   POST /internal/issue-token   ← AgentGate Docker calls this after payment
+ *   POST /internal/issue-token   ← Key2a Docker calls this after payment
  *   POST /test/set-mode          ← Tests switch between "success" / "fail"
  *   GET  /api/resource/:id       ← Protected resource, validates Bearer JWT
  */

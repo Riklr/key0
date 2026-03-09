@@ -134,7 +134,7 @@ return 1
 
 export type RedisStoreConfig = {
 	readonly redis: Redis;
-	readonly keyPrefix?: string | undefined; // default: "agentgate"
+	readonly keyPrefix?: string | undefined; // default: "key2a"
 	readonly challengeTTLSeconds?: number | undefined; // default: 900 — request index key TTL
 	readonly recordTTLSeconds?: number | undefined; // default: 604_800 (7 days) — challenge hash key TTL
 	readonly deliveredTTLSeconds?: number | undefined; // default: 43_200 (12 hours) — TTL reset on DELIVERED
@@ -151,7 +151,7 @@ export class RedisChallengeStore implements IChallengeStore {
 
 	constructor(config: RedisStoreConfig) {
 		this.redis = config.redis;
-		this.prefix = config.keyPrefix ?? "agentgate";
+		this.prefix = config.keyPrefix ?? "key2a";
 		this.requestTTL = config.challengeTTLSeconds ?? 900;
 		this.recordTTL = config.recordTTLSeconds ?? 604_800; // 7 days
 		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
@@ -295,7 +295,7 @@ export class RedisChallengeStore implements IChallengeStore {
 				records.push(record);
 			} else if (record.state === "PAID" && !record.fromAddress) {
 				console.warn(
-					`[AgentGate] PAID record ${challengeId} has no fromAddress — cannot auto-refund. Manual intervention required.`,
+					`[Key2a] PAID record ${challengeId} has no fromAddress — cannot auto-refund. Manual intervention required.`,
 				);
 			}
 		}
@@ -313,7 +313,7 @@ export class RedisSeenTxStore implements ISeenTxStore {
 
 	constructor(config: Pick<RedisStoreConfig, "redis" | "keyPrefix">) {
 		this.redis = config.redis;
-		this.prefix = config.keyPrefix ?? "agentgate";
+		this.prefix = config.keyPrefix ?? "key2a";
 	}
 
 	private seenKey(txHash: `0x${string}`): string {

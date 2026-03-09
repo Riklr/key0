@@ -2,7 +2,7 @@ import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import {
 	type AccessGrant,
 	type AccessRequest,
-	AgentGateError,
+	Key2aError,
 	CHAIN_CONFIGS,
 	CHAIN_ID_TO_NETWORK,
 	type ChallengeRecord,
@@ -69,7 +69,7 @@ export class ChallengeEngine {
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() =>
-							reject(new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
+							reject(new Key2aError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
 						timeoutMs,
 					);
 				}),
@@ -84,7 +84,7 @@ export class ChallengeEngine {
 				lastError = err;
 				// Timeout means the original call may still be in-flight — retrying
 				// would risk duplicate token issuance. Break immediately.
-				if (err instanceof AgentGateError && err.code === "TOKEN_ISSUE_TIMEOUT") {
+				if (err instanceof Key2aError && err.code === "TOKEN_ISSUE_TIMEOUT") {
 					throw err;
 				}
 				if (attempt < maxRetries) {
@@ -195,7 +195,7 @@ export class ChallengeEngine {
 		//TODO This should be validated by onVerifyResource hook no need here
 		const tier = this.findTier(req.tierId);
 		if (!tier) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TIER_NOT_FOUND",
 				`Tier "${req.tierId}" not found in product catalog`,
 				400,
@@ -211,14 +211,14 @@ export class ChallengeEngine {
 				timer = setTimeout(
 					() =>
 						reject(
-							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+							new Key2aError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
 						),
 					timeoutMs,
 				);
 			}),
 		]);
 		if (!exists) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
 				`Resource "${resourceId}" not found or not available for tier "${req.tierId}"`,
 				404,
@@ -232,7 +232,7 @@ export class ChallengeEngine {
 				return this.challengeToResponse(existing);
 			}
 			if (existing.state === "DELIVERED" && existing.accessGrant) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PROOF_ALREADY_REDEEMED",
 					"This request has already been paid. Returning existing access grant.",
 					200,
@@ -286,7 +286,7 @@ export class ChallengeEngine {
 		// 2. Look up challenge
 		const challenge = await this.store.get(proof.challengeId);
 		if (!challenge) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_NOT_FOUND",
 				`Challenge "${proof.challengeId}" not found`,
 				404,
@@ -295,7 +295,7 @@ export class ChallengeEngine {
 
 		// 3. Check state
 		if (challenge.state === "DELIVERED" && challenge.accessGrant) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"PROOF_ALREADY_REDEEMED",
 				"This challenge has already been paid. Returning existing access grant.",
 				200,
@@ -303,7 +303,7 @@ export class ChallengeEngine {
 			);
 		}
 		if (challenge.state !== "PENDING") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge is no longer active. Re-request access to get a new challenge.",
 				410,
@@ -315,10 +315,10 @@ export class ChallengeEngine {
 			await this.store.transition(challenge.challengeId, "PENDING", "EXPIRED");
 			if (this.config.onChallengeExpired) {
 				this.config.onChallengeExpired(challenge.challengeId).catch((err: unknown) => {
-					console.error("[AgentGate] onChallengeExpired hook error:", err);
+					console.error("[Key2a] onChallengeExpired hook error:", err);
 				});
 			}
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge expired. Re-request access to get a new challenge.",
 				410,
@@ -327,7 +327,7 @@ export class ChallengeEngine {
 
 		// 5. Chain mismatch guard
 		if (proof.chainId !== challenge.chainId) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHAIN_MISMATCH",
 				`Expected chainId ${challenge.chainId}, got ${proof.chainId}`,
 				400,
@@ -336,7 +336,7 @@ export class ChallengeEngine {
 
 		// 6. Amount guard (compare dollar strings)
 		if (proof.amount !== challenge.amount) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"AMOUNT_MISMATCH",
 				`Expected amount ${challenge.amount}, got ${proof.amount}`,
 				400,
@@ -346,7 +346,7 @@ export class ChallengeEngine {
 		// 7. Double-spend guard
 		const alreadyUsed = await this.seenTxStore.get(proof.txHash);
 		if (alreadyUsed) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed",
 				409,
@@ -374,7 +374,7 @@ export class ChallengeEngine {
 		});
 
 		if (!result.verified) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				result.errorCode === "TX_NOT_FOUND" ? "TX_UNCONFIRMED" : "INVALID_PROOF",
 				result.error ?? "On-chain verification failed",
 				result.errorCode === "TX_NOT_FOUND" ? 202 : 400,
@@ -392,14 +392,14 @@ export class ChallengeEngine {
 			// Another concurrent request already transitioned — reload and return
 			const updated = await this.store.get(challenge.challengeId);
 			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PROOF_ALREADY_REDEEMED",
 					"This challenge has already been paid. Returning existing access grant.",
 					200,
 					{ grant: updated.accessGrant },
 				);
 			}
-			throw new AgentGateError("INTERNAL_ERROR", "Concurrent state transition", 500);
+			throw new Key2aError("INTERNAL_ERROR", "Concurrent state transition", 500);
 		}
 
 		// 10. Mark txHash as used
@@ -407,7 +407,7 @@ export class ChallengeEngine {
 		if (!marked) {
 			// Extremely unlikely race — another challenge claimed it between check and mark
 			await this.store.transition(challenge.challengeId, "PAID", "PENDING");
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed (race condition)",
 				409,
@@ -458,7 +458,7 @@ export class ChallengeEngine {
 			});
 		} catch (err) {
 			console.error(
-				`[AgentGate] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
+				`[Key2a] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
 				err,
 			);
 		}
@@ -467,7 +467,7 @@ export class ChallengeEngine {
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
 				console.error(
-					`[AgentGate] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
+					`[Key2a] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
 					err,
 				);
 			});
@@ -479,11 +479,11 @@ export class ChallengeEngine {
 	async cancelChallenge(challengeId: string): Promise<void> {
 		const challenge = await this.store.get(challengeId);
 		if (!challenge) {
-			throw new AgentGateError("CHALLENGE_NOT_FOUND", `Challenge "${challengeId}" not found`, 404);
+			throw new Key2aError("CHALLENGE_NOT_FOUND", `Challenge "${challengeId}" not found`, 404);
 		}
 
 		if (challenge.state !== "PENDING") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"INVALID_REQUEST",
 				`Cannot cancel challenge in state "${challenge.state}"`,
 				400,
@@ -492,7 +492,7 @@ export class ChallengeEngine {
 
 		const transitioned = await this.store.transition(challengeId, "PENDING", "CANCELLED");
 		if (!transitioned) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"INTERNAL_ERROR",
 				"Failed to cancel challenge — state may have changed concurrently",
 				500,
@@ -522,7 +522,7 @@ export class ChallengeEngine {
 		}
 
 		if (existing.state === "EXPIRED") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge expired. Re-request access to get a new challenge.",
 				410,
@@ -530,7 +530,7 @@ export class ChallengeEngine {
 		}
 
 		if (existing.state === "CANCELLED") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge was cancelled. Re-request access to get a new challenge.",
 				410,
@@ -554,7 +554,7 @@ export class ChallengeEngine {
 		// 1. Validate tier
 		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TIER_NOT_FOUND",
 				`Tier "${tierId}" not found in product catalog`,
 				400,
@@ -570,14 +570,14 @@ export class ChallengeEngine {
 				timer = setTimeout(
 					() =>
 						reject(
-							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+							new Key2aError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
 						),
 					timeoutMs,
 				);
 			}),
 		]);
 		if (!exists) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
 				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
 				404,
@@ -591,7 +591,7 @@ export class ChallengeEngine {
 				return { challengeId: existing.challengeId };
 			}
 			if (existing.state === "DELIVERED" && existing.accessGrant) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PROOF_ALREADY_REDEEMED",
 					"This request has already been paid. Returning existing access grant.",
 					200,
@@ -638,14 +638,14 @@ export class ChallengeEngine {
 				timer = setTimeout(
 					() =>
 						reject(
-							new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+							new Key2aError("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
 						),
 					timeoutMs,
 				);
 			}),
 		]);
 		if (!exists) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"RESOURCE_NOT_FOUND",
 				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
 				404,
@@ -676,7 +676,7 @@ export class ChallengeEngine {
 		// 1. Validate tier
 		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TIER_NOT_FOUND",
 				`Tier "${tierId}" not found in product catalog`,
 				400,
@@ -686,7 +686,7 @@ export class ChallengeEngine {
 		// 3. Double-spend guard
 		const alreadyUsed = await this.seenTxStore.get(txHash);
 		if (alreadyUsed) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed",
 				409,
@@ -699,7 +699,7 @@ export class ChallengeEngine {
 		//    If record is EXPIRED or CANCELLED, reject (don't auto-create).
 		let challenge = await this.store.findActiveByRequestId(requestId);
 		if (challenge?.state === "DELIVERED" && challenge.accessGrant) {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"PROOF_ALREADY_REDEEMED",
 				"This request has already been paid. Returning existing access grant.",
 				200,
@@ -707,14 +707,14 @@ export class ChallengeEngine {
 			);
 		}
 		if (challenge?.state === "EXPIRED") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge expired. Re-request access to get a new challenge.",
 				410,
 			);
 		}
 		if (challenge?.state === "CANCELLED") {
-			throw new AgentGateError(
+			throw new Key2aError(
 				"CHALLENGE_EXPIRED",
 				"Challenge was cancelled. Re-request access to get a new challenge.",
 				410,
@@ -751,21 +751,21 @@ export class ChallengeEngine {
 		if (!transitioned) {
 			const updated = await this.store.get(challenge.challengeId);
 			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
-				throw new AgentGateError(
+				throw new Key2aError(
 					"PROOF_ALREADY_REDEEMED",
 					"This request has already been paid. Returning existing access grant.",
 					200,
 					{ grant: updated.accessGrant },
 				);
 			}
-			throw new AgentGateError("INTERNAL_ERROR", "Concurrent state transition", 500);
+			throw new Key2aError("INTERNAL_ERROR", "Concurrent state transition", 500);
 		}
 
 		// 6. Mark txHash as used
 		const marked = await this.seenTxStore.markUsed(txHash, challenge.challengeId);
 		if (!marked) {
 			await this.store.transition(challenge.challengeId, "PAID", "PENDING");
-			throw new AgentGateError(
+			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed (race condition)",
 				409,
@@ -815,7 +815,7 @@ export class ChallengeEngine {
 			});
 		} catch (err) {
 			console.error(
-				`[AgentGate] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
+				`[Key2a] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
 				err,
 			);
 		}
@@ -824,7 +824,7 @@ export class ChallengeEngine {
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
 				console.error(
-					`[AgentGate] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
+					`[Key2a] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
 					err,
 				);
 			});

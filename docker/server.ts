@@ -1,8 +1,8 @@
 /**
- * AgentGate Docker Standalone Server
+ * Key2a Docker Standalone Server
  *
  * Configured entirely via environment variables.
- * Set AGENTGATE_WALLET_ADDRESS + ISSUE_TOKEN_API and you're done.
+ * Set KEY2A_WALLET_ADDRESS + ISSUE_TOKEN_API and you're done.
  *
  * See docker/.env.example for the full list of env vars.
  */
@@ -18,18 +18,18 @@ import {
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-} from "@riklr/agentgate";
-import { agentGateRouter } from "@riklr/agentgate/express";
+} from "@riklr/key2a";
+import { key2aRouter } from "@riklr/key2a/express";
 import express from "express";
 import { buildDockerTokenIssuer } from "../src/helpers/docker-token-issuer.js";
 
 // ─── Required env vars ─────────────────────────────────────────────────────
 
-const WALLET_ADDRESS = process.env.AGENTGATE_WALLET_ADDRESS;
+const WALLET_ADDRESS = process.env.KEY2A_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 
 if (!WALLET_ADDRESS) {
-	console.error("FATAL: AGENTGATE_WALLET_ADDRESS is required (e.g. 0xYourWallet...)");
+	console.error("FATAL: KEY2A_WALLET_ADDRESS is required (e.g. 0xYourWallet...)");
 	process.exit(1);
 }
 
@@ -40,19 +40,19 @@ if (!ISSUE_TOKEN_API) {
 
 // ─── Optional env vars ─────────────────────────────────────────────────────
 
-const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
+const NETWORK = (process.env.KEY2A_NETWORK ?? "testnet") as NetworkName;
 const PORT = Number(process.env.PORT ?? 3000);
-const AGENT_NAME = process.env.AGENT_NAME ?? "AgentGate Server";
+const AGENT_NAME = process.env.AGENT_NAME ?? "Key2a Server";
 const AGENT_DESCRIPTION = process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint";
 const AGENT_URL = process.env.AGENT_URL ?? `http://localhost:${PORT}`;
-const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "AgentGate";
-const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://agentgate.dev";
+const PROVIDER_NAME = process.env.PROVIDER_NAME ?? "Key2a";
+const PROVIDER_URL = process.env.PROVIDER_URL ?? "https://key2a.dev";
 const BASE_PATH = process.env.BASE_PATH ?? "/a2a";
 const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
 const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 const REDIS_URL = process.env.REDIS_URL;
 const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
-const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+const WALLET_PRIVATE_KEY = process.env.KEY2A_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
 const REFUND_BATCH_SIZE = Number(process.env.REFUND_BATCH_SIZE ?? 50);
@@ -113,7 +113,7 @@ if (STORAGE_BACKEND === "postgres") {
 	const Redis = (await import("ioredis")).default;
 	redis = new Redis(REDIS_URL);
 
-	console.log("[agentgate] Using Postgres storage:", DATABASE_URL);
+	console.log("[key2a] Using Postgres storage:", DATABASE_URL);
 } else {
 	const Redis = (await import("ioredis")).default;
 	redis = new Redis(REDIS_URL);
@@ -122,7 +122,7 @@ if (STORAGE_BACKEND === "postgres") {
 		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 	});
 	seenTxStore = new RedisSeenTxStore({ redis });
-	console.log("[agentgate] Using Redis storage:", REDIS_URL);
+	console.log("[key2a] Using Redis storage:", REDIS_URL);
 }
 
 // ─── Token issuance ────────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ app.post("/test/expire-request-id", async (req, res) => {
 });
 
 app.use(
-	agentGateRouter({
+	key2aRouter({
 		config: {
 			agentName: AGENT_NAME,
 			agentDescription: AGENT_DESCRIPTION,
@@ -357,7 +357,7 @@ app.use(
 );
 
 app.listen(PORT, () => {
-	console.log("\n[agentgate] Server started");
+	console.log("\n[key2a] Server started");
 	console.log(`  Network:    ${NETWORK}`);
 	console.log(`  Port:       ${PORT}`);
 	console.log(`  Wallet:     ${WALLET_ADDRESS}`);
@@ -365,7 +365,7 @@ app.listen(PORT, () => {
 	console.log(`  Storage:    ${STORAGE_BACKEND.toUpperCase()}`);
 	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
 	console.log(
-		`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+		`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set KEY2A_WALLET_PRIVATE_KEY)"}\n`,
 	);
 });
 

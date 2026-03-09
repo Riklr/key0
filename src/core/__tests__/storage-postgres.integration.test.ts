@@ -5,18 +5,18 @@ import { PostgresChallengeStore, PostgresSeenTxStore } from "../storage/postgres
 // ─── Environment ──────────────────────────────────────────────────────────────
 //
 // These tests talk to a REAL Postgres instance via postgres.js.
-// They use AGENTGATE_TEST_PG_URL when set, otherwise fall back to the local
+// They use KEY2A_TEST_PG_URL when set, otherwise fall back to the local
 // development URL you provided:
-//   postgresql://localhost:5432/agentgate
+//   postgresql://localhost:5432/key2a
 //
-// In CI, point AGENTGATE_TEST_PG_URL at a dedicated throwaway database or a
+// In CI, point KEY2A_TEST_PG_URL at a dedicated throwaway database or a
 // Testcontainers-managed instance.
 
-const PG_URL = process.env["AGENTGATE_TEST_PG_URL"] ?? "postgresql://localhost:5432/agentgate";
+const PG_URL = process.env["KEY2A_TEST_PG_URL"] ?? "postgresql://localhost:5432/key2a";
 
 // Use a distinct prefix so we never collide with production tables even if the
 // same database is (mis)configured.
-const TABLE_PREFIX = "agentgate_it";
+const TABLE_PREFIX = "key2a_it";
 
 // Helper to generate a minimal ChallengeRecord for integration tests.
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
@@ -189,5 +189,5 @@ describeIfPg("PostgresChallengeStore (real Postgres)", () => {
 // If PG_URL is not set, surface a single skipped test so the reason is visible
 // in test output instead of the file being silently ignored.
 if (!PG_URL) {
-	test.skip("Postgres integration tests (AGENTGATE_TEST_PG_URL not set)", () => {});
+	test.skip("Postgres integration tests (KEY2A_TEST_PG_URL not set)", () => {});
 }
