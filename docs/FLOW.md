@@ -134,6 +134,23 @@ All transitions use **atomic Lua scripts** — if `currentState != expectedFromS
 
 ## Redis Schema
 
+### Health Check
+
+`RedisChallengeStore` exposes a `healthCheck()` method that sends a `PING` to Redis and throws if the response is not `PONG`. This is **not called automatically** by `createAgentGate()` — callers should invoke it at startup for fail-fast behavior:
+
+```ts
+const { engine, store } = createAgentGate(config);
+await store.healthCheck(); // throws if Redis is unreachable
+```
+
+### Key Naming Convention
+
+All keys use the prefix `agentgate` (configurable via `keyPrefix`).
+
+### 1. Challenge Record Hash — `agentgate:challenge:{challengeId}`
+
+Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
+
 
 | Hash Field      | Type            | Set When                       | Example                                       |
 | --------------- | --------------- | ------------------------------ | --------------------------------------------- |
@@ -650,6 +667,45 @@ Routes to an external facilitator service:
 
 Default facilitator URLs (from `CHAIN_CONFIGS`):
 
+- **Testnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
+- **Mainnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
+
+Overridable via `config.facilitatorUrl`.
+
+---
+
+## Token Issuance & Validation
+
+### Issuance
+
+Token issuance is **fully delegated** to the seller via `config.onIssueToken()`. The callback receives:
+
+```typescript
+{
+  requestId: string;
+  challengeId: string;
+  resourceId: string;
+  tierId: string;
+  txHash: string;
+}
+```
+
+And must return:
+
+```typescript
+{
+  token: string;       // The access token (JWT, API key, etc.)
+  expiresAt: Date;     // When the token expires
+  tokenType?: string;  // Default "Bearer"
+}
+```
+
+### Built-in `AccessTokenIssuer`
+
+Supports HS256 (shared secret, min 32 chars) and RS256 (PEM private key) JWTs.
+
+**Constructor accepts**:
+
 - `string` — treated as HS256 shared secret (legacy)
 - `{ secret?, privateKey?, algorithm? }` — full config
 
@@ -684,6 +740,19 @@ Default facilitator URLs (from `CHAIN_CONFIGS`):
 5. Return decoded payload
 
 Framework-specific wrappers attach decoded token to the request:
+
+- **Express**: `req.agentGateToken`
+- **Hono**: `c.set("agentGateToken", payload)`
+- **Fastify**: `request.agentGateToken`
+
+---
+
+## Refund Lifecycle
+
+The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared). The cron is **not built into AgentGate** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
+
+### How It Works
+
 1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID, `fromAddress` set, and `accessGrant` NOT set (records with `accessGrant` were successfully issued but the DELIVERED transition failed — they should not be refunded). Ghost entries (sorted set member but expired hash) are cleaned up via `ZREM`. Records without `fromAddress` trigger a warning log for manual intervention.
 2. **Batch limit**: Only `batchSize` records (default 50, configurable via `RefundConfig.batchSize`) are processed per cron run to avoid long-running jobs.
 3. **Claim**: For each record, atomically transition PAID → REFUND_PENDING (prevents double-refund from concurrent cron workers)
