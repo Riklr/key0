@@ -25,8 +25,7 @@ let settlePaymentImpl: SettlePaymentImpl = async () => ({
 });
 
 mock.module("../integrations/settlement.js", () => ({
-	settlePayment: (payload: X402PaymentPayload, ...rest: unknown[]) =>
-		settlePaymentImpl(payload, ...(rest as never[])),
+	settlePayment: (payload: X402PaymentPayload) => settlePaymentImpl(payload),
 	buildHttpPaymentRequirements,
 }));
 
@@ -160,7 +159,7 @@ describe("createMcpServer — discover_products tool", () => {
 		const server = createMcpServer(engine, config);
 
 		const result = (await callTool(server, "discover_products", {})) as Record<string, unknown>;
-		expect(result.isError).toBeUndefined();
+		expect(result["isError"]).toBeUndefined();
 	});
 });
 
@@ -200,13 +199,13 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		};
 
 		const sc = result.structuredContent;
-		expect(sc.x402Version).toBe(2);
-		expect(sc.error).toBe("Payment required to access this resource");
-		expect(sc.accepts).toBeDefined();
-		expect(Array.isArray(sc.accepts)).toBe(true);
-		expect(sc.resource).toBeDefined();
+		expect(sc["x402Version"]).toBe(2);
+		expect(sc["error"]).toBe("Payment required to access this resource");
+		expect(sc["accepts"]).toBeDefined();
+		expect(Array.isArray(sc["accepts"])).toBe(true);
+		expect(sc["resource"]).toBeDefined();
 		// resource.url must point to the x402 access endpoint
-		const resource = sc.resource as { url: string; mimeType: string };
+		const resource = sc["resource"] as { url: string; mimeType: string };
 		expect(resource.url).toBe("https://agent.example.com/x402/access");
 		expect(resource.mimeType).toBe("application/json");
 	});
@@ -223,11 +222,11 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		};
 
 		const accept = result.structuredContent.accepts[0]!;
-		expect(accept.scheme).toBe("exact");
-		expect(accept.network).toBe("eip155:84532");
-		expect(typeof accept.asset).toBe("string");
-		expect(typeof accept.amount).toBe("string");
-		expect(accept.payTo).toBe(WALLET);
+		expect(accept["scheme"]).toBe("exact");
+		expect(accept["network"]).toBe("eip155:84532");
+		expect(typeof accept["asset"]).toBe("string");
+		expect(typeof accept["amount"]).toBe("string");
+		expect(accept["payTo"]).toBe(WALLET);
 	});
 
 	test("content[0].text is parseable JSON and includes x402PaymentUrl", async () => {
@@ -242,8 +241,8 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		};
 
 		const parsed = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
-		expect(parsed.x402PaymentUrl).toBe("https://agent.example.com/x402/access");
-		expect(typeof parsed.paymentInstructions).toBe("string");
+		expect(parsed["x402PaymentUrl"]).toBe("https://agent.example.com/x402/access");
+		expect(typeof parsed["paymentInstructions"]).toBe("string");
 	});
 
 	test("returns TIER_NOT_FOUND error (not payment-required) for unknown tierId", async () => {
@@ -365,8 +364,8 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 		)) as Record<string, unknown>;
 
 		// No isError → successful grant
-		expect(result.isError).toBeUndefined();
-		const body = JSON.parse((result.content as Array<{ text: string }>)[0]!.text) as {
+		expect(result["isError"]).toBeUndefined();
+		const body = JSON.parse((result["content"] as Array<{ text: string }>)[0]!.text) as {
 			status: string;
 		};
 		expect(body.status).toBe("access_granted");
@@ -652,10 +651,10 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		expect(result.isError).toBe(true);
 		// structuredContent.error is overridden with the specific failure message
-		expect(result.structuredContent.error).toBe("insufficient_funds");
+		expect(result.structuredContent["error"]).toBe("insufficient_funds");
 		// x402 fields are still present
-		expect(result.structuredContent.x402Version).toBe(2);
-		expect(result.structuredContent.accepts).toBeDefined();
+		expect(result.structuredContent["x402Version"]).toBe(2);
+		expect(result.structuredContent["accepts"]).toBeDefined();
 
 		// content[0].text mirrors structuredContent
 		const body = JSON.parse(result.content[0]!.text) as { error: string; x402Version: number };
@@ -705,8 +704,8 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 		};
 
 		// The top-level structuredContent must not be nested under an "error" sub-object
-		expect(typeof result.structuredContent.error).toBe("string");
-		expect(result.structuredContent.accepts).toBeDefined();
+		expect(typeof result.structuredContent["error"]).toBe("string");
+		expect(result.structuredContent["accepts"]).toBeDefined();
 		expect((result.structuredContent as { error: Record<string, unknown> }).error).not.toBeTypeOf(
 			"object",
 		);
