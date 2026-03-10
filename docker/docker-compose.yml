@@ -5,7 +5,7 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - PORT=${PORT:-3000}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     env_file:
       - path: .env
         required: false

@@ -62,7 +62,7 @@ The Setup UI lets you configure everything visually: wallet address, network, pr
 
 Configuration is persisted in a Docker volume (`key2a-config`), so it survives `docker compose down` / `up` cycles.
 
-The Setup UI also works as a **standalone config generator** — open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy.
+The Setup UI also works as a **standalone config generator** — open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy. See [`docs/setup-ui.md`](./docs/setup-ui.md) for architecture details.
 
 #### Option B: Environment variables
 
@@ -89,7 +89,7 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up
 ```
 
-> Even with env vars pre-configured, the Setup UI is still available at `/setup` for reconfiguration. To protect it in production, set `SETUP_SECRET` — see [Environment Variables](#environment-variables).
+> Even with env vars pre-configured, the Setup UI is always available at `/setup` for reconfiguration.
 
 ### Docker Image
 
@@ -116,7 +116,7 @@ Build from source: `docker build -t riklr/key2a .`
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
 | `PROVIDER_NAME` | | `Key2a` | Your organization name shown in the agent card `provider` field |
 | `PROVIDER_URL` | | `https://key2a.dev` | Your organization URL shown in the agent card `provider` field |
-| `PLANS` | | `[{"planId":"basic","displayName":"Basic","unitAmount":"$0.10","resourceType":"api","expiresIn":3600}]` | JSON array of pricing plans — each with `planId`, `displayName`, `unitAmount`, `resourceType`, and optional `expiresIn` |
+| `PLANS` | | `[{"planId":"basic","displayName":"Basic","unitAmount":"$0.10","resourceType":"api","expiresIn":3600}]` | JSON array of pricing plans — each with `planId`, `displayName`, `unitAmount`, `resourceType`, and optional `expiresIn`, `description`, `features`, `tags` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
@@ -128,7 +128,7 @@ Build from source: `docker build -t riklr/key2a .`
 | `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
 | `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
-| `SETUP_SECRET` | | — | Protects the `/api/setup` endpoint in running mode. Without it, the setup API is disabled once configured. Set this to allow reconfiguration via the Setup UI in production. |
+
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
@@ -382,9 +382,12 @@ fastify.listen({ port: 3000 });
 |---|---|---|---|
 | `planId` | `string` | ✅ | Unique plan identifier |
 | `displayName` | `string` | ✅ | Display name |
+| `description` | `string` | | Short summary shown in agent card and UI |
 | `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
 | `resourceType` | `string` | ✅ | Category (e.g. `"photo"`, `"api-call"`) |
 | `expiresIn` | `number` | | Token validity; omit for single-use |
+| `features` | `string[]` | | Display-only feature list (e.g. `["10 requests/min", "Priority support"]`) |
+| `tags` | `string[]` | | Metadata tags for UI badges (e.g. `["most-popular"]`) |
 
 #### IssueTokenParams
 
@@ -738,6 +741,7 @@ bun run build        # Compile to ./dist
 
 - [SPEC.md](./SPEC.md) — Protocol specification
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/key2a`)
+- [setup-ui.md](./docs/setup-ui.md) — Setup UI: architecture, Docker integration, config flow, plan editor
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
 - [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns
 - [FLOW.md](./docs/FLOW.md) — Detailed payment flow, state machine diagrams, and health check endpoint

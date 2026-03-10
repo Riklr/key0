@@ -10,7 +10,6 @@ type ServerStatus = "loading" | "setup" | "running" | "standalone";
 export default function App() {
 	const [config, setConfig] = useState<Config>(defaultConfig);
 	const [serverStatus, setServerStatus] = useState<ServerStatus>("loading");
-	const [setupProtected, setSetupProtected] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [saveMessage, setSaveMessage] = useState<{
 		type: "success" | "error";
@@ -23,7 +22,6 @@ export default function App() {
 			.then((r) => r.json())
 			.then((data) => {
 				setServerStatus(data.configured ? "running" : "setup");
-				if (data.setupProtected) setSetupProtected(true);
 				if (data.config) {
 					setConfig((prev) => ({
 						...prev,
@@ -41,6 +39,8 @@ export default function App() {
 						providerName: data.config.providerName ?? "",
 						providerUrl: data.config.providerUrl ?? "",
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
+						verifyResourceApi: data.config.verifyResourceApi ?? "",
+						mcpEnabled: data.config.mcpEnabled ?? false,
 						backendAuthStrategy: data.config.backendAuthStrategy ?? "shared-secret",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
 						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
@@ -210,6 +210,17 @@ export default function App() {
 								/>
 							</Field>
 
+							<Field
+								label="Verify Resource API"
+								hint="Optional — Key2a POSTs here before payment to check if the resource exists. Skipped if empty."
+							>
+								<Input
+									value={config.verifyResourceApi}
+									onChange={(e) => set("verifyResourceApi", e.target.value)}
+									placeholder="https://api.example.com/verify-resource"
+								/>
+							</Field>
+
 							<Field label="Backend Auth Strategy" hint="How Key2a authenticates with your backend">
 								<Select
 									value={config.backendAuthStrategy}
@@ -248,6 +259,31 @@ export default function App() {
 						<Section icon="T" title="Pricing Plans" description="Define pricing plans for your API">
 							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
 						</Section>
+
+						<div className="border-t border-neutral-800/50" />
+
+						{/* MCP toggle */}
+						<div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-3">
+							<div>
+								<span className="text-sm font-medium text-neutral-300">Enable MCP</span>
+								<p className="text-xs text-neutral-500">
+									Expose discover_plans and request_access as MCP tools
+								</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => set("mcpEnabled", !config.mcpEnabled)}
+								className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+									config.mcpEnabled ? "bg-emerald-500" : "bg-neutral-700"
+								}`}
+							>
+								<span
+									className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+										config.mcpEnabled ? "translate-x-5" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
 
 						<div className="border-t border-neutral-800/50" />
 
@@ -304,22 +340,13 @@ export default function App() {
 							description="Port, storage backend, and challenge settings"
 							defaultOpen={false}
 						>
-							<div className="grid grid-cols-2 gap-3">
-								<Field label="Port">
-									<Input
-										type="number"
-										value={config.port}
-										onChange={(e) => set("port", e.target.value)}
-									/>
-								</Field>
-								<Field label="Base Path">
-									<Input
-										value={config.basePath}
-										onChange={(e) => set("basePath", e.target.value)}
-										placeholder="/a2a"
-									/>
-								</Field>
-							</div>
+							<Field label="Port">
+								<Input
+									type="number"
+									value={config.port}
+									onChange={(e) => set("port", e.target.value)}
+								/>
+							</Field>
 
 							<Field label="Storage Backend">
 								<Select
@@ -413,22 +440,38 @@ export default function App() {
 								/>
 							</Field>
 							{config.walletPrivateKey && (
-								<div className="grid grid-cols-2 gap-3">
-									<Field label="Scan Interval (ms)" hint="Default: 60s">
-										<Input
-											type="number"
-											value={config.refundIntervalMs}
-											onChange={(e) => set("refundIntervalMs", e.target.value)}
-										/>
-									</Field>
-									<Field label="Min Age (ms)" hint="Default: 5 min">
-										<Input
-											type="number"
-											value={config.refundMinAgeMs}
-											onChange={(e) => set("refundMinAgeMs", e.target.value)}
-										/>
-									</Field>
-								</div>
+								<>
+									<div className="grid grid-cols-2 gap-3">
+										<Field label="Scan Interval (ms)" hint="Default: 60s">
+											<Input
+												type="number"
+												value={config.refundIntervalMs}
+												onChange={(e) => set("refundIntervalMs", e.target.value)}
+											/>
+										</Field>
+										<Field label="Min Age (ms)" hint="Default: 5 min">
+											<Input
+												type="number"
+												value={config.refundMinAgeMs}
+												onChange={(e) => set("refundMinAgeMs", e.target.value)}
+											/>
+										</Field>
+									</div>
+									<p className="text-xs text-neutral-500">
+										Scans every{" "}
+										<span className="text-neutral-400">
+											{Number(config.refundIntervalMs) >= 60000
+												? `${(Number(config.refundIntervalMs) / 60000).toFixed(1).replace(/\.0$/, "")} min`
+												: `${(Number(config.refundIntervalMs) / 1000).toFixed(1).replace(/\.0$/, "")}s`}
+										</span>{" "}
+										— refunds stuck payments older than{" "}
+										<span className="text-neutral-400">
+											{Number(config.refundMinAgeMs) >= 60000
+												? `${(Number(config.refundMinAgeMs) / 60000).toFixed(1).replace(/\.0$/, "")} min`
+												: `${(Number(config.refundMinAgeMs) / 1000).toFixed(1).replace(/\.0$/, "")}s`}
+										</span>
+									</p>
+								</>
 							)}
 						</Section>
 
@@ -446,32 +489,22 @@ export default function App() {
 										{saveMessage.text}
 									</div>
 								)}
-								{setupProtected ? (
-									<div className="rounded-lg px-4 py-3 text-sm bg-amber-500/10 text-amber-400 border border-amber-500/20">
-										Setup API is locked. Set{" "}
-										<code className="font-mono text-xs bg-neutral-800 px-1 py-0.5 rounded">
-											SETUP_SECRET
-										</code>{" "}
-										env var to enable reconfiguration.
-									</div>
-								) : (
-									<button
-										type="button"
-										onClick={handleSaveAndLaunch}
-										disabled={!isValid || saving}
-										className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
-											isValid && !saving
-												? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
-												: "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-										}`}
-									>
-										{saving
-											? "Saving..."
-											: serverStatus === "running"
-												? "Save & Restart"
-												: "Save & Launch"}
-									</button>
-								)}
+								<button
+									type="button"
+									onClick={handleSaveAndLaunch}
+									disabled={!isValid || saving}
+									className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
+										isValid && !saving
+											? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
+											: "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+									}`}
+								>
+									{saving
+										? "Saving..."
+										: serverStatus === "running"
+											? "Save & Restart"
+											: "Save & Launch"}
+								</button>
 							</div>
 						)}
 					</div>

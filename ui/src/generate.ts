@@ -1,4 +1,19 @@
-import type { Config } from "./types";
+import type { Config, Plan } from "./types";
+
+/** Serialize a Plan to the JSON shape expected by Key2a config (strips empty optional fields). */
+function serializePlan(p: Plan) {
+	const features = (p.features || []).filter((f) => f.trim() !== "");
+	return {
+		planId: p.planId,
+		displayName: p.displayName,
+		...(p.description ? { description: p.description } : {}),
+		unitAmount: p.unitAmount,
+		resourceType: p.resourceType,
+		...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
+		...(features.length > 0 ? { features } : {}),
+		...(p.tags && p.tags.length > 0 ? { tags: p.tags } : {}),
+	};
+}
 
 export function generateEnv(config: Config): string {
 	const lines: string[] = [
@@ -40,10 +55,10 @@ export function generateEnv(config: Config): string {
 		"",
 		"# ── Agent Card ────────────────────────────────────────────────────────────────",
 		"",
-		`AGENT_NAME=${config.agentName}`,
-		`AGENT_DESCRIPTION=${config.agentDescription}`,
-		`AGENT_URL=${config.agentUrl}`,
 	);
+	if (config.agentName) lines.push(`AGENT_NAME=${config.agentName}`);
+	if (config.agentDescription) lines.push(`AGENT_DESCRIPTION=${config.agentDescription}`);
+	lines.push(`AGENT_URL=${config.agentUrl}`);
 
 	if (config.providerName) {
 		lines.push(`PROVIDER_NAME=${config.providerName}`);
@@ -54,17 +69,7 @@ export function generateEnv(config: Config): string {
 
 	// Plans
 	if (config.plans.length > 0) {
-		const plansJson = JSON.stringify(
-			config.plans.map((p) => ({
-				planId: p.planId,
-				displayName: p.displayName,
-				unitAmount: p.unitAmount,
-				resourceType: p.resourceType,
-				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
-			})),
-			null,
-			2,
-		);
+		const plansJson = JSON.stringify(config.plans.map(serializePlan), null, 2);
 		lines.push(
 			"",
 			"# ── Pricing Plans ─────────────────────────────────────────────────────────────",
@@ -79,6 +84,24 @@ export function generateEnv(config: Config): string {
 			"# ── Challenge ─────────────────────────────────────────────────────────────────",
 			"",
 			`CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`,
+		);
+	}
+
+	if (config.verifyResourceApi) {
+		lines.push(
+			"",
+			"# ── Resource Verification ─────────────────────────────────────────────────────",
+			"",
+			`VERIFY_RESOURCE_API=${config.verifyResourceApi}`,
+		);
+	}
+
+	if (config.mcpEnabled) {
+		lines.push(
+			"",
+			"# ── MCP ───────────────────────────────────────────────────────────────────────",
+			"",
+			"MCP_ENABLED=true",
 		);
 	}
 
@@ -136,8 +159,8 @@ export function generateDockerRun(config: Config): string {
 		envFlags.push(`-e DATABASE_URL=${config.databaseUrl}`);
 	}
 	envFlags.push(`-e PORT=${config.port}`);
-	envFlags.push(`-e AGENT_NAME="${config.agentName}"`);
-	envFlags.push(`-e AGENT_DESCRIPTION="${config.agentDescription}"`);
+	if (config.agentName) envFlags.push(`-e AGENT_NAME="${config.agentName}"`);
+	if (config.agentDescription) envFlags.push(`-e AGENT_DESCRIPTION="${config.agentDescription}"`);
 	envFlags.push(`-e AGENT_URL=${config.agentUrl}`);
 
 	if (config.basePath && config.basePath !== "/a2a") {
@@ -150,19 +173,17 @@ export function generateDockerRun(config: Config): string {
 		envFlags.push(`-e PROVIDER_URL=${config.providerUrl}`);
 	}
 	if (config.plans.length > 0) {
-		const json = JSON.stringify(
-			config.plans.map((p) => ({
-				planId: p.planId,
-				displayName: p.displayName,
-				unitAmount: p.unitAmount,
-				resourceType: p.resourceType,
-				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
-			})),
-		);
+		const json = JSON.stringify(config.plans.map(serializePlan));
 		envFlags.push(`-e PLANS='${json}'`);
 	}
 	if (config.challengeTtlSeconds !== "900") {
 		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
+	}
+	if (config.verifyResourceApi) {
+		envFlags.push(`-e VERIFY_RESOURCE_API=${config.verifyResourceApi}`);
+	}
+	if (config.mcpEnabled) {
+		envFlags.push(`-e MCP_ENABLED=true`);
 	}
 	if (config.backendAuthStrategy !== "shared-secret") {
 		envFlags.push(`-e BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
@@ -188,10 +209,11 @@ export function generateDockerCompose(config: Config): string {
 		STORAGE_BACKEND: config.storageBackend,
 		REDIS_URL: config.storageBackend === "postgres" ? config.redisUrl : "redis://redis:6379",
 		PORT: config.port,
-		AGENT_NAME: config.agentName,
-		AGENT_DESCRIPTION: config.agentDescription,
 		AGENT_URL: config.agentUrl,
 	};
+
+	if (config.agentName) envVars.AGENT_NAME = config.agentName;
+	if (config.agentDescription) envVars.AGENT_DESCRIPTION = config.agentDescription;
 
 	if (config.storageBackend === "postgres" && config.databaseUrl) {
 		envVars.DATABASE_URL = config.databaseUrl;
@@ -203,18 +225,16 @@ export function generateDockerCompose(config: Config): string {
 	if (config.providerName) envVars.PROVIDER_NAME = config.providerName;
 	if (config.providerUrl) envVars.PROVIDER_URL = config.providerUrl;
 	if (config.plans.length > 0) {
-		envVars.PLANS = JSON.stringify(
-			config.plans.map((p) => ({
-				planId: p.planId,
-				displayName: p.displayName,
-				unitAmount: p.unitAmount,
-				resourceType: p.resourceType,
-				...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
-			})),
-		);
+		envVars.PLANS = JSON.stringify(config.plans.map(serializePlan));
 	}
 	if (config.challengeTtlSeconds !== "900") {
 		envVars.CHALLENGE_TTL_SECONDS = config.challengeTtlSeconds;
+	}
+	if (config.verifyResourceApi) {
+		envVars.VERIFY_RESOURCE_API = config.verifyResourceApi;
+	}
+	if (config.mcpEnabled) {
+		envVars.MCP_ENABLED = "true";
 	}
 	if (config.backendAuthStrategy !== "shared-secret") {
 		envVars.BACKEND_AUTH_STRATEGY = config.backendAuthStrategy;

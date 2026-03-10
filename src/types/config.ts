@@ -30,12 +30,6 @@ export type NetworkConfig = {
 	};
 };
 
-export type PlanFeature = {
-	readonly key: string; // machine-readable: "llm-costs", "concurrent-agents"
-	readonly label: string; // human-readable: "All LLM costs included"
-	readonly value?: string | number | boolean; // true, 30, "priority"
-};
-
 export type Plan = {
 	readonly planId: string;
 	readonly displayName: string;
@@ -43,7 +37,7 @@ export type Plan = {
 	readonly unitAmount: string; // "$0.10"
 	readonly resourceType: string; // "photo" | "report" | "api-call"
 	readonly expiresIn?: number; // undefined = single-use
-	readonly features?: readonly PlanFeature[];
+	readonly features?: readonly string[]; // ["1,650 steps/month", "10 concurrent agents"]
 	readonly tags?: readonly string[]; // ["most-popular"]
 };
 

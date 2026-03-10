@@ -17,7 +17,6 @@ const PORT = Number(process.env.PORT ?? 3000);
 const WALLET_ADDRESS = process.env.KEY2A_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 const REDIS_URL = process.env.REDIS_URL;
-const SETUP_SECRET = process.env.SETUP_SECRET;
 
 const isConfigured = Boolean(WALLET_ADDRESS && ISSUE_TOKEN_API && REDIS_URL);
 
@@ -40,64 +39,33 @@ if (hasUI) {
 
 // ─── Setup API ────────────────────────────────────────────────────────────
 
-// In running mode, require SETUP_SECRET to prevent unauthorized reconfiguration.
-// In setup mode (not configured), allow unauthenticated access.
-function requireSetupAuth(
-	req: express.Request,
-	res: express.Response,
-	next: express.NextFunction,
-): void {
-	if (!isConfigured) {
-		next();
-		return;
-	}
-	if (!SETUP_SECRET) {
-		res.status(403).json({
-			error: "Setup API is disabled in running mode. Set SETUP_SECRET env var to enable.",
-		});
-		return;
-	}
-	const auth = req.headers.authorization;
-	if (auth !== `Bearer ${SETUP_SECRET}`) {
-		res.status(401).json({ error: "Invalid setup secret" });
-		return;
-	}
-	next();
-}
-
-app.get("/api/setup/status", (req, res) => {
-	const authed =
-		!isConfigured || (SETUP_SECRET && req.headers.authorization === `Bearer ${SETUP_SECRET}`);
-
+app.get("/api/setup/status", (_req, res) => {
 	res.json({
 		configured: isConfigured,
-		setupProtected: !!(isConfigured && !SETUP_SECRET),
-		// Only expose full config to unauthenticated requests in setup mode,
-		// or to authenticated requests in running mode.
-		config: authed
-			? {
-					walletAddress: WALLET_ADDRESS ?? "",
-					issueTokenApi: ISSUE_TOKEN_API ?? "",
-					network: process.env.KEY2A_NETWORK ?? "testnet",
-					storageBackend: process.env.STORAGE_BACKEND ?? "redis",
-					redisUrl: REDIS_URL ?? "",
-					databaseUrl: process.env.DATABASE_URL ?? "",
-					port: PORT.toString(),
-					basePath: process.env.BASE_PATH ?? "/a2a",
-					agentName: process.env.AGENT_NAME ?? "Key2a Server",
-					agentDescription: process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint",
-					agentUrl: process.env.AGENT_URL ?? `http://localhost:${PORT}`,
-					providerName: process.env.PROVIDER_NAME ?? "",
-					providerUrl: process.env.PROVIDER_URL ?? "",
-					challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
-					backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "shared-secret",
-					issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
-					gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
-					walletPrivateKey: process.env.KEY2A_WALLET_PRIVATE_KEY ? "••••••" : "",
-					refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
-					refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
-				}
-			: null,
+		config: {
+			walletAddress: WALLET_ADDRESS ?? "",
+			issueTokenApi: ISSUE_TOKEN_API ?? "",
+			network: process.env.KEY2A_NETWORK ?? "testnet",
+			storageBackend: process.env.STORAGE_BACKEND ?? "redis",
+			redisUrl: REDIS_URL ?? "",
+			databaseUrl: process.env.DATABASE_URL ?? "",
+			port: PORT.toString(),
+			basePath: process.env.BASE_PATH ?? "/a2a",
+			agentName: process.env.AGENT_NAME ?? "Key2a Server",
+			agentDescription: process.env.AGENT_DESCRIPTION ?? "Payment-gated A2A endpoint",
+			agentUrl: process.env.AGENT_URL ?? `http://localhost:${PORT}`,
+			providerName: process.env.PROVIDER_NAME ?? "",
+			providerUrl: process.env.PROVIDER_URL ?? "",
+			challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
+			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "shared-secret",
+			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
+			gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
+			walletPrivateKey: process.env.KEY2A_WALLET_PRIVATE_KEY ? "••••••" : "",
+			verifyResourceApi: process.env.VERIFY_RESOURCE_API ?? "",
+			mcpEnabled: process.env.MCP_ENABLED === "true",
+			refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
+			refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
+		},
 	});
 });
 
@@ -122,10 +90,12 @@ interface SetupBody {
 		unitAmount: string;
 		resourceType: string;
 		expiresIn?: number;
-		features?: Array<{ key: string; label: string; value?: string | number | boolean }>;
+		features?: string[];
 		tags?: string[];
 	}>;
 	challengeTtlSeconds: string;
+	verifyResourceApi: string;
+	mcpEnabled: boolean;
 	backendAuthStrategy: "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 	gasWalletPrivateKey: string;
@@ -134,7 +104,7 @@ interface SetupBody {
 	refundMinAgeMs: string;
 }
 
-app.post("/api/setup", requireSetupAuth, async (req, res) => {
+app.post("/api/setup", async (req, res) => {
 	const body = req.body as SetupBody;
 
 	if (!body.walletAddress || !body.issueTokenApi) {
@@ -175,6 +145,12 @@ app.post("/api/setup", requireSetupAuth, async (req, res) => {
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
+	}
+	if (body.verifyResourceApi) {
+		lines.push(`VERIFY_RESOURCE_API=${body.verifyResourceApi}`);
+	}
+	if (body.mcpEnabled) {
+		lines.push(`MCP_ENABLED=true`);
 	}
 	if (body.backendAuthStrategy && body.backendAuthStrategy !== "shared-secret") {
 		lines.push(`BACKEND_AUTH_STRATEGY=${body.backendAuthStrategy}`);
@@ -271,6 +247,8 @@ if (!isConfigured) {
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
+	const _VERIFY_RESOURCE_API = process.env.VERIFY_RESOURCE_API;
+	const _MCP_ENABLED = process.env.MCP_ENABLED === "true";
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
 	const _DEFAULT_PLANS: Plan[] = [
@@ -331,6 +309,15 @@ if (!isConfigured) {
 		seenTxStore = new RedisSeenTxStore({ redis });
 		console.log("[key2a] Using Redis storage:", REDIS_URL);
 	}
+
+	// Resource verification — remote endpoint or allow-all
+	const _onVerifyResource = _VERIFY_RESOURCE_API
+		? key2a.createRemoteResourceVerifier({
+				url: _VERIFY_RESOURCE_API,
+				...(ISSUE_TOKEN_API_SECRET ? { secret: ISSUE_TOKEN_API_SECRET } : {}),
+				timeoutMs: 5000,
+			})
+		: async () => true;
 
 	// Token issuance
 	const fetchResourceCredentials = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
@@ -542,10 +529,11 @@ if (!isConfigured) {
 				plans,
 				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 				basePath: BASE_PATH,
-				onVerifyResource: async () => true,
+				onVerifyResource: _onVerifyResource,
 				fetchResourceCredentials,
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
+				mcp: _MCP_ENABLED,
 				...(GAS_WALLET_PRIVATE_KEY && redis
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),

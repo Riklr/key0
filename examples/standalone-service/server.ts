@@ -161,12 +161,7 @@ if (tokenMode === "remote") {
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
 	fetchResourceCredentials = async (params) => {
-		// Look up the plan to encode its features into the JWT
 		const plan = plans.find((p) => p.planId === params.planId);
-		const requestsFeature = plan?.features?.find((f) => f.key === "requests");
-		const concurrencyFeature = plan?.features?.find((f) => f.key === "concurrent-agents");
-		const rateLimitFeature = plan?.features?.find((f) => f.key === "rate-limit");
-
 		const ttl = plan?.expiresIn ?? 3600;
 
 		return localTokenIssuer.sign(
@@ -176,10 +171,6 @@ if (tokenMode === "remote") {
 				resourceId: params.resourceId,
 				planId: params.planId,
 				txHash: params.txHash,
-				// Encode plan entitlements — seller's API middleware enforces these
-				...(requestsFeature ? { quota: requestsFeature.value } : {}),
-				...(concurrencyFeature ? { maxConcurrent: concurrencyFeature.value } : {}),
-				...(rateLimitFeature ? { rateLimit: rateLimitFeature.value } : {}),
 			},
 			ttl,
 		);
@@ -194,11 +185,7 @@ const plans = [
 		description: "Best for low-volume or unpredictable workloads",
 		unitAmount: "$0.015",
 		resourceType: "api-call",
-		features: [
-			{ key: "concurrent-agents", label: "2 concurrent agents", value: 2 },
-			{ key: "rate-limit", label: "10 requests/minute", value: 10 },
-			{ key: "support", label: "Email support", value: "email" },
-		],
+		features: ["2 concurrent agents", "10 requests/minute", "Email support"],
 	},
 	{
 		planId: "starter-monthly",
@@ -208,11 +195,11 @@ const plans = [
 		resourceType: "api-call",
 		expiresIn: 2592000, // 30 days
 		features: [
-			{ key: "requests", label: "1,650 requests/month", value: 1650 },
-			{ key: "concurrent-agents", label: "10 concurrent agents", value: 10 },
-			{ key: "rate-limit", label: "100 requests/minute", value: 100 },
-			{ key: "support", label: "Priority email support", value: "priority-email" },
-			{ key: "overage", label: "Past 1,650 requests: $0.014/req", value: "$0.014" },
+			"1,650 requests/month",
+			"10 concurrent agents",
+			"100 requests/minute",
+			"Priority email support",
+			"Past 1,650 requests: $0.014/req",
 		],
 		tags: ["most-popular"],
 	},
@@ -224,11 +211,11 @@ const plans = [
 		resourceType: "api-call",
 		expiresIn: 31536000, // 365 days
 		features: [
-			{ key: "requests", label: "1,650 requests/month", value: 1650 },
-			{ key: "concurrent-agents", label: "10 concurrent agents", value: 10 },
-			{ key: "rate-limit", label: "100 requests/minute", value: 100 },
-			{ key: "support", label: "Priority email support", value: "priority-email" },
-			{ key: "overage", label: "Past 1,650 requests: $0.014/req", value: "$0.014" },
+			"1,650 requests/month",
+			"10 concurrent agents",
+			"100 requests/minute",
+			"Priority email support",
+			"Past 1,650 requests: $0.014/req",
 		],
 		tags: ["most-popular"],
 	},
@@ -240,11 +227,11 @@ const plans = [
 		resourceType: "api-call",
 		expiresIn: 2592000, // 30 days
 		features: [
-			{ key: "requests", label: "16,500 requests/month", value: 16500 },
-			{ key: "concurrent-agents", label: "50 concurrent agents", value: 50 },
-			{ key: "rate-limit", label: "1,000 requests/minute", value: 1000 },
-			{ key: "support", label: "Priority email + Slack", value: "priority-all" },
-			{ key: "overage", label: "Past 16,500 requests: $0.012/req", value: "$0.012" },
+			"16,500 requests/month",
+			"50 concurrent agents",
+			"1,000 requests/minute",
+			"Priority email + Slack",
+			"Past 16,500 requests: $0.012/req",
 		],
 	},
 ] as const;

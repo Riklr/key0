@@ -1,11 +1,5 @@
 export type PaymentProtocol = "x402" | "stripe" | "lightning";
 
-export type SkillPricingFeature = {
-	readonly key: string;
-	readonly label: string;
-	readonly value?: string | number | boolean;
-};
-
 export type SkillPricing = {
 	readonly planId: string;
 	readonly displayName: string;
@@ -14,7 +8,7 @@ export type SkillPricing = {
 	readonly asset: "USDC";
 	readonly chainId: number; // 8453 (Base) or 84532 (Base Sepolia)
 	readonly walletAddress: `0x${string}`;
-	readonly features?: readonly SkillPricingFeature[];
+	readonly features?: readonly string[];
 	readonly tags?: readonly string[];
 };
 

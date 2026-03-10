@@ -31,12 +31,6 @@ That's it. Three optional fields. Zero breaking changes.
 ## 3. Proposed Types
 
 ```typescript
-type PlanFeature = {
-  readonly key: string;       // machine-readable: "llm-costs", "concurrent-agents"
-  readonly label: string;     // human-readable: "All LLM costs included"
-  readonly value?: string | number | boolean;  // true, 30, "priority"
-};
-
 type Plan = {
   readonly planId: string;
   readonly displayName: string;
@@ -44,7 +38,7 @@ type Plan = {
   readonly unitAmount: string;                  // "$0.015", "$15.00"
   readonly resourceType: string;                // "step", "api-call"
   readonly expiresIn?: number;                  // token lifetime in seconds (undefined = single-use)
-  readonly features?: readonly PlanFeature[];   // NEW
+  readonly features?: readonly string[];        // NEW — ["1,650 steps/month", "10 concurrent agents"]
   readonly tags?: readonly string[];            // NEW — ["most-popular"]
 };
 ```
@@ -78,13 +72,13 @@ const plans: Plan[] = [
     unitAmount: "$0.015",
     resourceType: "step",
     features: [
-      { key: "concurrent-agents", label: "2 concurrent agents", value: 2 },
-      { key: "llm-costs", label: "All LLM costs included", value: true },
-      { key: "anti-bot", label: "Anti-bot protection included", value: true },
-      { key: "remote-browser", label: "Remote browser at $0/hour", value: true },
-      { key: "residential-proxy", label: "Residential proxy at $0/GB", value: true },
-      { key: "run-history", label: "30-day run history", value: 30 },
-      { key: "support", label: "Email support", value: "email" },
+      "2 concurrent agents",
+      "All LLM costs included",
+      "Anti-bot protection included",
+      "Remote browser at $0/hour",
+      "Residential proxy at $0/GB",
+      "30-day run history",
+      "Email support",
     ],
   },
   {
@@ -95,35 +89,16 @@ const plans: Plan[] = [
     resourceType: "step",
     expiresIn: 2592000,
     features: [
-      { key: "steps", label: "1,650 steps/month", value: 1650 },
-      { key: "concurrent-agents", label: "10 concurrent agents (5x throughput)", value: 10 },
-      { key: "llm-costs", label: "All LLM costs included", value: true },
-      { key: "anti-bot", label: "Anti-bot protection, auto-configured per run", value: true },
-      { key: "remote-browser", label: "Remote browser at $0/hour", value: true },
-      { key: "residential-proxy", label: "Residential proxy at $0/GB", value: true },
-      { key: "run-history", label: "30-day run history with full observability", value: 30 },
-      { key: "support", label: "Priority email support", value: "priority-email" },
-      { key: "workbench", label: "TinyFish Workbench, API, and MCP Integration", value: true },
-      { key: "overage", label: "Past 1,650 steps: $0.014/step", value: "$0.014" },
-    ],
-    tags: ["most-popular"],
-  },
-  {
-    planId: "starter-yearly",
-    displayName: "Starter",
-    description: "Best for developers running daily workflows — save 7%",
-    unitAmount: "$168.00",
-    resourceType: "step",
-    expiresIn: 31536000,
-    features: [
-      { key: "steps", label: "1,650 steps/month", value: 1650 },
-      { key: "concurrent-agents", label: "10 concurrent agents (5x throughput)", value: 10 },
-      { key: "llm-costs", label: "All LLM costs included", value: true },
-      { key: "anti-bot", label: "Anti-bot protection, auto-configured per run", value: true },
-      { key: "run-history", label: "30-day run history with full observability", value: 30 },
-      { key: "support", label: "Priority email support", value: "priority-email" },
-      { key: "workbench", label: "TinyFish Workbench, API, and MCP Integration", value: true },
-      { key: "overage", label: "Past 1,650 steps: $0.014/step", value: "$0.014" },
+      "1,650 steps/month",
+      "10 concurrent agents (5x throughput)",
+      "All LLM costs included",
+      "Anti-bot protection, auto-configured per run",
+      "Remote browser at $0/hour",
+      "Residential proxy at $0/GB",
+      "30-day run history with full observability",
+      "Priority email support",
+      "TinyFish Workbench, API, and MCP Integration",
+      "Past 1,650 steps: $0.014/step",
     ],
     tags: ["most-popular"],
   },
@@ -135,32 +110,14 @@ const plans: Plan[] = [
     resourceType: "step",
     expiresIn: 2592000,
     features: [
-      { key: "steps", label: "16,500 steps/month", value: 16500 },
-      { key: "concurrent-agents", label: "50 concurrent agents (25x throughput)", value: 50 },
-      { key: "llm-costs", label: "All LLM inference costs included", value: true },
-      { key: "anti-bot", label: "Anti-bot protection, auto-configured per run", value: true },
-      { key: "run-history", label: "180-day run history with full observability", value: 180 },
-      { key: "support", label: "Priority email + Slack/Discord community", value: "priority-all" },
-      { key: "workbench", label: "TinyFish Workbench, API, and MCP Integration", value: true },
-      { key: "overage", label: "Past 16,500 steps: $0.012/step", value: "$0.012" },
-    ],
-  },
-  {
-    planId: "pro-yearly",
-    displayName: "Pro",
-    description: "Best for development teams — save 12%",
-    unitAmount: "$1584.00",
-    resourceType: "step",
-    expiresIn: 31536000,
-    features: [
-      { key: "steps", label: "16,500 steps/month", value: 16500 },
-      { key: "concurrent-agents", label: "50 concurrent agents (25x throughput)", value: 50 },
-      { key: "llm-costs", label: "All LLM inference costs included", value: true },
-      { key: "anti-bot", label: "Anti-bot protection, auto-configured per run", value: true },
-      { key: "run-history", label: "180-day run history with full observability", value: 180 },
-      { key: "support", label: "Priority email + Slack/Discord community", value: "priority-all" },
-      { key: "workbench", label: "TinyFish Workbench, API, and MCP Integration", value: true },
-      { key: "overage", label: "Past 16,500 steps: $0.012/step", value: "$0.012" },
+      "16,500 steps/month",
+      "50 concurrent agents (25x throughput)",
+      "All LLM inference costs included",
+      "Anti-bot protection, auto-configured per run",
+      "180-day run history with full observability",
+      "Priority email + Slack/Discord community",
+      "TinyFish Workbench, API, and MCP Integration",
+      "Past 16,500 steps: $0.012/step",
     ],
   },
 ];
@@ -172,7 +129,7 @@ const plans: Plan[] = [
 
 ### Setup UI — Seller configuring plans
 - Form to add/edit plans with: name, description, price, duration, features list
-- Features are freeform key/label/value — seller types whatever they want
+- Features are plain strings — one per line in a textarea
 - Tags dropdown: "most-popular", "recommended", "new"
 
 ### Buyer-facing UI / Agent Card

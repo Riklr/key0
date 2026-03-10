@@ -1,9 +1,12 @@
 export interface Plan {
 	planId: string;
 	displayName: string;
+	description: string;
 	unitAmount: string;
 	resourceType: string;
 	expiresIn: number | "";
+	features: string[];
+	tags: string[];
 }
 
 export interface Config {
@@ -34,6 +37,12 @@ export interface Config {
 	// Challenge
 	challengeTtlSeconds: string;
 
+	// Resource Verification
+	verifyResourceApi: string;
+
+	// MCP
+	mcpEnabled: boolean;
+
 	// Token API Auth
 	backendAuthStrategy: "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
@@ -59,23 +68,30 @@ export const defaultConfig: Config = {
 	port: "3000",
 	basePath: "/a2a",
 
-	agentName: "Key2a Server",
-	agentDescription: "Payment-gated A2A endpoint",
+	agentName: "",
+	agentDescription: "",
 	agentUrl: "http://localhost:3000",
 	providerName: "",
 	providerUrl: "",
 
 	plans: [
 		{
-			planId: "basic",
-			displayName: "Basic",
-			unitAmount: "$0.10",
-			resourceType: "api",
-			expiresIn: 3600,
+			planId: "starter",
+			displayName: "Starter",
+			description: "",
+			unitAmount: "$10.00",
+			resourceType: "api-access",
+			expiresIn: 2592000,
+			features: [],
+			tags: [],
 		},
 	],
 
 	challengeTtlSeconds: "900",
+
+	verifyResourceApi: "",
+
+	mcpEnabled: false,
 
 	backendAuthStrategy: "shared-secret",
 	issueTokenApiSecret: "",
