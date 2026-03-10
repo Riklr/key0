@@ -118,9 +118,12 @@ interface SetupBody {
 	plans: Array<{
 		planId: string;
 		displayName: string;
+		description?: string;
 		unitAmount: string;
 		resourceType: string;
 		expiresIn?: number;
+		features?: Array<{ key: string; label: string; value?: string | number | boolean }>;
+		tags?: string[];
 	}>;
 	challengeTtlSeconds: string;
 	backendAuthStrategy: "shared-secret" | "jwt";

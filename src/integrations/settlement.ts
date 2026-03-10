@@ -186,7 +186,9 @@ export function buildDiscoveryResponse(
 				version: networkConfig.usdcDomain.version,
 				planId: tier.planId,
 				displayName: tier.displayName,
-				description: `${tier.displayName} — ${tier.unitAmount} USDC`,
+				description: tier.description ?? `${tier.displayName} — ${tier.unitAmount} USDC`,
+				...(tier.features ? { features: tier.features } : {}),
+				...(tier.tags ? { tags: tier.tags } : {}),
 			},
 		};
 	});

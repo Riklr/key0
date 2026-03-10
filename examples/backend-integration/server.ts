@@ -21,15 +21,19 @@ const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const app = express();
 app.use(express.json());
 
-// Mock database
-const resources = new Map<string, { planId: string }>([
-	["default", { planId: "basic" }], // Accept general API access
-	["photo-1", { planId: "basic" }],
-	["photo-2", { planId: "basic" }],
-	["album-1", { planId: "premium" }],
+// Mock database — maps resourceId to which plans can access it
+const resources = new Map<string, { allowedPlans: string[] }>([
+	["default", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
+	["photo-1", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
+	["photo-2", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
+	["album-1", { allowedPlans: ["starter-monthly", "starter-yearly", "pro-monthly"] }],
+	["bulk-export", { allowedPlans: ["pro-monthly"] }],
 ]);
 
-const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; planId: string }>();
+const apiKeys = new Map<
+	string,
+	{ expiresAt: Date; resourceId: string; planId: string; quota?: number; maxConcurrent?: number }
+>();
 
 // ============================================================================
 // Internal Endpoints (called by Key2a Service)
@@ -52,29 +56,35 @@ function verifyInternalAuth(
 app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
 	const { resourceId, planId } = req.body;
 
-	// Accept "default" for any tier (general API access)
-	if (resourceId === "default") {
-		return res.json({ valid: true });
-	}
-
-	// Validate specific resources
 	const resource = resources.get(resourceId);
-	const valid = resource !== undefined && resource.planId === planId;
+	const valid = resource?.allowedPlans.includes(planId);
 	res.json({ valid });
 });
 
+// Plan entitlements — the seller defines what each plan grants.
+// In production this would come from your database or config.
+const planEntitlements: Record<string, { ttlMs: number; quota?: number; maxConcurrent?: number }> =
+	{
+		basic: { ttlMs: 3600 * 1000 }, // 1 hour, per-use
+		"starter-monthly": { ttlMs: 30 * 86400 * 1000, quota: 1650, maxConcurrent: 10 },
+		"starter-yearly": { ttlMs: 365 * 86400 * 1000, quota: 1650, maxConcurrent: 10 },
+		"pro-monthly": { ttlMs: 30 * 86400 * 1000, quota: 16500, maxConcurrent: 50 },
+	};
+
 // Issue token (only used if Key2a tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
-	const { requestId, resourceId, planId, txHash } = req.body;
+	const { resourceId, planId } = req.body;
+
+	const entitlements = planEntitlements[planId] ?? { ttlMs: 3600 * 1000 };
 
 	// Generate a custom API key (in production, use your actual key generation)
 	const apiKey = `ak_${crypto.randomUUID().replace(/-/g, "")}`;
-	const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour
+	const expiresAt = new Date(Date.now() + entitlements.ttlMs);
 
-	// Store the key
-	apiKeys.set(apiKey, { expiresAt, resourceId, planId });
+	// Store the key with entitlements — your API middleware reads these to enforce limits
+	apiKeys.set(apiKey, { expiresAt, resourceId, planId, ...entitlements });
 
-	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${planId}`);
+	console.log(`[Backend] Issued API key for resource ${resourceId}, plan ${planId}`);
 
 	res.json({
 		token: apiKey,
@@ -148,8 +158,8 @@ app.use("/api", validateToken);
 app.get("/api/photos/:id", (req, res) => {
 	const token = (req as unknown as { key2aToken: AccessTokenPayload }).key2aToken;
 
-	// If token has "default" resourceId, it grants access to all resources (tier-scoped)
-	// Otherwise, verify specific resource ID matches
+	// Subscription tokens (resourceId "default") grant access to any resource
+	// Per-use tokens are scoped to a specific resourceId
 	if (token.resourceId !== "default" && req.params.id !== token.resourceId) {
 		return res.status(403).json({ error: "Token not valid for this resource" });
 	}
@@ -159,9 +169,9 @@ app.get("/api/photos/:id", (req, res) => {
 		return res.status(404).json({ error: "Resource not found" });
 	}
 
-	// Verify tier access
-	if (token.planId !== resource.planId) {
-		return res.status(403).json({ error: "Token tier does not grant access to this resource" });
+	// Verify plan access
+	if (!resource.allowedPlans.includes(token.planId)) {
+		return res.status(403).json({ error: "Your plan does not grant access to this resource" });
 	}
 
 	res.json({

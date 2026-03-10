@@ -30,12 +30,21 @@ export type NetworkConfig = {
 	};
 };
 
+export type PlanFeature = {
+	readonly key: string; // machine-readable: "llm-costs", "concurrent-agents"
+	readonly label: string; // human-readable: "All LLM costs included"
+	readonly value?: string | number | boolean; // true, 30, "priority"
+};
+
 export type Plan = {
 	readonly planId: string;
 	readonly displayName: string;
+	readonly description?: string;
 	readonly unitAmount: string; // "$0.10"
 	readonly resourceType: string; // "photo" | "report" | "api-call"
 	readonly expiresIn?: number; // undefined = single-use
+	readonly features?: readonly PlanFeature[];
+	readonly tags?: readonly string[]; // ["most-popular"]
 };
 
 export type ResourceVerifier = (resourceId: string, planId: string) => Promise<boolean>;

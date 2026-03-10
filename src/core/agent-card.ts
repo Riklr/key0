@@ -23,10 +23,13 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		const pricingEntry: SkillPricing = {
 			planId: tier.planId,
 			displayName: tier.displayName,
+			...(tier.description ? { description: tier.description } : {}),
 			unitAmount: tier.unitAmount,
 			asset: "USDC" as const,
 			chainId: networkConfig.chainId,
 			walletAddress: config.walletAddress,
+			...(tier.features ? { features: tier.features } : {}),
+			...(tier.tags ? { tags: tier.tags } : {}),
 		};
 
 		return {

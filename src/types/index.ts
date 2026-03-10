@@ -13,6 +13,7 @@ export type {
 	AgentSkillInputSchema,
 	PaymentProtocol,
 	SkillPricing,
+	SkillPricingFeature,
 } from "./agent-card.js";
 
 export type {
@@ -30,6 +31,7 @@ export type {
 	NetworkConfig,
 	NetworkName,
 	Plan,
+	PlanFeature,
 	ResourceVerifier,
 	SellerConfig,
 	TokenIssuanceResult,
