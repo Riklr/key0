@@ -40,7 +40,7 @@ describe("Token Issuance Failure", () => {
 		expect(failRes.status).toBe(204);
 
 		// Step 3: Submit payment — gas wallet settles, but backend returns 500
-		// Key2a should return an error response (HTTP 500)
+		// Key0 should return an error response (HTTP 500)
 		const result = await client.submitPayment({
 			planId: DEFAULT_TIER_ID,
 			requestId,

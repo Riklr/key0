@@ -3,8 +3,8 @@
  * Uses the store interface instead of direct Redis access.
  */
 
-import type { IChallengeStore } from "@riklr/key2a";
-import { KEY2A_URL } from "../fixtures/constants.ts";
+import type { IChallengeStore } from "@riklr/key0";
+import { KEY0_URL } from "../fixtures/constants.ts";
 import {
 	connectRedis,
 	readChallengeRecord as redisReadRecord,
@@ -14,7 +14,7 @@ import {
 
 let _store: IChallengeStore | null = null;
 let storageBackend: "redis" | "postgres" = "redis";
-let baseUrl: string = KEY2A_URL;
+let baseUrl: string = KEY0_URL;
 let redisUrl: string | null = null;
 
 /**
@@ -24,16 +24,16 @@ let redisUrl: string | null = null;
 export function setStorageBackend(
 	backend: "redis" | "postgres",
 	challengeStore?: IChallengeStore,
-	key2aUrl?: string,
+	key0Url?: string,
 	customRedisUrl?: string | null,
 ) {
 	storageBackend = backend;
 	if (backend === "postgres" && challengeStore) {
 		_store = challengeStore;
 	}
-	// If key2aUrl is explicitly provided (even as empty string), reset baseUrl
-	if (key2aUrl !== undefined) {
-		baseUrl = key2aUrl || KEY2A_URL;
+	// If key0Url is explicitly provided (even as empty string), reset baseUrl
+	if (key0Url !== undefined) {
+		baseUrl = key0Url || KEY0_URL;
 	}
 	// If customRedisUrl is explicitly provided (including null), reset redisUrl
 	if (customRedisUrl !== undefined) {
@@ -56,7 +56,7 @@ export async function readChallengeState(challengeId: string): Promise<string | 
 	if (redisUrl) {
 		const Redis = (await import("ioredis")).default;
 		const redis = new Redis(redisUrl);
-		return redis.hget(`key2a:challenge:${challengeId}`, "state");
+		return redis.hget(`key0:challenge:${challengeId}`, "state");
 	}
 	return redisReadState(challengeId);
 }
@@ -104,7 +104,7 @@ export async function readChallengeRecord(
 	if (redisUrl) {
 		const Redis = (await import("ioredis")).default;
 		const redis = new Redis(redisUrl);
-		const flat = await redis.hgetall(`key2a:challenge:${challengeId}`);
+		const flat = await redis.hgetall(`key0:challenge:${challengeId}`);
 		if (!flat["challengeId"]) return null;
 		return flat;
 	}
@@ -178,7 +178,7 @@ export async function transitionChallengeState(
 
 	// For Redis, use direct Redis operations
 	const redis = connectRedis();
-	const challengeKey = `key2a:challenge:${challengeId}`;
+	const challengeKey = `key0:challenge:${challengeId}`;
 
 	// Atomic transition using Lua script (similar to store.transition)
 	const script = `
@@ -216,7 +216,7 @@ export async function expireRequestIdIndex(requestId: string): Promise<boolean> 
 
 	// For Redis, delete the requestId index key
 	const redis = connectRedis();
-	const deleted = await redis.del(`key2a:request:${requestId}`);
+	const deleted = await redis.del(`key0:request:${requestId}`);
 	return deleted === 1;
 }
 

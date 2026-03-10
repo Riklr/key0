@@ -6,11 +6,11 @@ import {
 	UserBuilder,
 } from "@a2a-js/sdk/server/express";
 import { type NextFunction, type Request, type Response, Router } from "express";
-import { createKey2a, type Key2aConfig } from "../factory.js";
+import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import type { X402PaymentRequiredResponse } from "../types/index.js";
-import { CHAIN_CONFIGS, Key2aError } from "../types/index.js";
+import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { mountMcpRoutes } from "./mcp.js";
 import {
 	buildDiscoveryResponse,
@@ -24,15 +24,15 @@ import {
  * Create an Express router that serves the agent card and A2A endpoint.
  *
  * Usage:
- *   app.use(key2aRouter({ config, adapter }));
+ *   app.use(key0Router({ config, adapter }));
  *
  * This auto-serves:
  *   GET  /.well-known/agent.json
  *   POST {config.basePath}/jsonrpc (A2A JSON-RPC)
  *   POST {config.basePath}/access (Simple x402 HTTP)
  */
-export function key2aRouter(opts: Key2aConfig): Router {
-	const { requestHandler, engine } = createKey2a(opts);
+export function key0Router(opts: Key0Config): Router {
+	const { requestHandler, engine } = createKey0(opts);
 	const router = Router();
 	const networkConfig = CHAIN_CONFIGS[opts.config.network];
 
@@ -252,8 +252,8 @@ export function key2aRouter(opts: Key2aConfig): Router {
 				console.error("[x402-access] Error stack:", err.stack);
 			}
 
-			if (err instanceof Key2aError) {
-				console.error(`[x402-access] Key2a error: ${err.code} (HTTP ${err.httpStatus})`);
+			if (err instanceof Key0Error) {
+				console.error(`[x402-access] Key0 error: ${err.code} (HTTP ${err.httpStatus})`);
 				// Return the grant directly for PROOF_ALREADY_REDEEMED (status 200)
 				if (err.code === "PROOF_ALREADY_REDEEMED" && err.details?.["grant"]) {
 					return res.status(200).json(err.details["grant"]);
@@ -292,10 +292,10 @@ export function validateAccessToken(config: ValidateAccessTokenConfig) {
 		try {
 			const payload = await validateToken(req.headers.authorization, config);
 			// Attach decoded token to request for downstream handlers
-			(req as Request & { key2aToken?: unknown }).key2aToken = payload;
+			(req as Request & { key0Token?: unknown }).key0Token = payload;
 			next();
 		} catch (err: unknown) {
-			if (err instanceof Key2aError) {
+			if (err instanceof Key0Error) {
 				res.status(err.httpStatus).json(err.toJSON());
 			} else {
 				res.status(500).json({ type: "Error", code: "INTERNAL_ERROR", message: "Internal error" });

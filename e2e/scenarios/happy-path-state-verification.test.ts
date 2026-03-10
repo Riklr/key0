@@ -6,9 +6,10 @@
  * and the audit trail.
  */
 
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
-import { key2aWalletAddress, makeClientE2eClient } from "../fixtures/wallets.ts";
+
+import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import {
 	readAuditHistory,
 	readChallengeRecord,
@@ -34,7 +35,7 @@ describe("Happy Path with State Verification", () => {
 		expect(pendingRecord).not.toBeNull();
 		expect(pendingRecord!["requestId"]).toBe(requestId);
 		expect(pendingRecord!["planId"]).toBe(DEFAULT_TIER_ID);
-		expect(pendingRecord!["destination"]).toBe(key2aWalletAddress());
+		expect(pendingRecord!["destination"]).toBe(key0WalletAddress());
 		expect(pendingRecord!["asset"]).toBe("USDC");
 		expect(pendingRecord!["chainId"]).toBe("84532");
 

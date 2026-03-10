@@ -1,17 +1,17 @@
 /**
  * x402 Discovery — verifies the discovery flow via POST /x402/access with no planId.
  *
- * When a client POSTs to /x402/access without a planId, Key2a returns HTTP 402
+ * When a client POSTs to /x402/access without a planId, Key0 returns HTTP 402
  * with all available plans in the accepts array. No PENDING record is created.
  * This is the entry point for clients that don't yet know which plan to purchase.
  */
 
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_TIER_ID, KEY2A_URL } from "../fixtures/constants.ts";
+import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 
 describe("x402 Discovery", () => {
 	test("POST /x402/access with no body returns 402 with all plans", async () => {
-		const res = await fetch(`${KEY2A_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
@@ -49,8 +49,8 @@ describe("x402 Discovery", () => {
 		expect(decoded.x402Version).toBe(2);
 	});
 
-	test("discovery response includes key2a extensions with input/output schema", async () => {
-		const res = await fetch(`${KEY2A_URL}/x402/access`, {
+	test("discovery response includes key0 extensions with input/output schema", async () => {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
@@ -62,14 +62,14 @@ describe("x402 Discovery", () => {
 		const extensions = body["extensions"] as Record<string, unknown> | undefined;
 		expect(extensions).toBeDefined();
 
-		const key2a = extensions?.["key2a"] as Record<string, unknown> | undefined;
-		expect(key2a).toBeDefined();
-		expect(key2a?.["inputSchema"]).toBeDefined();
-		expect(key2a?.["outputSchema"]).toBeDefined();
+		const key0 = extensions?.["key0"] as Record<string, unknown> | undefined;
+		expect(key0).toBeDefined();
+		expect(key0?.["inputSchema"]).toBeDefined();
+		expect(key0?.["outputSchema"]).toBeDefined();
 	});
 
 	test("www-authenticate header is set on discovery response", async () => {
-		const res = await fetch(`${KEY2A_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),

@@ -10,9 +10,9 @@ import type {
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
-import { CHAIN_CONFIGS, Key2aError, X402_METADATA_KEYS } from "./types/index.js";
+import { CHAIN_CONFIGS, Key0Error, X402_METADATA_KEYS } from "./types/index.js";
 
-export class Key2aExecutor implements AgentExecutor {
+export class Key0Executor implements AgentExecutor {
 	private readonly config: SellerConfig;
 	private readonly networkConfig: NetworkConfig;
 
@@ -69,7 +69,7 @@ export class Key2aExecutor implements AgentExecutor {
 				);
 			}
 		} catch (err: unknown) {
-			if (err instanceof Key2aError) {
+			if (err instanceof Key0Error) {
 				this.sendErrorTask(
 					eventBus,
 					taskId,
@@ -113,7 +113,7 @@ export class Key2aExecutor implements AgentExecutor {
 		// Get the full challenge record to build x402 metadata
 		const record = await this.engine.getChallengeRecord(challenge.challengeId);
 		if (!record) {
-			throw new Key2aError("INTERNAL_ERROR", "Challenge record not found after creation", 500);
+			throw new Key0Error("INTERNAL_ERROR", "Challenge record not found after creation", 500);
 		}
 
 		const x402PaymentRequired = this.engine.buildX402PaymentRequired(record);
@@ -167,7 +167,7 @@ export class Key2aExecutor implements AgentExecutor {
 		const challengeId = extra["challengeId"] as string | undefined;
 
 		if (!challengeId) {
-			throw new Key2aError(
+			throw new Key0Error(
 				"INVALID_REQUEST",
 				"Payment payload missing challengeId in accepted.extra. Include the full accepted requirements echoed from the payment-required response.",
 				400,
@@ -177,7 +177,7 @@ export class Key2aExecutor implements AgentExecutor {
 		// 2. Look up the challenge record to get planId, resourceId, requestId
 		const record = await this.engine.getChallengeRecord(challengeId);
 		if (!record) {
-			throw new Key2aError(
+			throw new Key0Error(
 				"CHALLENGE_NOT_FOUND",
 				`Challenge "${challengeId}" not found or has expired. Please start a new AccessRequest.`,
 				404,
@@ -210,7 +210,7 @@ export class Key2aExecutor implements AgentExecutor {
 				taskId,
 				contextId,
 				"payment-failed",
-				err instanceof Key2aError ? err.message : "Payment settlement failed",
+				err instanceof Key0Error ? err.message : "Payment settlement failed",
 			);
 			throw err;
 		}

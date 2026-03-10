@@ -1,8 +1,8 @@
 # Setup UI — How It Works
 
-The Setup UI is a browser-based configuration wizard for Key2a's Standalone (Docker) mode. It runs in two contexts:
+The Setup UI is a browser-based configuration wizard for Key0's Standalone (Docker) mode. It runs in two contexts:
 
-1. **Inside Docker** — configure and launch Key2a directly from the browser
+1. **Inside Docker** — configure and launch Key0 directly from the browser
 2. **Standalone** — generate `.env` files, `docker run` commands, or `docker-compose.yml` to copy
 
 ---
@@ -25,14 +25,14 @@ The Setup UI is a browser-based configuration wizard for Key2a's Standalone (Doc
 │    │     │     └── POST /api/setup → writes .env.runtime, exit(42)  │
 │    │     │                                                           │
 │    │     └── Has config? → Running Mode                              │
-│    │           ├── Full Key2a server (agent card, A2A, x402, MCP)   │
+│    │           ├── Full Key0 server (agent card, A2A, x402, MCP)   │
 │    │           ├── GET  /setup     → still serves UI for reconfig   │
 │    │           ├── GET  /api/setup/status → { configured: true }    │
 │    │           └── POST /api/setup → writes .env.runtime, exit(42)  │
 │    │                                                                 │
 │    └── exit code 42? → restart loop (picks up new .env.runtime)     │
 │                                                                      │
-│  /app/config/  ← Docker volume (key2a-config), persists across      │
+│  /app/config/  ← Docker volume (key0-config), persists across      │
 │                  docker compose down/up cycles                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -56,7 +56,7 @@ The Setup UI is a browser-based configuration wizard for Key2a's Standalone (Doc
 
 ### 1. Setup Mode (no config)
 
-When required env vars (`KEY2A_WALLET_ADDRESS`, `ISSUE_TOKEN_API`, `REDIS_URL`) are missing, the server boots into Setup Mode:
+When required env vars (`KEY0_WALLET_ADDRESS`, `ISSUE_TOKEN_API`, `REDIS_URL`) are missing, the server boots into Setup Mode:
 
 - `GET /` redirects to `/setup`
 - `/setup` serves the React SPA from `ui/dist/`
@@ -67,7 +67,7 @@ The entrypoint shell script detects exit code 42, sources the new `.env.runtime`
 
 ### 2. Running Mode (configured)
 
-The full Key2a server starts with all endpoints:
+The full Key0 server starts with all endpoints:
 
 - `/.well-known/agent.json` — agent card with pricing
 - `/x402/access` — x402 HTTP payment flow
@@ -114,7 +114,7 @@ entrypoint.sh:
 server.ts (Running Mode):
   - Reads PLANS_B64, decodes to Plan[]
   - Initializes Redis/Postgres storage
-  - Mounts key2aRouter with full config
+  - Mounts key0Router with full config
   - Starts refund cron (BullMQ)
 ```
 
@@ -172,7 +172,7 @@ The UI offers a dropdown for common durations instead of a raw seconds input:
 
 ### Features
 
-Features are plain strings — one per line in a textarea. They're purely for discovery and display (agent card, MCP `discover_plans`, buyer-facing UI). Key2a does not enforce features; the seller's backend handles quota, concurrency, and gating.
+Features are plain strings — one per line in a textarea. They're purely for discovery and display (agent card, MCP `discover_plans`, buyer-facing UI). Key0 does not enforce features; the seller's backend handles quota, concurrency, and gating.
 
 Example:
 ```
@@ -213,11 +213,11 @@ The right panel shows live-generated output (`.env` / `docker run` / `docker-com
 
 ## Docker Volume
 
-The `docker-compose.yml` mounts a named volume `key2a-config` at `/app/config/`:
+The `docker-compose.yml` mounts a named volume `key0-config` at `/app/config/`:
 
 ```yaml
 volumes:
-  - key2a-config:/app/config
+  - key0-config:/app/config
 ```
 
 This persists `.env.runtime` across container restarts. To reset configuration, remove the volume:

@@ -1,5 +1,5 @@
 services:
-  key2a:
+  key0:
     build: ..
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
@@ -12,7 +12,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - key2a-config:/app/config
+      - key0-config:/app/config
     depends_on:
       redis:
         condition: service_healthy
@@ -29,4 +29,4 @@ services:
 
 volumes:
   redis-data:
-  key2a-config:
+  key0-config:

@@ -8,9 +8,9 @@
 
 ## 1. Design Philosophy
 
-Key2a is a **payment + credential protocol**, not a billing platform.
+Key0 is a **payment + credential protocol**, not a billing platform.
 
-- Key2a shows plans, collects USDC, issues a credential.
+- Key0 shows plans, collects USDC, issues a credential.
 - **Everything after** — quota tracking, concurrency enforcement, feature gating, renewals — is the **seller's backend**.
 - The `Plan` config should let sellers **describe** their offering for discovery/UI, not **enforce** it.
 

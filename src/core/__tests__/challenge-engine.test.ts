@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MockPaymentAdapter } from "../../test-utils";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
-import { type AccessRequest, Key2aError, type PaymentProof, type SellerConfig } from "../../types";
+import { type AccessRequest, Key0Error, type PaymentProof, type SellerConfig } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
 
 // ---------------------------------------------------------------------------
@@ -109,8 +109,8 @@ describe("ChallengeEngine.requestAccess", () => {
 			await engine.requestAccess(req);
 			expect(true).toBe(false); // should not reach
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("RESOURCE_NOT_FOUND");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("RESOURCE_NOT_FOUND");
 		}
 	});
 
@@ -121,8 +121,8 @@ describe("ChallengeEngine.requestAccess", () => {
 			await engine.requestAccess(req);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("TIER_NOT_FOUND");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("TIER_NOT_FOUND");
 		}
 	});
 
@@ -133,8 +133,8 @@ describe("ChallengeEngine.requestAccess", () => {
 			await engine.requestAccess(req);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("INVALID_REQUEST");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("INVALID_REQUEST");
 		}
 	});
 
@@ -205,8 +205,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("CHALLENGE_EXPIRED");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("CHALLENGE_EXPIRED");
 		}
 	});
 
@@ -242,8 +242,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("CHALLENGE_EXPIRED");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("CHALLENGE_EXPIRED");
 		}
 
 		// Wait for fire-and-forget hook
@@ -271,8 +271,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("CHAIN_MISMATCH");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("CHAIN_MISMATCH");
 		}
 	});
 
@@ -296,8 +296,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("AMOUNT_MISMATCH");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("AMOUNT_MISMATCH");
 		}
 	});
 
@@ -338,8 +338,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof2);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("TX_ALREADY_REDEEMED");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("TX_ALREADY_REDEEMED");
 		}
 	});
 
@@ -373,8 +373,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof2);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			const agErr = err as Key2aError;
+			expect(err).toBeInstanceOf(Key0Error);
+			const agErr = err as Key0Error;
 			expect(agErr.code).toBe("PROOF_ALREADY_REDEEMED");
 			expect(agErr.httpStatus).toBe(200);
 			expect(agErr.details?.["grant"]).toBeDefined();
@@ -399,8 +399,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("CHALLENGE_NOT_FOUND");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("CHALLENGE_NOT_FOUND");
 		}
 	});
 
@@ -431,8 +431,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("INVALID_PROOF");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("INVALID_PROOF");
 		}
 	});
 
@@ -463,8 +463,8 @@ describe("ChallengeEngine.submitProof", () => {
 			await engine.submitProof(proof);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			const agErr = err as Key2aError;
+			expect(err).toBeInstanceOf(Key0Error);
+			const agErr = err as Key0Error;
 			expect(agErr.code).toBe("TX_UNCONFIRMED");
 			expect(agErr.httpStatus).toBe(202);
 		}
@@ -489,8 +489,8 @@ describe("ChallengeEngine.cancelChallenge", () => {
 			await engine.cancelChallenge("nonexistent");
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("CHALLENGE_NOT_FOUND");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("CHALLENGE_NOT_FOUND");
 		}
 	});
 
@@ -516,8 +516,8 @@ describe("ChallengeEngine.cancelChallenge", () => {
 			await engine.cancelChallenge(challenge.challengeId);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			expect((err as Key2aError).code).toBe("INVALID_REQUEST");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).code).toBe("INVALID_REQUEST");
 		}
 	});
 });
@@ -554,8 +554,8 @@ describe("ChallengeEngine.onVerifyResource timeout", () => {
 			await engine.requestAccess(req);
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(Key2aError);
-			const agErr = err as Key2aError;
+			expect(err).toBeInstanceOf(Key0Error);
+			const agErr = err as Key0Error;
 			expect(agErr.code).toBe("RESOURCE_VERIFY_TIMEOUT");
 			expect(agErr.httpStatus).toBe(504);
 		}

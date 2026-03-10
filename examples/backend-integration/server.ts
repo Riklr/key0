@@ -1,21 +1,21 @@
 /**
  * Backend Service Example
  *
- * This example shows how to integrate with Key2a standalone service.
+ * This example shows how to integrate with Key0 standalone service.
  * It demonstrates both token validation modes:
- * - Native: Validates Key2a JWT tokens
- * - Remote: Issues custom tokens when Key2a calls /internal/issue-token
+ * - Native: Validates Key0 JWT tokens
+ * - Remote: Issues custom tokens when Key0 calls /internal/issue-token
  *
  * Usage:
  *   bun run start
  */
 
-import type { AccessTokenPayload } from "@riklr/key2a";
-import { validateKey2aToken } from "@riklr/key2a";
+import type { AccessTokenPayload } from "@riklr/key0";
+import { validateKey0Token } from "@riklr/key0";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const KEY2A_SECRET = process.env.KEY2A_ACCESS_TOKEN_SECRET!;
+const KEY0_SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 
 const app = express();
@@ -36,7 +36,7 @@ const apiKeys = new Map<
 >();
 
 // ============================================================================
-// Internal Endpoints (called by Key2a Service)
+// Internal Endpoints (called by Key0 Service)
 // ============================================================================
 
 // Middleware to verify internal auth
@@ -71,7 +71,7 @@ const planEntitlements: Record<string, { ttlMs: number; quota?: number; maxConcu
 		"pro-monthly": { ttlMs: 30 * 86400 * 1000, quota: 16500, maxConcurrent: 50 },
 	};
 
-// Issue token (only used if Key2a tokenMode="remote")
+// Issue token (only used if Key0 tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
 	const { resourceId, planId } = req.body;
 
@@ -109,19 +109,19 @@ app.post("/internal/payment-received", verifyInternalAuth, (req, res) => {
 // Protected API Endpoints
 // ============================================================================
 
-// Middleware to validate Key2a tokens (Native Mode)
+// Middleware to validate Key0 tokens (Native Mode)
 async function validateToken(
 	req: express.Request,
 	res: express.Response,
 	next: express.NextFunction,
 ) {
 	try {
-		const payload = await validateKey2aToken(req.headers.authorization, {
-			secret: KEY2A_SECRET,
+		const payload = await validateKey0Token(req.headers.authorization, {
+			secret: KEY0_SECRET,
 		});
 
 		// Attach token to request
-		(req as express.Request & { key2aToken: AccessTokenPayload }).key2aToken = payload;
+		(req as express.Request & { key0Token: AccessTokenPayload }).key0Token = payload;
 		next();
 	} catch (err) {
 		// If native token validation fails, check for custom API key (Remote Mode)
@@ -133,9 +133,9 @@ async function validateToken(
 				// Valid API key
 				(
 					req as express.Request & {
-						key2aToken: { resourceId: string; planId: string; type: string };
+						key0Token: { resourceId: string; planId: string; type: string };
 					}
-				).key2aToken = {
+				).key0Token = {
 					resourceId: keyData.resourceId,
 					planId: keyData.planId,
 					type: "api-key",
@@ -156,7 +156,7 @@ app.use("/api", validateToken);
 
 // Sample protected endpoint
 app.get("/api/photos/:id", (req, res) => {
-	const token = (req as unknown as { key2aToken: AccessTokenPayload }).key2aToken;
+	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
 
 	// Subscription tokens (resourceId "default") grant access to any resource
 	// Per-use tokens are scoped to a specific resourceId
@@ -184,7 +184,7 @@ app.get("/api/photos/:id", (req, res) => {
 });
 
 app.get("/api/data/:id", (req, res) => {
-	const token = (req as unknown as { key2aToken: AccessTokenPayload }).key2aToken;
+	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
 
 	// Token with "default" resourceId grants tier-based access to all endpoints
 	res.json({

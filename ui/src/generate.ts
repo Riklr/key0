@@ -1,6 +1,6 @@
 import type { Config, Plan } from "./types";
 
-/** Serialize a Plan to the JSON shape expected by Key2a config (strips empty optional fields). */
+/** Serialize a Plan to the JSON shape expected by Key0 config (strips empty optional fields). */
 function serializePlan(p: Plan) {
 	const features = (p.features || []).filter((f) => f.trim() !== "");
 	return {
@@ -18,17 +18,17 @@ function serializePlan(p: Plan) {
 export function generateEnv(config: Config): string {
 	const lines: string[] = [
 		"# ──────────────────────────────────────────────────────────────────────────────",
-		"# Key2a Docker — Generated Configuration",
+		"# Key0 Docker — Generated Configuration",
 		"# ──────────────────────────────────────────────────────────────────────────────",
 		"",
 		"# ── Required ──────────────────────────────────────────────────────────────────",
 		"",
-		`KEY2A_WALLET_ADDRESS=${config.walletAddress}`,
+		`KEY0_WALLET_ADDRESS=${config.walletAddress}`,
 		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
 		"",
 		"# ── Network ───────────────────────────────────────────────────────────────────",
 		"",
-		`KEY2A_NETWORK=${config.network}`,
+		`KEY0_NETWORK=${config.network}`,
 		"",
 		"# ── Storage ───────────────────────────────────────────────────────────────────",
 		"",
@@ -133,7 +133,7 @@ export function generateEnv(config: Config): string {
 			"",
 			"# ── Refund Cron ───────────────────────────────────────────────────────────────",
 			"",
-			`KEY2A_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
+			`KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
 		);
 		if (config.refundIntervalMs !== "60000") {
 			lines.push(`REFUND_INTERVAL_MS=${config.refundIntervalMs}`);
@@ -150,9 +150,9 @@ export function generateEnv(config: Config): string {
 export function generateDockerRun(config: Config): string {
 	const envFlags: string[] = [];
 
-	envFlags.push(`-e KEY2A_WALLET_ADDRESS=${config.walletAddress}`);
+	envFlags.push(`-e KEY0_WALLET_ADDRESS=${config.walletAddress}`);
 	envFlags.push(`-e ISSUE_TOKEN_API=${config.issueTokenApi}`);
-	envFlags.push(`-e KEY2A_NETWORK=${config.network}`);
+	envFlags.push(`-e KEY0_NETWORK=${config.network}`);
 	envFlags.push(`-e STORAGE_BACKEND=${config.storageBackend}`);
 	envFlags.push(`-e REDIS_URL=${config.redisUrl}`);
 	if (config.storageBackend === "postgres" && config.databaseUrl) {
@@ -195,17 +195,17 @@ export function generateDockerRun(config: Config): string {
 		envFlags.push(`-e GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`);
 	}
 	if (config.walletPrivateKey) {
-		envFlags.push(`-e KEY2A_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
+		envFlags.push(`-e KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
 	}
 
-	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/key2a:latest`;
+	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/key0:latest`;
 }
 
 export function generateDockerCompose(config: Config): string {
 	const envVars: Record<string, string> = {
-		KEY2A_WALLET_ADDRESS: config.walletAddress,
+		KEY0_WALLET_ADDRESS: config.walletAddress,
 		ISSUE_TOKEN_API: config.issueTokenApi,
-		KEY2A_NETWORK: config.network,
+		KEY0_NETWORK: config.network,
 		STORAGE_BACKEND: config.storageBackend,
 		REDIS_URL: config.storageBackend === "postgres" ? config.redisUrl : "redis://redis:6379",
 		PORT: config.port,
@@ -246,7 +246,7 @@ export function generateDockerCompose(config: Config): string {
 		envVars.GAS_WALLET_PRIVATE_KEY = config.gasWalletPrivateKey;
 	}
 	if (config.walletPrivateKey) {
-		envVars.KEY2A_WALLET_PRIVATE_KEY = config.walletPrivateKey;
+		envVars.KEY0_WALLET_PRIVATE_KEY = config.walletPrivateKey;
 		if (config.refundIntervalMs !== "60000") {
 			envVars.REFUND_INTERVAL_MS = config.refundIntervalMs;
 		}
@@ -263,8 +263,8 @@ export function generateDockerCompose(config: Config): string {
 	if (config.storageBackend === "postgres") dependsOn.push("postgres");
 
 	let services = `services:
-  key2a:
-    image: riklr/key2a:latest
+  key0:
+    image: riklr/key0:latest
     ports:
       - "${config.port}:${config.port}"
     environment:
@@ -287,9 +287,9 @@ ${dependsOn.map((d) => `      - ${d}`).join("\n")}
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: key2a
-      POSTGRES_PASSWORD: key2a
-      POSTGRES_DB: key2a
+      POSTGRES_USER: key0
+      POSTGRES_PASSWORD: key0
+      POSTGRES_DB: key0
     volumes:
       - pg-data:/var/lib/postgresql/data
 `;

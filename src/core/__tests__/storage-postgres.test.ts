@@ -628,7 +628,7 @@ describe("PostgresChallengeStore", () => {
 
 		// Manually soft-delete by setting deleted_at (simulating cleanup)
 		const tables = (sql as unknown as { _tables: Map<string, Row[]> })._tables;
-		const rows = tables.get("key2a_challenges") || [];
+		const rows = tables.get("key0_challenges") || [];
 		const row = rows.find((r) => r["challenge_id"] === record.challengeId);
 		if (row) {
 			row["deleted_at"] = new Date(Date.now() - 1000 * 60 * 60 * 24); // 1 day ago
@@ -640,7 +640,7 @@ describe("PostgresChallengeStore", () => {
 		expect(purgedCount).toBe(1);
 
 		// Verify record is permanently deleted
-		const remainingRows = tables.get("key2a_challenges") || [];
+		const remainingRows = tables.get("key0_challenges") || [];
 		expect(remainingRows.find((r) => r["challenge_id"] === record.challengeId)).toBeUndefined();
 	});
 });

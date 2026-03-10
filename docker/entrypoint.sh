@@ -1,5 +1,5 @@
 #!/bin/sh
-# Key2a Docker Entrypoint
+# Key0 Docker Entrypoint
 # Loads saved config if present, then starts the server.
 # Exit code 42 = restart (used after setup UI saves config).
 
@@ -24,6 +24,6 @@ while true; do
     exit "$EXIT_CODE"
   fi
 
-  echo "[key2a] Restarting with new configuration..."
+  echo "[key0] Restarting with new configuration..."
   sleep 1
 done

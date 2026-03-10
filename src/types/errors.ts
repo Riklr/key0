@@ -1,4 +1,4 @@
-export type Key2aErrorCode =
+export type Key0ErrorCode =
 	| "RESOURCE_NOT_FOUND"
 	| "TIER_NOT_FOUND"
 	| "CHALLENGE_NOT_FOUND"
@@ -17,19 +17,19 @@ export type Key2aErrorCode =
 	| "TOKEN_ISSUE_TIMEOUT"
 	| "INTERNAL_ERROR";
 
-export class Key2aError extends Error {
-	readonly code: Key2aErrorCode;
+export class Key0Error extends Error {
+	readonly code: Key0ErrorCode;
 	readonly httpStatus: number;
 	readonly details?: Record<string, unknown> | undefined;
 
 	constructor(
-		code: Key2aErrorCode,
+		code: Key0ErrorCode,
 		message: string,
 		httpStatus = 400,
 		details?: Record<string, unknown>,
 	) {
 		super(message);
-		this.name = "Key2aError";
+		this.name = "Key0Error";
 		this.code = code;
 		this.httpStatus = httpStatus;
 		this.details = details;

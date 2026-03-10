@@ -1,21 +1,21 @@
-import type { NetworkName } from "@riklr/key2a";
+import type { NetworkName } from "@riklr/key0";
 import {
 	AccessTokenIssuer,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-} from "@riklr/key2a";
-import { key2aRouter, validateAccessToken } from "@riklr/key2a/express";
+} from "@riklr/key0";
+import { key0Router, validateAccessToken } from "@riklr/key0/express";
 import express from "express";
 import Redis from "ioredis";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
-const NETWORK = (process.env["KEY2A_NETWORK"] ?? "testnet") as NetworkName;
-const WALLET = (process.env["KEY2A_WALLET_ADDRESS"] ??
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
-	process.env["KEY2A_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 
 const app = express();
@@ -24,7 +24,7 @@ app.use(express.json());
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
 	network: NETWORK,
-	rpcUrl: process.env["KEY2A_RPC_URL"],
+	rpcUrl: process.env["KEY0_RPC_URL"],
 });
 
 // Storage — Redis required
@@ -35,9 +35,9 @@ const seenTxStore = new RedisSeenTxStore({ redis });
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
 
-// Mount Key2a — serves agent card + A2A endpoint
+// Mount Key0 — serves agent card + A2A endpoint
 app.use(
-	key2aRouter({
+	key0Router({
 		config: {
 			agentName: "Photo Gallery Agent",
 			agentDescription: "Purchase access to premium photos via USDC payments on Base",

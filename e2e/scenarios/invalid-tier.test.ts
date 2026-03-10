@@ -6,11 +6,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { KEY2A_URL } from "../fixtures/constants.ts";
+import { KEY0_URL } from "../fixtures/constants.ts";
 
 describe("Invalid Plan", () => {
 	test("nonexistent planId returns 400 TIER_NOT_FOUND", async () => {
-		const res = await fetch(`${KEY2A_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -28,7 +28,7 @@ describe("Invalid Plan", () => {
 	test("missing planId returns 402 discovery response with all plans", async () => {
 		// POST /x402/access with no planId triggers discovery mode:
 		// returns 402 with all available plans (no PENDING record created)
-		const res = await fetch(`${KEY2A_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ requestId: crypto.randomUUID() }),

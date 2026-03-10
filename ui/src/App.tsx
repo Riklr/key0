@@ -33,7 +33,7 @@ export default function App() {
 						databaseUrl: data.config.databaseUrl ?? "",
 						port: data.config.port ?? "3000",
 						basePath: data.config.basePath ?? "/a2a",
-						agentName: data.config.agentName ?? "Key2a Server",
+						agentName: data.config.agentName ?? "Key0 Server",
 						agentDescription: data.config.agentDescription ?? "Payment-gated A2A endpoint",
 						agentUrl: data.config.agentUrl ?? "",
 						providerName: data.config.providerName ?? "",
@@ -138,7 +138,7 @@ export default function App() {
 							</svg>
 						</div>
 						<div>
-							<h1 className="text-base font-semibold text-neutral-100">Key2a</h1>
+							<h1 className="text-base font-semibold text-neutral-100">Key0</h1>
 							<p className="text-xs text-neutral-500">Standalone Setup</p>
 						</div>
 					</div>
@@ -201,7 +201,7 @@ export default function App() {
 							<Field
 								label="Issue Token API"
 								required
-								hint="Key2a POSTs here after payment is verified"
+								hint="Key0 POSTs here after payment is verified"
 							>
 								<Input
 									value={config.issueTokenApi}
@@ -212,7 +212,7 @@ export default function App() {
 
 							<Field
 								label="Verify Resource API"
-								hint="Optional — Key2a POSTs here before payment to check if the resource exists. Skipped if empty."
+								hint="Optional — Key0 POSTs here before payment to check if the resource exists. Skipped if empty."
 							>
 								<Input
 									value={config.verifyResourceApi}
@@ -221,7 +221,7 @@ export default function App() {
 								/>
 							</Field>
 
-							<Field label="Backend Auth Strategy" hint="How Key2a authenticates with your backend">
+							<Field label="Backend Auth Strategy" hint="How Key0 authenticates with your backend">
 								<Select
 									value={config.backendAuthStrategy}
 									onChange={(e) =>
@@ -297,7 +297,7 @@ export default function App() {
 								<Input
 									value={config.agentName}
 									onChange={(e) => set("agentName", e.target.value)}
-									placeholder="Key2a Server"
+									placeholder="Key0 Server"
 								/>
 							</Field>
 							<Field label="Agent Description">

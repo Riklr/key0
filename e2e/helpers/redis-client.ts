@@ -6,7 +6,7 @@
 import Redis from "ioredis";
 
 export const REDIS_URL = "redis://localhost:6380";
-const KEY_PREFIX = "key2a";
+const KEY_PREFIX = "key0";
 
 let client: Redis | null = null;
 

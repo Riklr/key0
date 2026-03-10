@@ -1,11 +1,11 @@
 /**
- * Key2a Standalone Service Example
+ * Key0 Standalone Service Example
  *
- * This example demonstrates how to deploy Key2a as a separate service
+ * This example demonstrates how to deploy Key0 as a separate service
  * that communicates with your backend via HTTP.
  *
  * Architecture:
- *   Agent -> Key2a Service -> Backend (verify resource, issue token)
+ *   Agent -> Key0 Service -> Backend (verify resource, issue token)
  *   Agent -> Backend (use token for protected resources)
  *
  * Prerequisites:
@@ -34,15 +34,15 @@ import {
 	signedJwtAuth,
 	type TokenIssuanceResult,
 	X402Adapter,
-} from "@riklr/key2a";
-import { key2aRouter } from "@riklr/key2a/express";
+} from "@riklr/key0";
+import { key0Router } from "@riklr/key0/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import Redis from "ioredis";
 
-const PORT = Number(process.env.KEY2A_PORT ?? 3001);
-const NETWORK = (process.env.KEY2A_NETWORK ?? "testnet") as NetworkName;
-const SECRET = process.env.KEY2A_ACCESS_TOKEN_SECRET!;
+const PORT = Number(process.env.KEY0_PORT ?? 3001);
+const NETWORK = (process.env.KEY0_NETWORK ?? "testnet") as NetworkName;
+const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const BACKEND_AUTH_STRATEGY = process.env.BACKEND_AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
@@ -55,7 +55,7 @@ const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
 // Refund cron configuration
 const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
 const REFUND_MIN_AGE_MS = Number(process.env["REFUND_MIN_AGE_MS"] ?? 30_000);
-const WALLET_PRIVATE_KEY = process.env["KEY2A_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
+const WALLET_PRIVATE_KEY = process.env["KEY0_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 
 if (USE_GAS_WALLET) {
 	console.log("🔐 Gas Wallet Mode: ENABLED");
@@ -64,7 +64,7 @@ if (USE_GAS_WALLET) {
 
 // Validate required environment variables
 if (!SECRET || SECRET.length < 32) {
-	console.error("ERROR: KEY2A_ACCESS_TOKEN_SECRET must be at least 32 characters");
+	console.error("ERROR: KEY0_ACCESS_TOKEN_SECRET must be at least 32 characters");
 	process.exit(1);
 }
 
@@ -112,7 +112,7 @@ if (STORAGE_BACKEND === "postgres") {
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
 	network: NETWORK,
-	rpcUrl: process.env.KEY2A_RPC_URL,
+	rpcUrl: process.env.KEY0_RPC_URL,
 });
 
 // Configure auth strategy for backend communication
@@ -236,16 +236,16 @@ const plans = [
 	},
 ] as const;
 
-// Mount Key2a — serves agent card + A2A endpoint
+// Mount Key0 — serves agent card + A2A endpoint
 app.use(
-	key2aRouter({
+	key0Router({
 		config: {
-			agentName: process.env.AGENT_NAME || "Key2a Service",
+			agentName: process.env.AGENT_NAME || "Key0 Service",
 			agentDescription: process.env.AGENT_DESCRIPTION || "Payment-gated API access for AI agents",
-			agentUrl: process.env.KEY2A_PUBLIC_URL || `http://localhost:${PORT}`,
+			agentUrl: process.env.KEY0_PUBLIC_URL || `http://localhost:${PORT}`,
 			providerName: process.env.PROVIDER_NAME || "Example Corp",
 			providerUrl: process.env.PROVIDER_URL || "https://example.com",
-			walletAddress: (process.env.KEY2A_WALLET_ADDRESS ||
+			walletAddress: (process.env.KEY0_WALLET_ADDRESS ||
 				"0x0000000000000000000000000000000000000000") as `0x${string}`,
 			network: NETWORK,
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
@@ -265,7 +265,7 @@ app.use(
 						body: JSON.stringify(grant),
 					});
 				} catch (err) {
-					console.error("[Key2a] Failed to notify backend:", err);
+					console.error("[Key0] Failed to notify backend:", err);
 					// Don't fail the flow if notification fails
 				}
 			},
@@ -284,7 +284,7 @@ app.use(
 app.get("/health", (_req, res) => {
 	res.json({
 		status: "ok",
-		service: "key2a",
+		service: "key0",
 		storage: STORAGE_BACKEND,
 		tokenMode,
 		network: NETWORK,
@@ -297,12 +297,12 @@ app.get("/.well-known/token-info", (_req, res) => {
 		tokenType: "JWT",
 		algorithm: tokenMode === "remote" ? "custom" : "HS256", // Could be RS256 if configured
 		// If using RS256, include public key here:
-		// publicKey: process.env.KEY2A_PUBLIC_KEY,
+		// publicKey: process.env.KEY0_PUBLIC_KEY,
 	});
 });
 
 app.listen(PORT, () => {
-	console.log("\n🚀 Key2a Standalone Service");
+	console.log("\n🚀 Key0 Standalone Service");
 	console.log(`   Port: ${PORT}`);
 	console.log(`   Network: ${NETWORK}`);
 	console.log(`   Storage: ${STORAGE_BACKEND.toUpperCase()}`);
@@ -310,17 +310,17 @@ app.listen(PORT, () => {
 	console.log(`   Facilitation Mode: ${USE_GAS_WALLET ? "Gas Wallet" : "Standard"}`);
 	console.log(`   Backend URL: ${BACKEND_API_URL}`);
 	console.log(
-		`   Agent Card: ${process.env.KEY2A_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`,
+		`   Agent Card: ${process.env.KEY0_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`,
 	);
 	console.log(
-		`   A2A Endpoint: ${process.env.KEY2A_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`,
+		`   A2A Endpoint: ${process.env.KEY0_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`,
 	);
 
 	console.log("\nRefund cron:");
 	console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
 	console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
 	console.log(
-		`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set KEY2A_WALLET_PRIVATE_KEY)"}\n`,
+		`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set KEY0_WALLET_PRIVATE_KEY)"}\n`,
 	);
 });
 
@@ -328,7 +328,7 @@ app.listen(PORT, () => {
 
 async function runRefundCron(): Promise<void> {
 	if (!WALLET_PRIVATE_KEY) {
-		console.log("[Cron] Skipped — KEY2A_WALLET_PRIVATE_KEY not set.");
+		console.log("[Cron] Skipped — KEY0_WALLET_PRIVATE_KEY not set.");
 		return;
 	}
 

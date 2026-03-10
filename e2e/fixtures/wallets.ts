@@ -6,7 +6,8 @@ import { createPublicClient, createWalletClient, http, type PublicClient } from 
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { E2eTestClient } from "../helpers/client.ts";
-import { CHAIN_ID, KEY2A_URL, USDC_ADDRESS, USDC_DOMAIN } from "./constants.ts";
+
+import { CHAIN_ID, KEY0_URL, USDC_ADDRESS, USDC_DOMAIN } from "./constants.ts";
 
 function requireEnv(name: string): string {
 	const val = process.env[name];
@@ -47,10 +48,10 @@ export function makeGasWallet() {
 }
 
 /** Create an E2eTestClient for the primary CLIENT wallet. */
-export function makeClientE2eClient(key2aUrl = KEY2A_URL): E2eTestClient {
+export function makeClientE2eClient(key0Url = KEY0_URL): E2eTestClient {
 	const { walletClient, publicClient } = makeClientWallet();
 	return new E2eTestClient(
-		key2aUrl,
+		key0Url,
 		walletClient,
 		publicClient as unknown as PublicClient,
 		USDC_ADDRESS,
@@ -60,10 +61,10 @@ export function makeClientE2eClient(key2aUrl = KEY2A_URL): E2eTestClient {
 }
 
 /** Create an E2eTestClient for the GAS wallet (secondary buyer). */
-export function makeGasE2eClient(key2aUrl = KEY2A_URL): E2eTestClient {
+export function makeGasE2eClient(key0Url = KEY0_URL): E2eTestClient {
 	const { walletClient, publicClient } = makeGasWallet();
 	return new E2eTestClient(
-		key2aUrl,
+		key0Url,
 		walletClient,
 		publicClient as unknown as PublicClient,
 		USDC_ADDRESS,
@@ -72,9 +73,9 @@ export function makeGasE2eClient(key2aUrl = KEY2A_URL): E2eTestClient {
 	);
 }
 
-/** KEY2A_WALLET_ADDRESS — for assertions (e.g. destination address in challenges). */
-export function key2aWalletAddress(): `0x${string}` {
-	return requireEnv("KEY2A_WALLET_ADDRESS") as `0x${string}`;
+/** KEY0_WALLET_ADDRESS — for assertions (e.g. destination address in challenges). */
+export function key0WalletAddress(): `0x${string}` {
+	return requireEnv("KEY0_WALLET_ADDRESS") as `0x${string}`;
 }
 
 /** CLIENT_WALLET_ADDRESS — for assertions (e.g. refund recipient). */

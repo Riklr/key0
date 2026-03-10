@@ -8,12 +8,14 @@
  * The refund cron picks it up (after REFUND_MIN_AGE_MS = 3s), sends USDC back,
  * and transitions the record to REFUNDED.
  *
- * USDC cost per run: $0.01 (the refunded amount is sent from KEY2A_WALLET to client).
+ * USDC cost per run: $0.01 (the refunded amount is sent from KEY0_WALLET to client).
  */
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
-import { clientWalletAddress, key2aWalletAddress } from "../fixtures/wallets.ts";
+
+import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
+
 import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { waitForChallengeState } from "../helpers/wait.ts";
 
@@ -26,7 +28,7 @@ describe("Refund Success", () => {
 		async () => {
 			const challengeId = `e2e-refund-${crypto.randomUUID()}`;
 			const clientAddr = clientWalletAddress();
-			const key2aAddr = key2aWalletAddress();
+			const key0Addr = key0WalletAddress();
 
 			// Record balance before refund
 			// (actual USDC check requires on-chain read — simplified here to state check)
@@ -42,7 +44,7 @@ describe("Refund Success", () => {
 				planId: DEFAULT_TIER_ID,
 				amount: "$0.01",
 				amountRaw: REFUND_AMOUNT_RAW,
-				destination: key2aAddr,
+				destination: key0Addr,
 				fromAddress: clientAddr,
 				txHash: `0x${"ab".repeat(32)}` as `0x${string}`,
 				paidAt,

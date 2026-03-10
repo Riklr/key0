@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_TIER_ID, KEY2A_URL } from "../fixtures/constants.ts";
+
+import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
+
 import type { AgentCard } from "../helpers/client.ts";
 
 describe("Agent Card", () => {
 	test("GET /.well-known/agent.json returns valid agent card", async () => {
-		const res = await fetch(`${KEY2A_URL}/.well-known/agent.json`);
+		const res = await fetch(`${KEY0_URL}/.well-known/agent.json`);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toContain("application/json");
 
@@ -33,7 +35,7 @@ describe("Agent Card", () => {
 	});
 
 	test("Agent card pricing includes USDC on Base Sepolia", async () => {
-		const res = await fetch(`${KEY2A_URL}/.well-known/agent.json`);
+		const res = await fetch(`${KEY0_URL}/.well-known/agent.json`);
 		const card = (await res.json()) as AgentCard;
 
 		const skill = card.skills.find((s) => s.id === DEFAULT_TIER_ID);

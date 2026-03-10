@@ -36,8 +36,8 @@ export type {
 } from "./config.js";
 
 export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
-export type { Key2aErrorCode } from "./errors.js";
-export { Key2aError } from "./errors.js";
+export type { Key0ErrorCode } from "./errors.js";
+export { Key0Error } from "./errors.js";
 
 export type {
 	AuditActor,
@@ -51,7 +51,7 @@ export type {
 export type {
 	EIP3009Authorization,
 	FacilitatorVerifyResponse,
-	Key2aExtension,
+	Key0Extension,
 	PaymentRequirements,
 	ResourceInfo,
 	X402PaymentPayload,
@@ -59,6 +59,7 @@ export type {
 	X402PaymentStatus,
 	X402SettleResponse,
 } from "./x402-extension.js";
+
 export {
 	CHAIN_ID_TO_NETWORK,
 	NETWORK_TO_CHAIN_ID,

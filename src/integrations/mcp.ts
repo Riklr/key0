@@ -5,7 +5,7 @@ import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import type { ChallengeEngine } from "../core/index.js";
 import type { NetworkConfig, SellerConfig, X402PaymentPayload } from "../types/index.js";
-import { CHAIN_CONFIGS, Key2aError } from "../types/index.js";
+import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
 
 // ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ const x402PaymentPayloadSchema = z.object({
 /**
  * Extract and validate the x402 payment payload from the MCP tool call's `_meta` field.
  * Returns undefined if no payment is present.
- * Throws Key2aError if the payload is present but malformed.
+ * Throws Key0Error if the payload is present but malformed.
  */
 function extractPaymentFromMeta(
 	extra: { _meta?: Record<string, unknown> } | undefined,
@@ -99,7 +99,7 @@ function extractPaymentFromMeta(
 
 	const result = x402PaymentPayloadSchema.safeParse(payment);
 	if (!result.success) {
-		throw new Key2aError(
+		throw new Key0Error(
 			"INVALID_REQUEST",
 			`Invalid x402 payment payload in _meta: ${result.error.issues.map((i) => i.message).join(", ")}`,
 			400,
@@ -127,7 +127,7 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Create an McpServer with Key2a tools registered.
+ * Create an McpServer with Key0 tools registered.
  *
  * Tools:
  * - `discover_plans` (free) — browse the plan catalog
@@ -205,7 +205,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					// No payment — return x402 PaymentRequired signal
 					const tier = config.plans.find((t) => t.planId === planId);
 					if (!tier) {
-						throw new Key2aError("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
+						throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
 					}
 					return buildPaymentRequiredResult(planId, resourceId, config, networkConfig);
 				}
@@ -241,7 +241,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					},
 				};
 			} catch (err: unknown) {
-				if (err instanceof Key2aError) {
+				if (err instanceof Key0Error) {
 					// Return cached grant for already-redeemed proofs
 					if (err.code === "PROOF_ALREADY_REDEEMED" && err.details?.["grant"]) {
 						return {

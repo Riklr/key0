@@ -10,7 +10,7 @@
  *
  * This test verifies:
  *   - At least one succeeds with an AccessGrant
- *   - No uncontrolled crashes (all errors are Key2aError responses)
+ *   - No uncontrolled crashes (all errors are Key0Error responses)
  *   - Challenge ends in DELIVERED state (no data corruption)
  */
 
