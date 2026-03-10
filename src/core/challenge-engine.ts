@@ -251,6 +251,7 @@ export class ChallengeEngine {
 		});
 
 		// 6. Create challenge record
+		const now = new Date(this.now());
 		const record: ChallengeRecord = {
 			challengeId: payload.challengeId,
 			requestId: req.requestId,
@@ -264,10 +265,11 @@ export class ChallengeEngine {
 			destination: this.config.walletAddress,
 			state: "PENDING",
 			expiresAt,
-			createdAt: new Date(this.now()),
+			createdAt: now,
+			updatedAt: now,
 		};
 
-		await this.store.create(record);
+		await this.store.create(record, { actor: "engine", reason: "challenge_created" });
 
 		// 7. Return challenge response
 		return this.challengeToResponse(record);
@@ -307,7 +309,10 @@ export class ChallengeEngine {
 
 		// 4. Check expiry
 		if (challenge.expiresAt <= new Date(this.now())) {
-			await this.store.transition(challenge.challengeId, "PENDING", "EXPIRED");
+			await this.store.transition(challenge.challengeId, "PENDING", "EXPIRED", undefined, {
+				actor: "engine",
+				reason: "ttl_expired",
+			});
 			if (this.config.onChallengeExpired) {
 				this.config.onChallengeExpired(challenge.challengeId).catch((err: unknown) => {
 					console.error("[Key2a] onChallengeExpired hook error:", err);
@@ -373,11 +378,17 @@ export class ChallengeEngine {
 		}
 
 		// 9. Transition state — atomic, prevents concurrent double-redemption
-		const transitioned = await this.store.transition(challenge.challengeId, "PENDING", "PAID", {
-			txHash: proof.txHash,
-			paidAt: new Date(this.now()),
-			...(result.fromAddress ? { fromAddress: result.fromAddress } : {}),
-		});
+		const transitioned = await this.store.transition(
+			challenge.challengeId,
+			"PENDING",
+			"PAID",
+			{
+				txHash: proof.txHash,
+				paidAt: new Date(this.now()),
+				...(result.fromAddress ? { fromAddress: result.fromAddress } : {}),
+			},
+			{ actor: "engine", reason: "payment_verified" },
+		);
 		if (!transitioned) {
 			// Another concurrent request already transitioned — reload and return
 			const updated = await this.store.get(challenge.challengeId);
@@ -396,7 +407,10 @@ export class ChallengeEngine {
 		const marked = await this.seenTxStore.markUsed(proof.txHash, challenge.challengeId);
 		if (!marked) {
 			// Extremely unlikely race — another challenge claimed it between check and mark
-			await this.store.transition(challenge.challengeId, "PAID", "PENDING");
+			await this.store.transition(challenge.challengeId, "PAID", "PENDING", undefined, {
+				actor: "engine",
+				reason: "tx_already_redeemed_race",
+			});
 			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed (race condition)",
@@ -437,15 +451,27 @@ export class ChallengeEngine {
 		// 12. Persist grant durably BEFORE returning to client (outbox pattern).
 		//     Write accessGrant while still PAID so refund cron skips this record
 		//     even if the DELIVERED transition fails.
-		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
-			accessGrant: grant,
-		});
+		await this.store.transition(
+			challenge.challengeId,
+			"PAID",
+			"PAID",
+			{
+				accessGrant: grant,
+			},
+			{ actor: "engine", reason: "token_issued" },
+		);
 
 		// 13. Mark as DELIVERED — best-effort status update, not the critical write.
 		try {
-			await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
-				deliveredAt: new Date(this.now()),
-			});
+			await this.store.transition(
+				challenge.challengeId,
+				"PAID",
+				"DELIVERED",
+				{
+					deliveredAt: new Date(this.now()),
+				},
+				{ actor: "engine", reason: "delivery_confirmed" },
+			);
 		} catch (err) {
 			console.error(
 				`[Key2a] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
@@ -480,7 +506,13 @@ export class ChallengeEngine {
 			);
 		}
 
-		const transitioned = await this.store.transition(challengeId, "PENDING", "CANCELLED");
+		const transitioned = await this.store.transition(
+			challengeId,
+			"PENDING",
+			"CANCELLED",
+			undefined,
+			{ actor: "engine", reason: "client_cancelled" },
+		);
 		if (!transitioned) {
 			throw new Key2aError(
 				"INTERNAL_ERROR",
@@ -590,6 +622,7 @@ export class ChallengeEngine {
 		// 4. Create PENDING record
 		const challengeId = `http-${crypto.randomUUID()}`;
 		const expiresAt = new Date(this.now() + this.challengeTTL);
+		const now402 = new Date(this.now());
 
 		const record: ChallengeRecord = {
 			challengeId,
@@ -604,10 +637,11 @@ export class ChallengeEngine {
 			destination: this.config.walletAddress,
 			state: "PENDING",
 			expiresAt,
-			createdAt: new Date(this.now()),
+			createdAt: now402,
+			updatedAt: now402,
 		};
 
-		await this.store.create(record);
+		await this.store.create(record, { actor: "engine", reason: "challenge_created" });
 		return { challengeId };
 	}
 
@@ -702,6 +736,7 @@ export class ChallengeEngine {
 		if (!challenge || challenge.state !== "PENDING") {
 			const challengeId = `http-${crypto.randomUUID()}`;
 			const expiresAt = new Date(this.now() + this.challengeTTL);
+			const nowSettle = new Date(this.now());
 			const record: ChallengeRecord = {
 				challengeId,
 				requestId,
@@ -715,18 +750,25 @@ export class ChallengeEngine {
 				destination: this.config.walletAddress,
 				state: "PENDING",
 				expiresAt,
-				createdAt: new Date(this.now()),
+				createdAt: nowSettle,
+				updatedAt: nowSettle,
 			};
-			await this.store.create(record);
+			await this.store.create(record, { actor: "engine", reason: "challenge_auto_created" });
 			challenge = record;
 		}
 
 		// 5. Transition PENDING → PAID
-		const transitioned = await this.store.transition(challenge.challengeId, "PENDING", "PAID", {
-			txHash,
-			paidAt: new Date(this.now()),
-			...(fromAddress ? { fromAddress } : {}),
-		});
+		const transitioned = await this.store.transition(
+			challenge.challengeId,
+			"PENDING",
+			"PAID",
+			{
+				txHash,
+				paidAt: new Date(this.now()),
+				...(fromAddress ? { fromAddress } : {}),
+			},
+			{ actor: "engine", reason: "payment_verified" },
+		);
 		if (!transitioned) {
 			const updated = await this.store.get(challenge.challengeId);
 			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
@@ -743,7 +785,10 @@ export class ChallengeEngine {
 		// 6. Mark txHash as used
 		const marked = await this.seenTxStore.markUsed(txHash, challenge.challengeId);
 		if (!marked) {
-			await this.store.transition(challenge.challengeId, "PAID", "PENDING");
+			await this.store.transition(challenge.challengeId, "PAID", "PENDING", undefined, {
+				actor: "engine",
+				reason: "tx_already_redeemed_race",
+			});
 			throw new Key2aError(
 				"TX_ALREADY_REDEEMED",
 				"This txHash has already been redeemed (race condition)",
@@ -783,15 +828,27 @@ export class ChallengeEngine {
 		};
 
 		// 9. Persist grant durably BEFORE returning to client (outbox pattern).
-		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
-			accessGrant: grant,
-		});
+		await this.store.transition(
+			challenge.challengeId,
+			"PAID",
+			"PAID",
+			{
+				accessGrant: grant,
+			},
+			{ actor: "engine", reason: "token_issued" },
+		);
 
 		// 10. Mark as DELIVERED — best-effort status update, not the critical write.
 		try {
-			await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
-				deliveredAt: new Date(this.now()),
-			});
+			await this.store.transition(
+				challenge.challengeId,
+				"PAID",
+				"DELIVERED",
+				{
+					deliveredAt: new Date(this.now()),
+				},
+				{ actor: "engine", reason: "delivery_confirmed" },
+			);
 		} catch (err) {
 			console.error(
 				`[Key2a] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,

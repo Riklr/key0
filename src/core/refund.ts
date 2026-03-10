@@ -90,7 +90,13 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 		if (!fromAddress || !txHash) continue;
 
 		// 1. Atomically claim this record for refunding — prevents double-refund
-		const claimed = await store.transition(record.challengeId, "PAID", "REFUND_PENDING");
+		const claimed = await store.transition(
+			record.challengeId,
+			"PAID",
+			"REFUND_PENDING",
+			undefined,
+			{ actor: "cron", reason: "undelivered_payment" },
+		);
 		if (!claimed) {
 			// Another cron worker already claimed it
 			continue;
@@ -113,10 +119,16 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 					: await sendUsdcCall();
 
 			// 3. Mark as refunded
-			await store.transition(record.challengeId, "REFUND_PENDING", "REFUNDED", {
-				refundTxHash,
-				refundedAt: new Date(),
-			});
+			await store.transition(
+				record.challengeId,
+				"REFUND_PENDING",
+				"REFUNDED",
+				{
+					refundTxHash,
+					refundedAt: new Date(),
+				},
+				{ actor: "cron", reason: "refund_tx_confirmed" },
+			);
 
 			results.push({
 				challengeId: record.challengeId,
@@ -131,9 +143,15 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 
 			// 4. Mark as failed — cron will NOT retry automatically
 			try {
-				await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
-					refundError: error,
-				});
+				await store.transition(
+					record.challengeId,
+					"REFUND_PENDING",
+					"REFUND_FAILED",
+					{
+						refundError: error,
+					},
+					{ actor: "cron", reason: error },
+				);
 			} catch (transitionErr) {
 				console.error(
 					`[Refund] Failed to mark REFUND_FAILED for ${record.challengeId}:`,
@@ -171,9 +189,15 @@ export async function retryFailedRefunds(
 	for (const id of challengeIds) {
 		const record = await store.get(id);
 		if (!record || record.state !== "REFUND_FAILED") continue;
-		const ok = await store.transition(id, "REFUND_FAILED", "PAID", {
-			paidAt: record.paidAt ? new Date(record.paidAt) : new Date(),
-		});
+		const ok = await store.transition(
+			id,
+			"REFUND_FAILED",
+			"PAID",
+			{
+				paidAt: record.paidAt ? new Date(record.paidAt) : new Date(),
+			},
+			{ actor: "admin", reason: "requeued_for_retry" },
+		);
 		if (ok) requeued.push(id);
 	}
 	return requeued;

@@ -1,10 +1,13 @@
 import type {
 	AccessGrant,
+	AuditEntry,
 	ChallengeRecord,
 	ChallengeState,
 	ChallengeTransitionUpdates,
+	IAuditStore,
 	IChallengeStore,
 	ISeenTxStore,
+	TransitionMeta,
 } from "../../types";
 
 // Type for postgres.js Sql instance
@@ -58,6 +61,7 @@ type ChallengeRow = {
 	state: string;
 	expires_at: Date;
 	created_at: Date;
+	updated_at: Date;
 	paid_at?: Date;
 	tx_hash?: string;
 	access_grant?: object; // JSONB
@@ -67,6 +71,19 @@ type ChallengeRow = {
 	refunded_at?: Date;
 	refund_error?: string;
 	deleted_at?: Date;
+};
+
+type AuditRow = {
+	id: string; // BIGSERIAL comes back as string
+	challenge_id: string;
+	request_id: string;
+	client_agent_id: string | null;
+	from_state: string | null;
+	to_state: string;
+	actor: string;
+	reason: string | null;
+	updates: object | null; // JSONB
+	created_at: Date;
 };
 
 type SeenTxRow = {
@@ -92,6 +109,7 @@ function rowToChallengeRecord(row: ChallengeRow): ChallengeRecord {
 		state: row.state as ChallengeState,
 		expiresAt: row.expires_at,
 		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 		...(row.paid_at ? { paidAt: row.paid_at } : {}),
 		...(row.tx_hash ? { txHash: row.tx_hash as `0x${string}` } : {}),
 		...(row.access_grant ? { accessGrant: row.access_grant as AccessGrant } : {}),
@@ -109,6 +127,8 @@ export class PostgresChallengeStore implements IChallengeStore {
 	private readonly sql: Sql;
 	private readonly tablePrefix: string;
 	private readonly tableName: string;
+	private readonly auditTableName: string;
+	private readonly stateEnumName: string;
 	private readonly ready: Promise<void>;
 	private readonly recordTTL: number; // seconds — general record lifecycle TTL
 	private readonly deliveredTTL: number; // seconds — TTL for DELIVERED records
@@ -117,18 +137,34 @@ export class PostgresChallengeStore implements IChallengeStore {
 		this.sql = config.sql;
 		this.tablePrefix = config.tablePrefix ?? "key2a";
 		this.tableName = `${this.tablePrefix}_challenges`;
+		this.auditTableName = `${this.tablePrefix}_challenge_audit`;
+		this.stateEnumName = `${this.tablePrefix}_challenge_state`;
 		this.recordTTL = config.recordTTLSeconds ?? 604_800; // 7 days
 		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
 		this.ready = config.autoMigrate !== false ? this.createSchema() : Promise.resolve();
 	}
 
 	/**
-	 * Helper to create the challenges table and indexes.
+	 * Helper to create the challenges table, audit table, and indexes.
 	 * Call this once during setup/migration.
 	 */
 	async createSchema(): Promise<void> {
-		await this.sql`
-			CREATE TABLE IF NOT EXISTS ${this.sql(this.tableName)} (
+		// 1. Create the challenge_state enum type (idempotent)
+		await this.sql.unsafe(`
+			DO $$ BEGIN
+				CREATE TYPE ${this.stateEnumName} AS ENUM (
+					'PENDING', 'PAID', 'DELIVERED',
+					'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED',
+					'EXPIRED', 'CANCELLED'
+				);
+			EXCEPTION
+				WHEN duplicate_object THEN NULL;
+			END $$
+		`);
+
+		// 2. Create challenges table with enum state and updated_at
+		await this.sql.unsafe(`
+			CREATE TABLE IF NOT EXISTS ${this.tableName} (
 				challenge_id TEXT PRIMARY KEY,
 				request_id TEXT NOT NULL,
 				client_agent_id TEXT NOT NULL,
@@ -139,9 +175,10 @@ export class PostgresChallengeStore implements IChallengeStore {
 				asset TEXT NOT NULL,
 				chain_id INTEGER NOT NULL,
 				destination TEXT NOT NULL,
-				state TEXT NOT NULL,
+				state ${this.stateEnumName} NOT NULL,
 				expires_at TIMESTAMPTZ NOT NULL,
-				created_at TIMESTAMPTZ NOT NULL,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				paid_at TIMESTAMPTZ,
 				tx_hash TEXT,
 				access_grant JSONB,
@@ -152,8 +189,60 @@ export class PostgresChallengeStore implements IChallengeStore {
 				refund_error TEXT,
 				deleted_at TIMESTAMPTZ
 			)
+		`);
+
+		// 3. Auto-update trigger for updated_at
+		await this.sql.unsafe(`
+			CREATE OR REPLACE FUNCTION ${this.tableName}_set_updated_at()
+			RETURNS TRIGGER AS $$
+			BEGIN
+				NEW.updated_at = NOW();
+				RETURN NEW;
+			END;
+			$$ LANGUAGE plpgsql
+		`);
+
+		await this.sql.unsafe(`
+			DO $$ BEGIN
+				CREATE TRIGGER trg_${this.tableName}_updated_at
+				BEFORE UPDATE ON ${this.tableName}
+				FOR EACH ROW
+				EXECUTE FUNCTION ${this.tableName}_set_updated_at();
+			EXCEPTION
+				WHEN duplicate_object THEN NULL;
+			END $$
+		`);
+
+		// 4. Audit table — append-only, no updates or deletes
+		await this.sql.unsafe(`
+			CREATE TABLE IF NOT EXISTS ${this.auditTableName} (
+				id BIGSERIAL PRIMARY KEY,
+				challenge_id TEXT NOT NULL,
+				request_id TEXT NOT NULL,
+				client_agent_id TEXT,
+				from_state ${this.stateEnumName},
+				to_state ${this.stateEnumName} NOT NULL,
+				actor TEXT NOT NULL DEFAULT 'system',
+				reason TEXT,
+				updates JSONB,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)
+		`);
+
+		await this.sql`
+			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.auditTableName}_challenge_id_idx`)}
+			ON ${this.sql(this.auditTableName)} (challenge_id)
 		`;
 
+		await this.sql`
+			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.auditTableName}_request_id_idx`)}
+			ON ${this.sql(this.auditTableName)} (request_id)
+		`;
+
+		// 5. Revoke UPDATE and DELETE on the audit table to enforce write-only
+		await this.sql.unsafe(`REVOKE UPDATE, DELETE ON ${this.auditTableName} FROM PUBLIC`);
+
+		// 6. Indexes on challenges table
 		await this.sql`
 			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.tableName}_request_id_idx`)}
 			ON ${this.sql(this.tableName)} (request_id)
@@ -202,7 +291,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 		return rowToChallengeRecord(rows[0]!);
 	}
 
-	async create(record: ChallengeRecord): Promise<void> {
+	async create(record: ChallengeRecord, meta?: TransitionMeta): Promise<void> {
 		await this.ready;
 
 		try {
@@ -221,6 +310,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 					state,
 					expires_at,
 					created_at,
+					updated_at,
 					paid_at,
 					tx_hash,
 					access_grant,
@@ -243,6 +333,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 					${record.state},
 					${record.expiresAt},
 					${record.createdAt},
+					${record.updatedAt},
 					${record.paidAt ?? null},
 					${record.txHash ?? null},
 					${record.accessGrant ? this.sql.json(record.accessGrant) : null},
@@ -251,6 +342,22 @@ export class PostgresChallengeStore implements IChallengeStore {
 					${record.refundTxHash ?? null},
 					${record.refundedAt ?? null},
 					${record.refundError ?? null}
+				)
+			`;
+
+			// Audit: log the creation
+			await this.sql`
+				INSERT INTO ${this.sql(this.auditTableName)}
+					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+				VALUES (
+					${record.challengeId},
+					${record.requestId},
+					${record.clientAgentId},
+					${null},
+					${record.state},
+					${meta?.actor ?? "engine"},
+					${meta?.reason ?? "challenge_created"},
+					${null}
 				)
 			`;
 		} catch (err: unknown) {
@@ -267,10 +374,12 @@ export class PostgresChallengeStore implements IChallengeStore {
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
+		meta?: TransitionMeta,
 	): Promise<boolean> {
 		await this.ready;
 		// Build a parameterized SET clause using an update object so postgres.js
 		// can safely escape all values.
+		// Note: updated_at is auto-set by the BEFORE UPDATE trigger.
 		const updateObj: Record<string, unknown> = { state: toState };
 
 		if (updates?.txHash) {
@@ -307,7 +416,33 @@ export class PostgresChallengeStore implements IChallengeStore {
 		`;
 
 		// postgres.js result has .count property for affected rows
-		return (result as unknown as { count: number }).count > 0;
+		const affected = (result as unknown as { count: number }).count > 0;
+
+		// Audit: log the transition (only if it actually happened)
+		// Uses a CTE to pull request_id and client_agent_id from the challenge row.
+		if (affected) {
+			await this.sql`
+				WITH ctx AS (
+					SELECT request_id, client_agent_id
+					FROM ${this.sql(this.tableName)}
+					WHERE challenge_id = ${challengeId}
+				)
+				INSERT INTO ${this.sql(this.auditTableName)}
+					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+				SELECT
+					${challengeId},
+					ctx.request_id,
+					ctx.client_agent_id,
+					${fromState},
+					${toState},
+					${meta?.actor ?? "system"},
+					${meta?.reason ?? null},
+					${updates ? this.sql.json(updates) : null}
+				FROM ctx
+			`;
+		}
+
+		return affected;
 	}
 
 	async findPendingForRefund(minAgeMs: number): Promise<ChallengeRecord[]> {
@@ -380,6 +515,57 @@ export class PostgresChallengeStore implements IChallengeStore {
 			  AND deleted_at < ${olderThan}
 		`;
 		return (result as unknown as { count: number }).count;
+	}
+}
+
+// ─── PostgresAuditStore ──────────────────────────────────────────────
+
+export class PostgresAuditStore implements IAuditStore {
+	private readonly sql: Sql;
+	private readonly tableName: string;
+
+	constructor(config: Pick<PostgresStoreConfig, "sql" | "tablePrefix">) {
+		this.sql = config.sql;
+		const prefix = config.tablePrefix ?? "key2a";
+		this.tableName = `${prefix}_challenge_audit`;
+	}
+
+	async append(entry: Omit<AuditEntry, "id">): Promise<void> {
+		await this.sql`
+			INSERT INTO ${this.sql(this.tableName)}
+				(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates, created_at)
+			VALUES (
+				${entry.challengeId},
+				${entry.requestId},
+				${entry.clientAgentId ?? null},
+				${entry.fromState},
+				${entry.toState},
+				${entry.actor},
+				${entry.reason ?? null},
+				${entry.updates ? this.sql.json(entry.updates) : null},
+				${entry.createdAt}
+			)
+		`;
+	}
+
+	async getHistory(challengeId: string): Promise<AuditEntry[]> {
+		const rows = await this.sql<AuditRow>`
+			SELECT * FROM ${this.sql(this.tableName)}
+			WHERE challenge_id = ${challengeId}
+			ORDER BY created_at ASC, id ASC
+		`;
+		return rows.map((row) => ({
+			id: row.id,
+			challengeId: row.challenge_id,
+			requestId: row.request_id,
+			...(row.client_agent_id != null ? { clientAgentId: row.client_agent_id } : {}),
+			fromState: row.from_state as ChallengeState | null,
+			toState: row.to_state as ChallengeState,
+			actor: row.actor as AuditEntry["actor"],
+			...(row.reason != null ? { reason: row.reason } : {}),
+			updates: row.updates as Record<string, unknown> | null,
+			createdAt: row.created_at,
+		}));
 	}
 }
 

@@ -1,11 +1,14 @@
 import type Redis from "ioredis";
 import type {
 	AccessGrant,
+	AuditEntry,
 	ChallengeRecord,
 	ChallengeState,
 	ChallengeTransitionUpdates,
+	IAuditStore,
 	IChallengeStore,
 	ISeenTxStore,
+	TransitionMeta,
 } from "../../types";
 
 // ─── Serialization helpers ───────────────────────────────────────────
@@ -28,6 +31,7 @@ function serializeChallengeRecord(record: ChallengeRecord): FlatHash {
 		state: record.state,
 		expiresAt: record.expiresAt.toISOString(),
 		createdAt: record.createdAt.toISOString(),
+		updatedAt: record.updatedAt.toISOString(),
 	};
 
 	if (record.paidAt) {
@@ -71,6 +75,7 @@ function deserializeChallengeRecord(flat: FlatHash): ChallengeRecord | null {
 	const refundTxHash = flat["refundTxHash"];
 	const refundedAt = flat["refundedAt"];
 	const refundError = flat["refundError"];
+	const updatedAt = flat["updatedAt"];
 
 	const record: ChallengeRecord = {
 		challengeId,
@@ -86,6 +91,7 @@ function deserializeChallengeRecord(flat: FlatHash): ChallengeRecord | null {
 		state: flat["state"] as ChallengeState,
 		expiresAt: new Date(flat["expiresAt"]!),
 		createdAt: new Date(flat["createdAt"]!),
+		updatedAt: new Date(updatedAt ?? flat["createdAt"]!), // fallback for pre-existing records
 		...(paidAt ? { paidAt: new Date(paidAt) } : {}),
 		...(txHash ? { txHash: txHash as `0x${string}` } : {}),
 		...(accessGrantJson ? { accessGrant: JSON.parse(accessGrantJson) as AccessGrant } : {}),
@@ -103,11 +109,15 @@ function deserializeChallengeRecord(flat: FlatHash): ChallengeRecord | null {
 //
 // KEYS[1] = challenge hash key
 // KEYS[2] = paid sorted set key
+// KEYS[3] = audit list key (append-only)
 // ARGV[1] = fromState
 // ARGV[2] = toState
 // ARGV[3] = challengeId (used for zadd/zrem)
 // ARGV[4] = paidAt epoch ms as string, or "" if not a PAID transition
-// ARGV[5..] = alternating field/value pairs to write alongside state
+// ARGV[5] = now ISO string (for updatedAt + audit timestamp)
+// ARGV[6] = actor (e.g. "engine", "cron", "admin", "system")
+// ARGV[7] = reason (or "" for none)
+// ARGV[8..] = alternating field/value pairs to write alongside state
 
 const TRANSITION_LUA = `
 local current = redis.call('HGET', KEYS[1], 'state')
@@ -118,10 +128,40 @@ local fromState = ARGV[1]
 local toState = ARGV[2]
 local challengeId = ARGV[3]
 local score = ARGV[4]
-redis.call('HSET', KEYS[1], 'state', toState)
-for i = 5, #ARGV, 2 do
+local now = ARGV[5]
+local actor = ARGV[6]
+local reason = ARGV[7]
+redis.call('HSET', KEYS[1], 'state', toState, 'updatedAt', now)
+-- Collect field/value updates
+local updates = {}
+local hasUpdates = false
+for i = 8, #ARGV, 2 do
   redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
+  updates[ARGV[i]] = ARGV[i+1]
+  hasUpdates = true
 end
+-- Read requestId and clientAgentId from the challenge hash
+local requestId = redis.call('HGET', KEYS[1], 'requestId') or ''
+local clientAgentId = redis.call('HGET', KEYS[1], 'clientAgentId')
+-- Audit: append transition to the audit list (write-only)
+local entry = {
+  challengeId = challengeId,
+  requestId = requestId,
+  fromState = fromState,
+  toState = toState,
+  actor = actor,
+  createdAt = now
+}
+if clientAgentId then
+  entry.clientAgentId = clientAgentId
+end
+if reason ~= '' then
+  entry.reason = reason
+end
+if hasUpdates then
+  entry.updates = updates
+end
+redis.call('RPUSH', KEYS[3], cjson.encode(entry))
 if toState == 'PAID' and score ~= '' then
   redis.call('ZADD', KEYS[2], score, challengeId)
 elseif fromState == 'PAID' then
@@ -177,6 +217,10 @@ export class RedisChallengeStore implements IChallengeStore {
 		return `${this.prefix}:paid`;
 	}
 
+	private auditKey(challengeId: string): string {
+		return `${this.prefix}:audit:${challengeId}`;
+	}
+
 	async get(challengeId: string): Promise<ChallengeRecord | null> {
 		const flat = await this.redis.hgetall(this.challengeKey(challengeId));
 		return deserializeChallengeRecord(flat);
@@ -188,7 +232,7 @@ export class RedisChallengeStore implements IChallengeStore {
 		return this.get(challengeId);
 	}
 
-	async create(record: ChallengeRecord): Promise<void> {
+	async create(record: ChallengeRecord, meta?: TransitionMeta): Promise<void> {
 		const key = this.challengeKey(record.challengeId);
 
 		// Reject if already exists
@@ -208,6 +252,20 @@ export class RedisChallengeStore implements IChallengeStore {
 		const reqKey = this.requestKey(record.requestId);
 		pipeline.set(reqKey, record.challengeId, "EX", this.requestTTL);
 
+		// Audit: log creation (append-only list)
+		const auditEntry: Record<string, unknown> = {
+			challengeId: record.challengeId,
+			requestId: record.requestId,
+			clientAgentId: record.clientAgentId,
+			fromState: null,
+			toState: record.state,
+			actor: meta?.actor ?? "engine",
+			reason: meta?.reason ?? "challenge_created",
+			updates: null,
+			createdAt: record.createdAt.toISOString(),
+		};
+		pipeline.rpush(this.auditKey(record.challengeId), JSON.stringify(auditEntry));
+
 		const results = await pipeline.exec();
 		if (results) {
 			for (const [err] of results) {
@@ -221,14 +279,25 @@ export class RedisChallengeStore implements IChallengeStore {
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
+		meta?: TransitionMeta,
 	): Promise<boolean> {
 		const key = this.challengeKey(challengeId);
 		const paidSetKey = this.paidSetKey();
+		const auditListKey = this.auditKey(challengeId);
 
-		// ARGV layout: [fromState, toState, challengeId, paidAtScore, ...field/value pairs]
+		// ARGV layout: [fromState, toState, challengeId, paidAtScore, now, actor, reason, ...field/value pairs]
 		// paidAtScore is the paidAt epoch ms (for ZADD on PAID transitions), or "" otherwise.
 		const score = toState === "PAID" && updates?.paidAt ? updates.paidAt.getTime().toString() : "";
-		const argv: string[] = [fromState, toState, challengeId, score];
+		const now = new Date().toISOString();
+		const argv: string[] = [
+			fromState,
+			toState,
+			challengeId,
+			score,
+			now,
+			meta?.actor ?? "system",
+			meta?.reason ?? "",
+		];
 
 		if (updates) {
 			if (updates.txHash) {
@@ -257,11 +326,11 @@ export class RedisChallengeStore implements IChallengeStore {
 			}
 		}
 
-		// KEYS[1] = challenge hash, KEYS[2] = paid sorted set
-		// Sorted set maintenance (ZADD/ZREM) is inside the Lua script — fully atomic.
+		// KEYS[1] = challenge hash, KEYS[2] = paid sorted set, KEYS[3] = audit list
+		// Sorted set maintenance (ZADD/ZREM) and audit logging are inside the Lua script — fully atomic.
 		let result: unknown;
 		try {
-			result = await this.redis.eval(TRANSITION_LUA, 2, key, paidSetKey, ...argv);
+			result = await this.redis.eval(TRANSITION_LUA, 3, key, paidSetKey, auditListKey, ...argv);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			throw new Error(`Redis connection error during state transition: ${msg}`);
@@ -300,6 +369,56 @@ export class RedisChallengeStore implements IChallengeStore {
 			}
 		}
 		return records;
+	}
+}
+
+// ─── RedisAuditStore ─────────────────────────────────────────────────
+
+export class RedisAuditStore implements IAuditStore {
+	private readonly redis: Redis;
+	private readonly prefix: string;
+
+	constructor(config: Pick<RedisStoreConfig, "redis" | "keyPrefix">) {
+		this.redis = config.redis;
+		this.prefix = config.keyPrefix ?? "key2a";
+	}
+
+	private auditKey(challengeId: string): string {
+		return `${this.prefix}:audit:${challengeId}`;
+	}
+
+	async append(entry: Omit<AuditEntry, "id">): Promise<void> {
+		const serialized = JSON.stringify({
+			challengeId: entry.challengeId,
+			requestId: entry.requestId,
+			clientAgentId: entry.clientAgentId,
+			fromState: entry.fromState,
+			toState: entry.toState,
+			actor: entry.actor,
+			reason: entry.reason,
+			updates: entry.updates,
+			createdAt: entry.createdAt.toISOString(),
+		});
+		await this.redis.rpush(this.auditKey(entry.challengeId), serialized);
+	}
+
+	async getHistory(challengeId: string): Promise<AuditEntry[]> {
+		const entries = await this.redis.lrange(this.auditKey(challengeId), 0, -1);
+		return entries.map((raw, idx) => {
+			const parsed = JSON.parse(raw);
+			return {
+				id: idx,
+				challengeId: parsed.challengeId as string,
+				requestId: parsed.requestId as string,
+				...(parsed.clientAgentId ? { clientAgentId: parsed.clientAgentId as string } : {}),
+				fromState: (parsed.fromState ?? null) as ChallengeState | null,
+				toState: parsed.toState as ChallengeState,
+				actor: (parsed.actor ?? "system") as AuditEntry["actor"],
+				...(parsed.reason ? { reason: parsed.reason as string } : {}),
+				updates: (parsed.updates ?? null) as Record<string, unknown> | null,
+				createdAt: new Date(parsed.createdAt as string),
+			};
+		});
 	}
 }
 

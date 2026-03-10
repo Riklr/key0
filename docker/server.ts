@@ -216,14 +216,17 @@ if (!isConfigured) {
 	const { key2aRouter } = await import("@riklr/key2a/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
 
+	type IAuditStore = key2a.IAuditStore;
 	type IChallengeStore = key2a.IChallengeStore;
 	type ISeenTxStore = key2a.ISeenTxStore;
 	type NetworkName = key2a.NetworkName;
 	type Plan = key2a.Plan;
 	const {
 		processRefunds,
+		PostgresAuditStore,
 		PostgresChallengeStore,
 		PostgresSeenTxStore,
+		RedisAuditStore,
 		RedisChallengeStore,
 		RedisSeenTxStore,
 		X402Adapter,
@@ -280,6 +283,7 @@ if (!isConfigured) {
 	// Redis is required for BullMQ refund cron queue, even when using Postgres storage
 	let store: IChallengeStore;
 	let seenTxStore: ISeenTxStore;
+	let auditStore: IAuditStore;
 	let redis: import("ioredis").default | null = null;
 
 	if (STORAGE_BACKEND === "postgres") {
@@ -293,6 +297,7 @@ if (!isConfigured) {
 
 		store = new PostgresChallengeStore({ sql });
 		seenTxStore = new PostgresSeenTxStore({ sql });
+		auditStore = new PostgresAuditStore({ sql });
 
 		// Still need Redis for BullMQ refund cron queue
 		const Redis = (await import("ioredis")).default;
@@ -307,6 +312,7 @@ if (!isConfigured) {
 			challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 		});
 		seenTxStore = new RedisSeenTxStore({ redis });
+		auditStore = new RedisAuditStore({ redis });
 		console.log("[key2a] Using Redis storage:", REDIS_URL);
 	}
 
@@ -407,24 +413,29 @@ if (!isConfigured) {
 		}
 
 		try {
-			await store.create({
-				challengeId,
-				requestId,
-				clientAgentId,
-				resourceId,
-				planId,
-				amount,
-				amountRaw: BigInt(amountRaw),
-				asset: "USDC",
-				chainId: NETWORK === "testnet" ? 84532 : 8453,
-				destination,
-				state: "PAID",
-				expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-				createdAt: new Date(Date.now() - 60 * 1000),
-				paidAt: new Date(paidAt),
-				txHash,
-				fromAddress,
-			});
+			const nowTs = new Date();
+			await store.create(
+				{
+					challengeId,
+					requestId,
+					clientAgentId,
+					resourceId,
+					planId,
+					amount,
+					amountRaw: BigInt(amountRaw),
+					asset: "USDC",
+					chainId: NETWORK === "testnet" ? 84532 : 8453,
+					destination,
+					state: "PAID",
+					expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+					createdAt: new Date(Date.now() - 60 * 1000),
+					updatedAt: nowTs,
+					paidAt: new Date(paidAt),
+					txHash,
+					fromAddress,
+				},
+				{ actor: "system", reason: "test_setup" },
+			);
 			res.json({ success: true });
 		} catch (err) {
 			res.status(500).json({ error: String(err) });
@@ -462,6 +473,19 @@ if (!isConfigured) {
 					toState,
 				});
 			}
+		} catch (err) {
+			res.status(500).json({ error: String(err) });
+		}
+	});
+
+	/**
+	 * GET /test/audit/:challengeId
+	 * Returns the full audit history for a challenge (ordered chronologically).
+	 */
+	app.get("/test/audit/:challengeId", async (req, res) => {
+		try {
+			const history = await auditStore.getHistory(req.params.challengeId);
+			res.json({ entries: history });
 		} catch (err) {
 			res.status(500).json({ error: String(err) });
 		}
@@ -541,6 +565,7 @@ if (!isConfigured) {
 			adapter,
 			store,
 			seenTxStore,
+			auditStore,
 		}),
 	);
 
@@ -569,6 +594,9 @@ if (!isConfigured) {
 			network: NETWORK,
 			minAgeMs: REFUND_MIN_AGE_MS,
 			batchSize: REFUND_BATCH_SIZE,
+			// Share the same Redis client used by settlePayment so the distributed
+			// lock serialises refund and settlement transactions from the same gas wallet.
+			...(GAS_WALLET_PRIVATE_KEY && redis ? { redis } : {}),
 		});
 
 		for (const result of results) {
