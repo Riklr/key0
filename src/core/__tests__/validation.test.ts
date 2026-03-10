@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseDollarToUsdcMicro } from "../../adapter/usdc.js";
-import { Key2aError } from "../../types";
+import { Key0Error } from "../../types";
 import {
 	validateAddress,
 	validateDollarAmount,
@@ -19,15 +19,15 @@ describe("validateUUID", () => {
 	});
 
 	test("rejects empty string", () => {
-		expect(() => validateUUID("", "id")).toThrow(Key2aError);
+		expect(() => validateUUID("", "id")).toThrow(Key0Error);
 	});
 
 	test("rejects non-UUID string", () => {
-		expect(() => validateUUID("not-a-uuid", "id")).toThrow(Key2aError);
+		expect(() => validateUUID("not-a-uuid", "id")).toThrow(Key0Error);
 	});
 
 	test("rejects UUID without dashes", () => {
-		expect(() => validateUUID("550e8400e29b41d4a716446655440000", "id")).toThrow(Key2aError);
+		expect(() => validateUUID("550e8400e29b41d4a716446655440000", "id")).toThrow(Key0Error);
 	});
 });
 
@@ -43,15 +43,15 @@ describe("validateTxHash", () => {
 	});
 
 	test("rejects without 0x prefix", () => {
-		expect(() => validateTxHash("a".repeat(64))).toThrow(Key2aError);
+		expect(() => validateTxHash("a".repeat(64))).toThrow(Key0Error);
 	});
 
 	test("rejects wrong length", () => {
-		expect(() => validateTxHash(`0x${"a".repeat(63)}`)).toThrow(Key2aError);
+		expect(() => validateTxHash(`0x${"a".repeat(63)}`)).toThrow(Key0Error);
 	});
 
 	test("rejects non-hex characters", () => {
-		expect(() => validateTxHash(`0x${"g".repeat(64)}`)).toThrow(Key2aError);
+		expect(() => validateTxHash(`0x${"g".repeat(64)}`)).toThrow(Key0Error);
 	});
 });
 
@@ -62,11 +62,11 @@ describe("validateAddress", () => {
 	});
 
 	test("rejects wrong length", () => {
-		expect(() => validateAddress(`0x${"a".repeat(39)}`)).toThrow(Key2aError);
+		expect(() => validateAddress(`0x${"a".repeat(39)}`)).toThrow(Key0Error);
 	});
 
 	test("rejects without 0x prefix", () => {
-		expect(() => validateAddress("a".repeat(40))).toThrow(Key2aError);
+		expect(() => validateAddress("a".repeat(40))).toThrow(Key0Error);
 	});
 });
 
@@ -76,11 +76,11 @@ describe("validateNonEmpty", () => {
 	});
 
 	test("rejects empty string", () => {
-		expect(() => validateNonEmpty("", "field")).toThrow(Key2aError);
+		expect(() => validateNonEmpty("", "field")).toThrow(Key0Error);
 	});
 
 	test("rejects whitespace-only string", () => {
-		expect(() => validateNonEmpty("   ", "field")).toThrow(Key2aError);
+		expect(() => validateNonEmpty("   ", "field")).toThrow(Key0Error);
 	});
 });
 
@@ -98,15 +98,15 @@ describe("validateDollarAmount", () => {
 	});
 
 	test("rejects missing dollar sign", () => {
-		expect(() => validateDollarAmount("0.10", "amount")).toThrow(Key2aError);
+		expect(() => validateDollarAmount("0.10", "amount")).toThrow(Key0Error);
 	});
 
 	test("rejects negative amount", () => {
-		expect(() => validateDollarAmount("$-1.00", "amount")).toThrow(Key2aError);
+		expect(() => validateDollarAmount("$-1.00", "amount")).toThrow(Key0Error);
 	});
 
 	test("rejects more than 6 decimal places", () => {
-		expect(() => validateDollarAmount("$0.1234567", "amount")).toThrow(Key2aError);
+		expect(() => validateDollarAmount("$0.1234567", "amount")).toThrow(Key0Error);
 	});
 });
 

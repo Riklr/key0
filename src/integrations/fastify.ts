@@ -1,21 +1,21 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type Key2aConfig, createKey2a } from "../factory.js";
+import { type Key0Config, createKey0 } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
-import { Key2aError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 
 /**
  * Fastify plugin that serves the agent card and A2A endpoint.
  *
  * Usage:
- *   fastify.register(key2aPlugin, { config, adapter });
+ *   fastify.register(key0Plugin, { config, adapter });
  */
-export async function key2aPlugin(
+export async function key0Plugin(
 	fastify: FastifyInstance,
-	opts: Key2aConfig,
+	opts: Key0Config,
 ): Promise<void> {
-	const { requestHandler, agentCard } = createKey2a(opts);
+	const { requestHandler, agentCard } = createKey0(opts);
 
 	// Agent Card
 	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -37,9 +37,9 @@ export function fastifyValidateAccessToken(config: ValidateAccessTokenConfig) {
 	return async (request: FastifyRequest, reply: FastifyReply) => {
 		try {
 			const payload = await validateToken(request.headers.authorization, config);
-			(request as FastifyRequest & { key2aToken?: unknown }).key2aToken = payload;
+			(request as FastifyRequest & { key0Token?: unknown }).key0Token = payload;
 		} catch (err: unknown) {
-			if (err instanceof Key2aError) {
+			if (err instanceof Key0Error) {
 				return reply.status(err.httpStatus).send(err.toJSON());
 			}
 			return reply

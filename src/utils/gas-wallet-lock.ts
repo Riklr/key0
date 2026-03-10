@@ -13,7 +13,7 @@
  */
 
 import type { IRedisLockClient } from "../types/config.js";
-import { Key2aError } from "../types/errors.js";
+import { Key0Error } from "../types/errors.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -47,7 +47,7 @@ async function acquireRedisLock(
 		if (ok === "OK") return;
 		await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
 	}
-	throw new Key2aError("INTERNAL_ERROR", "Failed to acquire gas wallet lock", 503);
+	throw new Key0Error("INTERNAL_ERROR", "Failed to acquire gas wallet lock", 503);
 }
 
 async function releaseRedisLock(
@@ -79,7 +79,7 @@ let gasWalletQueue: Promise<unknown> = Promise.resolve();
  * MUST use the same lock key so they are properly serialised.
  */
 export function gasWalletLockKey(gasWalletAddress: string): string {
-	return `key2a:gas-wallet-lock:${gasWalletAddress.toLowerCase()}`;
+	return `key0:gas-wallet-lock:${gasWalletAddress.toLowerCase()}`;
 }
 
 /**
@@ -110,7 +110,7 @@ export async function withGasWalletLock<T>(
 				await releaseRedisLock(redis, lockKey, lockToken);
 			} catch (releaseErr) {
 				console.warn(
-					`[Key2a] Failed to release gas wallet lock ${lockKey} — will expire via TTL:`,
+					`[Key0] Failed to release gas wallet lock ${lockKey} — will expire via TTL:`,
 					releaseErr,
 				);
 			}

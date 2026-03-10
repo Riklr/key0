@@ -174,7 +174,7 @@ return 1
 
 export type RedisStoreConfig = {
 	readonly redis: Redis;
-	readonly keyPrefix?: string | undefined; // default: "key2a"
+	readonly keyPrefix?: string | undefined; // default: "key0"
 	readonly challengeTTLSeconds?: number | undefined; // default: 900 — request index key TTL
 	readonly recordTTLSeconds?: number | undefined; // default: 604_800 (7 days) — challenge hash key TTL
 	readonly deliveredTTLSeconds?: number | undefined; // default: 43_200 (12 hours) — TTL reset on DELIVERED
@@ -191,7 +191,7 @@ export class RedisChallengeStore implements IChallengeStore {
 
 	constructor(config: RedisStoreConfig) {
 		this.redis = config.redis;
-		this.prefix = config.keyPrefix ?? "key2a";
+		this.prefix = config.keyPrefix ?? "key0";
 		this.requestTTL = config.challengeTTLSeconds ?? 900;
 		this.recordTTL = config.recordTTLSeconds ?? 604_800; // 7 days
 		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
@@ -356,7 +356,7 @@ export class RedisChallengeStore implements IChallengeStore {
 				records.push(record);
 			} else if (record.state === "PAID" && !record.fromAddress) {
 				console.warn(
-					`[Key2a] PAID record ${challengeId} has no fromAddress — cannot auto-refund. Manual intervention required.`,
+					`[Key0] PAID record ${challengeId} has no fromAddress — cannot auto-refund. Manual intervention required.`,
 				);
 			}
 		}
@@ -372,7 +372,7 @@ export class RedisAuditStore implements IAuditStore {
 
 	constructor(config: Pick<RedisStoreConfig, "redis" | "keyPrefix">) {
 		this.redis = config.redis;
-		this.prefix = config.keyPrefix ?? "key2a";
+		this.prefix = config.keyPrefix ?? "key0";
 	}
 
 	private auditKey(challengeId: string): string {
@@ -424,7 +424,7 @@ export class RedisSeenTxStore implements ISeenTxStore {
 
 	constructor(config: Pick<RedisStoreConfig, "redis" | "keyPrefix">) {
 		this.redis = config.redis;
-		this.prefix = config.keyPrefix ?? "key2a";
+		this.prefix = config.keyPrefix ?? "key0";
 	}
 
 	private seenKey(txHash: `0x${string}`): string {

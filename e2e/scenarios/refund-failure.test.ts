@@ -2,7 +2,7 @@
  * Refund Failure — verifies REFUND_FAILED state when the refund tx reverts.
  *
  * Uses a separate Docker stack (docker-compose.e2e-refund-fail.yml) that has
- * KEY2A_WALLET_PRIVATE_KEY set to a deterministic empty wallet (0 USDC).
+ * KEY0_WALLET_PRIVATE_KEY set to a deterministic empty wallet (0 USDC).
  * The refund cron attempts to send USDC from that empty wallet → tx reverts →
  * record transitions to REFUND_FAILED.
  *
@@ -15,11 +15,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import Redis from "ioredis";
 import {
 	DEFAULT_TIER_ID,
-	REFUND_FAIL_KEY2A_URL,
+	REFUND_FAIL_KEY0_URL,
 	REFUND_FAIL_REDIS_URL,
 	REFUND_POLL_TIMEOUT_MS,
 } from "../fixtures/constants.ts";
-import { key2aWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
+import { key0WalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
 import {
 	printLogs,
 	type StackConfig,
@@ -38,11 +38,11 @@ const usePostgres = process.env.E2E_STORAGE_BACKEND === "postgres";
 const STACK_CONFIG: StackConfig = usePostgres
 	? {
 			composeFile: "docker-compose.e2e-refund-fail-postgres.yml",
-			projectName: "key2a-e2e-refund-fail-pg",
+			projectName: "key0-e2e-refund-fail-pg",
 		}
 	: {
 			composeFile: "docker-compose.e2e-refund-fail.yml",
-			projectName: "key2a-e2e-refund-fail",
+			projectName: "key0-e2e-refund-fail",
 		};
 
 /** Dedicated Redis client for the refund-fail stack — no shared state pollution. */
@@ -58,13 +58,13 @@ beforeAll(async () => {
 		throw err;
 	}
 
-	// Verify Key2a is reachable
-	const healthRes = await fetch(`${REFUND_FAIL_KEY2A_URL}/health`);
+	// Verify Key0 is reachable
+	const healthRes = await fetch(`${REFUND_FAIL_KEY0_URL}/health`);
 	if (!healthRes.ok) {
-		throw new Error(`Key2a health check failed: ${healthRes.status}`);
+		throw new Error(`Key0 health check failed: ${healthRes.status}`);
 	}
 	const health = await healthRes.json();
-	console.log("[refund-fail] Key2a health:", health);
+	console.log("[refund-fail] Key0 health:", health);
 
 	// Create a dedicated Redis client for this stack (Redis path only)
 	if (!usePostgres) {
@@ -85,11 +85,11 @@ afterAll(async () => {
 
 describe("Refund Failure", () => {
 	test(
-		"PAID record transitions to REFUND_FAILED when key2a wallet has 0 USDC",
+		"PAID record transitions to REFUND_FAILED when key0 wallet has 0 USDC",
 		async () => {
 			const challengeId = `e2e-refund-fail-${crypto.randomUUID()}`;
 			const clientAddr = clientWalletAddress();
-			const key2aAddr = key2aWalletAddress();
+			const key0Addr = key0WalletAddress();
 
 			// Write PAID record to the refund-fail stack's storage
 			const paidAt = new Date(Date.now() - 10_000);
@@ -101,14 +101,14 @@ describe("Refund Failure", () => {
 				tierId: DEFAULT_TIER_ID,
 				amount: "$0.10",
 				amountRaw: 100_000n,
-				destination: key2aAddr,
+				destination: key0Addr,
 				fromAddress: clientAddr,
 				txHash: `0x${"cd".repeat(32)}` as `0x${string}`,
 				paidAt,
 			};
 
 			if (usePostgres) {
-				const res = await fetch(`${REFUND_FAIL_KEY2A_URL}/test/write-paid-challenge`, {
+				const res = await fetch(`${REFUND_FAIL_KEY0_URL}/test/write-paid-challenge`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -130,7 +130,7 @@ describe("Refund Failure", () => {
 				async () => {
 					if (usePostgres) {
 						const res = await fetch(
-							`${REFUND_FAIL_KEY2A_URL}/test/challenge/${challengeId}`,
+							`${REFUND_FAIL_KEY0_URL}/test/challenge/${challengeId}`,
 						);
 						if (res.status === 404) return null;
 						if (!res.ok) return null;

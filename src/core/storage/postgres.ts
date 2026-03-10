@@ -38,7 +38,7 @@ type Sql = {
 
 export type PostgresStoreConfig = {
 	readonly sql: Sql;
-	readonly tablePrefix?: string | undefined; // default: "key2a"
+	readonly tablePrefix?: string | undefined; // default: "key0"
 	readonly autoMigrate?: boolean | undefined; // default: true — set false to manage migrations externally
 	readonly challengeTTLSeconds?: number | undefined; // default: 900 (15 min) — request index TTL for findActiveByRequestId
 	readonly recordTTLSeconds?: number | undefined; // default: 604_800 (7 days) — general record lifecycle TTL
@@ -135,7 +135,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 
 	constructor(config: PostgresStoreConfig) {
 		this.sql = config.sql;
-		this.tablePrefix = config.tablePrefix ?? "key2a";
+		this.tablePrefix = config.tablePrefix ?? "key0";
 		this.tableName = `${this.tablePrefix}_challenges`;
 		this.auditTableName = `${this.tablePrefix}_challenge_audit`;
 		this.stateEnumName = `${this.tablePrefix}_challenge_state`;
@@ -528,7 +528,7 @@ export class PostgresAuditStore implements IAuditStore {
 
 	constructor(config: Pick<PostgresStoreConfig, "sql" | "tablePrefix">) {
 		this.sql = config.sql;
-		const prefix = config.tablePrefix ?? "key2a";
+		const prefix = config.tablePrefix ?? "key0";
 		this.tableName = `${prefix}_challenge_audit`;
 	}
 
@@ -581,7 +581,7 @@ export class PostgresSeenTxStore implements ISeenTxStore {
 
 	constructor(config: Pick<PostgresStoreConfig, "sql" | "tablePrefix" | "autoMigrate">) {
 		this.sql = config.sql;
-		this.tablePrefix = config.tablePrefix ?? "key2a";
+		this.tablePrefix = config.tablePrefix ?? "key0";
 		this.tableName = `${this.tablePrefix}_seen_txs`;
 		this.ready = config.autoMigrate !== false ? this.createSchema() : Promise.resolve();
 	}

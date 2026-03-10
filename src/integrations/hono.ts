@@ -1,16 +1,16 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { Hono } from "hono";
-import { type Key2aConfig, createKey2a } from "../factory.js";
+import { type Key0Config, createKey0 } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
-import { Key2aError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 
 /**
  * Create a Hono app that serves the agent card and A2A endpoint.
- * Mount it as a sub-app: mainApp.route("/", key2aApp(opts));
+ * Mount it as a sub-app: mainApp.route("/", key0App(opts));
  */
-export function key2aApp(opts: Key2aConfig): Hono {
-	const { requestHandler, agentCard } = createKey2a(opts);
+export function key0App(opts: Key0Config): Hono {
+	const { requestHandler, agentCard } = createKey0(opts);
 	const app = new Hono();
 
 	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
@@ -42,10 +42,10 @@ export function honoValidateAccessToken(config: ValidateAccessTokenConfig) {
 	) => {
 		try {
 			const payload = await validateToken(c.req.header("authorization"), config);
-			c.set("key2aToken", payload);
+			c.set("key0Token", payload);
 			await next();
 		} catch (err: unknown) {
-			if (err instanceof Key2aError) {
+			if (err instanceof Key0Error) {
 				return c.json(err.toJSON(), err.httpStatus);
 			}
 			return c.json({ type: "Error", code: "INTERNAL_ERROR", message: "Internal error" }, 500);

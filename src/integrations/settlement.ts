@@ -12,7 +12,7 @@ import type {
 	X402PaymentRequiredResponse,
 	X402SettleResponse,
 } from "../types/index.js";
-import { Key2aError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 import { gasWalletLockKey, withGasWalletLock } from "../utils/gas-wallet-lock.js";
 
 export type SettlementResult = {
@@ -52,7 +52,7 @@ async function retryWithBackoff<T>(
 			lastError = err;
 			// Don't retry deterministic rejections (invalid sig, insufficient funds, nonce consumed).
 			// Only transient errors (network timeouts, 5xx) are worth retrying.
-			if (err instanceof Key2aError && err.code === "PAYMENT_FAILED") {
+			if (err instanceof Key0Error && err.code === "PAYMENT_FAILED") {
 				throw err;
 			}
 			if (attempt < maxRetries) {
@@ -78,7 +78,7 @@ export function decodePaymentSignature(paymentSignature: string): X402PaymentPay
 		try {
 			return JSON.parse(Buffer.from(paymentSignature, "base64").toString("utf-8"));
 		} catch {
-			throw new Key2aError(
+			throw new Key0Error(
 				"INVALID_REQUEST",
 				"Invalid PAYMENT-SIGNATURE header: must be base64url-encoded JSON",
 				400,
@@ -108,7 +108,7 @@ export function buildHttpPaymentRequirements(
 ): X402PaymentRequiredResponse {
 	const tier = config.products.find((t: ProductTier) => t.tierId === tierId);
 	if (!tier) {
-		throw new Key2aError("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
+		throw new Key0Error("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
 	}
 
 	const basePath = config.basePath ?? "/a2a";
@@ -121,7 +121,7 @@ export function buildHttpPaymentRequirements(
 	const extensions =
 		options?.inputSchema || options?.outputSchema || options?.description
 			? {
-					key2a: {
+					key0: {
 						...(options.inputSchema && { inputSchema: options.inputSchema }),
 						...(options.outputSchema && { outputSchema: options.outputSchema }),
 						...(options.description && { description: options.description }),
@@ -201,7 +201,7 @@ export function buildDiscoveryResponse(
 		},
 		accepts,
 		extensions: {
-			key2a: {
+			key0: {
 				inputSchema: {
 					type: "object",
 					properties: {
@@ -278,12 +278,12 @@ export async function settleViaFacilitator(
 		} catch {
 			if (errorText) errorMessage = errorText;
 		}
-		throw new Key2aError("PAYMENT_FAILED", errorMessage, 402);
+		throw new Key0Error("PAYMENT_FAILED", errorMessage, 402);
 	}
 
 	const verifyResult = (await verifyRes.json()) as FacilitatorVerifyResponse;
 	if (!verifyResult.isValid) {
-		throw new Key2aError(
+		throw new Key0Error(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}. ${verifyResult.invalidMessage || ""}`.trim(),
 			402,
@@ -315,19 +315,19 @@ export async function settleViaFacilitator(
 				} catch {
 					if (errorText) errorMessage = errorText;
 				}
-				throw new Key2aError("PAYMENT_FAILED", errorMessage, 402);
+				throw new Key0Error("PAYMENT_FAILED", errorMessage, 402);
 			}
 
 			const res = (await settleRes.json()) as X402SettleResponse;
 			if (!res.success) {
-				throw new Key2aError(
+				throw new Key0Error(
 					"PAYMENT_FAILED",
 					res.errorReason || "Payment settlement failed",
 					402,
 				);
 			}
 			if (!res.transaction) {
-				throw new Key2aError(
+				throw new Key0Error(
 					"PAYMENT_FAILED",
 					"Facilitator did not return transaction hash",
 					500,
@@ -361,7 +361,7 @@ export async function settleViaGasWallet(
 	let payer: string | undefined = paymentPayload.payload?.authorization?.from ?? undefined;
 	const requirement = paymentPayload.accepted;
 	if (!requirement) {
-		throw new Key2aError(
+		throw new Key0Error(
 			"INVALID_REQUEST",
 			"Payment payload missing 'accepted' requirement",
 			400,
@@ -392,11 +392,11 @@ export async function settleViaGasWallet(
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown verification error";
-		throw new Key2aError("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
+		throw new Key0Error("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
 	}
 
 	if (!verifyResult.isValid) {
-		throw new Key2aError(
+		throw new Key0Error(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}`,
 			402,
@@ -420,18 +420,18 @@ export async function settleViaGasWallet(
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown settlement error";
-		throw new Key2aError("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
+		throw new Key0Error("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
 	}
 
 	if (!settlement.success) {
-		throw new Key2aError(
+		throw new Key0Error(
 			"PAYMENT_FAILED",
 			settlement.errorReason || "Payment settlement failed",
 			500,
 		);
 	}
 	if (!settlement.transaction) {
-		throw new Key2aError("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
+		throw new Key0Error("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
 	}
 
 	console.log(`[settleViaGasWallet] ✓ Settled: ${settlement.transaction}`);

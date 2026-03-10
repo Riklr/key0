@@ -1,15 +1,15 @@
 services:
-  key2a:
+  key0:
     build: ..
     ports:
       - "3000:3000"
     environment:
       PORT: 3000
-      KEY2A_WALLET_ADDRESS: ${KEY2A_WALLET_ADDRESS}
-      KEY2A_WALLET_PRIVATE_KEY: ${KEY2A_WALLET_KEY}
+      KEY0_WALLET_ADDRESS: ${KEY0_WALLET_ADDRESS}
+      KEY0_WALLET_PRIVATE_KEY: ${KEY0_WALLET_KEY}
       GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
-      KEY2A_NETWORK: testnet
+      KEY0_NETWORK: testnet
       REDIS_URL: redis://redis:6379
       REFUND_INTERVAL_MS: 5000
       REFUND_MIN_AGE_MS: 3000

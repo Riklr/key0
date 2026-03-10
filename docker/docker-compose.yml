@@ -1,5 +1,5 @@
 services:
-  key2a:
+  key0:
     build: ..
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
