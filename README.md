@@ -1,8 +1,18 @@
-# Key0
+<img src="docs/logo.svg" alt="Key0" width="260" />
 
-Payment-gated A2A (Agent-to-Agent) endpoints using the x402 protocol with USDC on Base.
+Sell anything to AI agents — APIs, data, goods or services — with built-in payments, zero proxying, and no architectural changes to your existing stack.
 
-Key0 lets you monetize any API: agents request access, pay via on-chain USDC, and receive a signed credential to access protected resources. No smart contracts needed.
+Key0 orchestrates the payment handshake and credential exchange between your server and the agent, then gets completely out of the way.
+
+- **Zero proxying** — all requests go directly to your server with no latency overhead
+- **Open-source & self-hostable** — every part of the payment flow is auditable and customizable
+- **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it; neither you nor your client is left holding a bad transaction
+
+**Agent environments:** Claude Code, OpenClaw, Cursor, and more.
+
+**Negotiation & transaction:** HTTP, MCP, and A2A protocols supported.
+
+**Payments:** Base (x402 / USDC) today · Visa, Mastercard, and UPI coming soon.
 
 ---
 

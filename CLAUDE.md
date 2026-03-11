@@ -41,13 +41,13 @@ Client → Protected API with Bearer JWT
 
 ### Core Layers
 
-1. **Types** (`src/types/`) — Protocol-agnostic interfaces: `IPaymentAdapter`, `IChallengeStore`, `ISeenTxStore`, plus all message types (`AccessRequest`, `X402Challenge`, `PaymentProof`, `AccessGrant`).
+1. **Types** (`src/types/`) — Protocol-agnostic interfaces: `IPaymentAdapter`, `IChallengeStore`, `ISeenTxStore`, `IAuditStore`, plus all message types (`AccessRequest`, `X402Challenge`, `PaymentProof`, `AccessGrant`).
 
 2. **Core** (`src/core/`) — Business logic:
    - `challenge-engine.ts` — State machine (PENDING → PAID → DELIVERED | PENDING → EXPIRED | PENDING → CANCELLED | PAID → REFUND_PENDING → REFUNDED | PAID → REFUND_PENDING → REFUND_FAILED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
    - `access-token.ts` — JWT issuance/verification (HS256 or RS256). Supports fallback secrets for zero-downtime rotation.
    - `agent-card.ts` — Auto-generates A2A discovery card from `SellerConfig`.
-   - `storage/` — `IChallengeStore` + `ISeenTxStore` with Redis (`RedisChallengeStore`, `RedisSeenTxStore`) and Postgres (`PostgresChallengeStore`, `PostgresSeenTxStore`) implementations. Uses atomic Lua scripts (Redis) or row-level locking (Postgres) for concurrent state transitions. Both store fields are required.
+   - `storage/` — `IChallengeStore` + `ISeenTxStore` + `IAuditStore`. Redis implementations: `RedisChallengeStore`, `RedisSeenTxStore`, `RedisAuditStore`. Postgres implementations: `PostgresChallengeStore`, `PostgresSeenTxStore`, `PostgresAuditStore`. Uses atomic Lua scripts (Redis) for concurrent state transitions. `IChallengeStore` and `ISeenTxStore` are required; `IAuditStore` is optional (audit trail).
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
@@ -66,7 +66,7 @@ Client → Protected API with Bearer JWT
 
 ### Storage Abstraction
 
-`IChallengeStore.transition(id, fromState, toState, updates)` is the atomic state transition method — always use this (not direct writes) to prevent race conditions. `ISeenTxStore.markUsed(txHash, challengeId)` is atomic SET NX for double-spend prevention.
+`IChallengeStore.transition(id, fromState, toState, updates?, meta?)` is the atomic state transition method — always use this (not direct writes) to prevent race conditions. `meta` carries `{ actor, reason? }` for audit logging. `ISeenTxStore.markUsed(txHash, challengeId)` is atomic SET NX for double-spend prevention. `IAuditStore.append(entry)` is write-only; all state transitions are logged immutably.
 
 ### Auth Helpers (`src/helpers/`)
 
