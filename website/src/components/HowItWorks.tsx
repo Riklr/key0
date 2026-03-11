@@ -853,7 +853,7 @@ export default function HowItWorks() {
   const Icon = tabs[active].icon;
 
   return (
-    <section id="how-it-works" className="py-12 pb-[72px]">
+    <section id="how-it-works" className="pt-[4.5rem] pb-[72px]">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight text-foreground text-center">
           How it works

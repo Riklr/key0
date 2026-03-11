@@ -620,7 +620,7 @@ export default function AgentGateScene() {
     const keyState = {
       active: false,
       timer: 0,
-      travelDur: 1.2,
+      travelDur: 0.9,
       done: false,
     };
 
@@ -628,7 +628,7 @@ export default function AgentGateScene() {
       active: false,
       timer: 0,
       pauseDur: 0.1,
-      travelDur: 1.2,
+      travelDur: 0.9,
       phase: "pause" as "pause" | "travel" | "done",
     };
 

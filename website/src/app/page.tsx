@@ -3,7 +3,6 @@ import Hero from "@/components/Hero";
 import HeroHowItWorksSeparator from "@/components/HeroHowItWorksSeparator";
 import HowItWorks from "@/components/HowItWorks";
 import ValueProps from "@/components/ValueProps";
-import ComingSoon from "@/components/ComingSoon";
 import Footer from "@/components/Footer";
 
 export default function Home() {
@@ -15,7 +14,6 @@ export default function Home() {
         <HeroHowItWorksSeparator />
         <HowItWorks />
         <ValueProps />
-        <ComingSoon />
       </main>
       <Footer />
     </>
