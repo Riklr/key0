@@ -24,6 +24,11 @@ const app = express();
 app.use(express.json());
 
 // ─── Setup UI (served at /setup only) ─────────────────────────────────────
+//
+// WARNING: /setup and /api/setup are unauthenticated by design — intended for
+// Docker-internal use where the port is not exposed publicly.
+// For production deployments, restrict access via network policy or a reverse
+// proxy (e.g. allow only localhost / VPN). See docs/setup-ui.md for details.
 
 const UI_DIR = resolve(import.meta.dir, "../ui/dist");
 const hasUI = existsSync(UI_DIR);
@@ -38,12 +43,6 @@ if (hasUI) {
 }
 
 // ─── Setup API ────────────────────────────────────────────────────────────
-//
-// WARNING: /api/setup and /setup are unauthenticated by design — intended for
-// Docker-internal use where the port is not exposed publicly.
-// For production deployments, restrict access to /api/setup and /setup via
-// network policy or a reverse proxy (e.g. allow only localhost / VPN).
-// See docs/setup-ui.md for details.
 
 app.get("/api/setup/status", (_req, res) => {
 	let plans: Array<{ planId: string; unitAmount: string; description?: string }> | undefined;
@@ -115,6 +114,7 @@ interface SetupBody {
 	refundMinAgeMs: string;
 }
 
+// Unauthenticated — see warning above.
 app.post("/api/setup", async (req, res) => {
 	const body = req.body as SetupBody;
 
