@@ -110,8 +110,8 @@ function createMockRedis() {
 
 			// Collect field/value updates
 			const fieldUpdates: Record<string, string> = {};
-			// Apply field/value pairs (start after the 7 fixed ARGV slots)
-			for (let i = numKeys + 7; i < args.length; i += 2) {
+			// Apply field/value pairs (start after the 8 fixed ARGV slots: fromState, toState, challengeId, score, now, actor, reason, auditTTL)
+			for (let i = numKeys + 8; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
 				fieldUpdates[args[i] as string] = args[i + 1] as string;
 			}
