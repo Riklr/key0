@@ -1,12 +1,12 @@
-import type { NetworkName } from "@riklr/key0";
+import type { NetworkName } from "@key0ai/key0";
 import {
 	AccessTokenIssuer,
 	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-} from "@riklr/key0";
-import { key0Router, validateAccessToken } from "@riklr/key0/express";
+} from "@key0ai/key0";
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import { Redis } from "ioredis";

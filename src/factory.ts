@@ -27,14 +27,14 @@ export function createKey0(opts: Key0Config): Key0Instance {
 	if (!opts.store) {
 		throw new Error(
 			"[Key0] store is required. Use RedisChallengeStore for production.\n" +
-				"  import { RedisChallengeStore } from '@riklr/key0';\n" +
+				"  import { RedisChallengeStore } from '@key0ai/key0';\n" +
 				"  const store = new RedisChallengeStore({ redis });",
 		);
 	}
 	if (!opts.seenTxStore) {
 		throw new Error(
 			"[Key0] seenTxStore is required. Use RedisSeenTxStore for production.\n" +
-				"  import { RedisSeenTxStore } from '@riklr/key0';\n" +
+				"  import { RedisSeenTxStore } from '@key0ai/key0';\n" +
 				"  const seenTxStore = new RedisSeenTxStore({ redis });",
 		);
 	}

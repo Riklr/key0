@@ -555,7 +555,7 @@ export function generateDockerRun(config: Config): string {
 		envFlags.push(`-e KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
 	}
 
-	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  riklr/key0:latest`;
+	return `docker run \\\n  ${envFlags.join(" \\\n  ")} \\\n  -p ${config.port}:${config.port} \\\n  key0ai/key0:latest`;
 }
 
 export function generateDockerCompose(config: Config): string {
@@ -618,7 +618,7 @@ export function generateDockerCompose(config: Config): string {
 
 	let services = `services:
   key0:
-    image: riklr/key0:latest
+    image: key0ai/key0:latest
     ports:
       - "${config.port}:${config.port}"
     environment:

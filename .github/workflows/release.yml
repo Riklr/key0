@@ -34,7 +34,7 @@ jobs:
       - name: Publish packages
         run: bunx @changesets/cli publish --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.KEY0_NPM_TOKEN }}
 
   docker:
     runs-on: ubuntu-latest
@@ -53,13 +53,13 @@ jobs:
 
       - uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: key0ai
+          password: ${{ secrets.KEY0_DOCKERHUB_TOKEN }}
 
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: riklr/key0
+          images: key0ai/key0
           tags: |
             type=semver,pattern={{version}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

@@ -220,8 +220,8 @@ if (!isConfigured) {
 } else {
 	// ─── Running mode: full Key0 ──────────────────────────────────────
 
-	const key0 = await import("@riklr/key0");
-	const { key0Router } = await import("@riklr/key0/express");
+	const key0 = await import("@key0ai/key0");
+	const { key0Router } = await import("@key0ai/key0/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
 
 	type IAuditStore = key0.IAuditStore;

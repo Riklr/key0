@@ -7,7 +7,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@riklr/key0": "file:../..",
+		"@key0ai/key0": "file:../..",
 		"hono": "^4.6.0"
 	}
 }

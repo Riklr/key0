@@ -418,11 +418,11 @@ Key0 provides middleware for protecting seller API routes:
 
 ```typescript
 // Express
-import { validateAccessToken } from "@riklr/key0/express";
+import { validateAccessToken } from "@key0ai/key0/express";
 app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
 
 // Standalone (no framework dependency)
-import { validateKey0Token } from "@riklr/key0";
+import { validateKey0Token } from "@key0ai/key0";
 const payload = await validateKey0Token(authHeader, { secret });
 ```
 
@@ -526,7 +526,7 @@ type VerificationResult = {
 
 ```
 Step 1: Install SDK
-  bun add @riklr/key0
+  bun add @key0ai/key0
 
 Step 2: Configure
   - Set walletAddress (public, goes in agent card)
@@ -588,7 +588,7 @@ Key0 is a **self-hosted open-source SDK**. There is no central registry or SaaS 
 | Token standard | USDC ERC-20 | Stable, widely held |
 | Access tokens | `jose` (JWT, HS256/RS256) | Standards-compliant, supports both symmetric and asymmetric keys |
 | Challenge store | Redis via ioredis (`RedisChallengeStore`, `RedisSeenTxStore`) | Atomic Lua transitions, TTL-based cleanup, multi-process safe |
-| Package | Single package `@riklr/key0` with framework subpath exports | Simple install, tree-shakeable |
+| Package | Single package `@key0ai/key0` with framework subpath exports | Simple install, tree-shakeable |
 
 ---
 

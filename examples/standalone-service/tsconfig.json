@@ -13,8 +13,8 @@
 		"noPropertyAccessFromIndexSignature": false,
 		"exactOptionalPropertyTypes": false,
 		"paths": {
-			"@riklr/key0": ["../../src/index.ts"],
-			"@riklr/key0/*": ["../../src/integrations/*.ts"]
+			"@key0ai/key0": ["../../src/index.ts"],
+			"@key0ai/key0/*": ["../../src/integrations/*.ts"]
 		}
 	},
 	"include": ["server.ts"]

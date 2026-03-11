@@ -33,7 +33,7 @@ jobs:
       - name: Publish canary
         run: bunx @changesets/cli publish --tag canary --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.KEY0_NPM_TOKEN }}
 
   docker:
     runs-on: ubuntu-latest
@@ -49,14 +49,14 @@ jobs:
 
       - uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: key0ai
+          password: ${{ secrets.KEY0_DOCKERHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: riklr/key0:canary
+          tags: key0ai/key0:canary
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max

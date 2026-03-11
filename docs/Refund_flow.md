@@ -81,7 +81,7 @@ If `fetchResourceCredentials` throws in either path, the record stays `PAID` and
 Scan for all `PAID` records older than `minAgeMs`, atomically claim each one, send USDC back to the buyer, and write the result. Designed to be called from a periodic job.
 
 ```typescript
-import { processRefunds } from '@riklr/key0';
+import { processRefunds } from '@key0ai/key0';
 
 const results = await processRefunds({
   store,
@@ -154,7 +154,7 @@ import {
   RedisChallengeStore,
   RedisSeenTxStore,
   processRefunds,
-} from '@riklr/key0';
+} from '@key0ai/key0';
 
 const redis = new Redis(process.env.REDIS_URL);
 

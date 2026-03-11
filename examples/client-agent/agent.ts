@@ -16,8 +16,8 @@
  *   bun run start
  */
 
-import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@riklr/key0";
-import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@riklr/key0";
+import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@key0ai/key0";
+import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@key0ai/key0";
 import { createPublicClient, createWalletClient, formatUnits, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";

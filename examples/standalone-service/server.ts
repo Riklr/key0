@@ -34,8 +34,8 @@ import {
 	signedJwtAuth,
 	type TokenIssuanceResult,
 	X402Adapter,
-} from "@riklr/key0";
-import { key0Router } from "@riklr/key0/express";
+} from "@key0ai/key0";
+import { key0Router } from "@key0ai/key0/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import Redis from "ioredis";

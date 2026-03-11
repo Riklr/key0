@@ -20,7 +20,7 @@ Key0 orchestrates the payment handshake and credential exchange between your ser
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker compose up` → browser Setup UI | `bun add @riklr/key0` |
+| **Setup** | `docker compose up` → browser Setup UI | `bun add @key0ai/key0` |
 | **Config** | Setup UI or environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `fetchResourceCredentials` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
@@ -88,7 +88,7 @@ docker run \
   -e KEY0_WALLET_ADDRESS=0xYourWallet \
   -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
   -p 3000:3000 \
-  riklr/key0:latest
+  key0ai/key0:latest
 ```
 
 ### With Docker Compose + Redis
@@ -103,7 +103,7 @@ docker compose -f docker/docker-compose.yml up
 
 ### Docker Image
 
-Published to Docker Hub on every release: [`riklr/key0`](https://hub.docker.com/r/riklr/key0)
+Published to Docker Hub on every release: [`key0ai/key0`](https://hub.docker.com/r/key0ai/key0)
 
 | Tag | When |
 |---|---|
@@ -111,7 +111,7 @@ Published to Docker Hub on every release: [`riklr/key0`](https://hub.docker.com/
 | `1.2.3` / `1.2` / `1` | Specific version pinning |
 | `canary` | Latest `main` branch build |
 
-Build from source: `docker build -t riklr/key0 .`
+Build from source: `docker build -t key0ai/key0 .`
 
 ### Environment Variables
 
@@ -238,7 +238,7 @@ Install the SDK and add Key0 as middleware inside your existing application. You
 ### Install
 
 ```bash
-bun add @riklr/key0
+bun add @key0ai/key0
 ```
 
 Optional peer dependencies:
@@ -250,8 +250,8 @@ bun add ioredis   # Redis-backed storage for multi-process deployments
 
 ```typescript
 import express from "express";
-import { key0Router, validateAccessToken } from "@riklr/key0/express";
-import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
 import Redis from "ioredis";
 
 const app = express();
@@ -303,8 +303,8 @@ app.listen(3000);
 
 ```typescript
 import { Hono } from "hono";
-import { key0App, honoValidateAccessToken } from "@riklr/key0/hono";
-import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
+import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
 import Redis from "ioredis";
 
 const adapter = new X402Adapter({ network: "testnet" });
@@ -333,8 +333,8 @@ export default { port: 3000, fetch: app.fetch };
 
 ```typescript
 import Fastify from "fastify";
-import { key0Plugin, fastifyValidateAccessToken } from "@riklr/key0/fastify";
-import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
+import { key0Plugin, fastifyValidateAccessToken } from "@key0ai/key0/fastify";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
 import Redis from "ioredis";
 
 const fastify = Fastify();
@@ -421,7 +421,7 @@ When `fetchResourceCredentials` throws or the server crashes after payment but b
 
 ```typescript
 import { Queue, Worker } from "bullmq";
-import { processRefunds } from "@riklr/key0";
+import { processRefunds } from "@key0ai/key0";
 
 // Uses the same `store` passed to key0Router
 const worker = new Worker("refund-cron", async () => {
@@ -609,7 +609,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 Key0 requires a storage backend for challenge state and double-spend prevention. `store` and `seenTxStore` are mandatory fields. Both Redis and Postgres backends are supported.
 
 ```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
+import { RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL);
@@ -647,7 +647,7 @@ All state transitions are recorded in an immutable audit log (`IAuditStore`) for
 The `fetchResourceCredentials` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
-import { AccessTokenIssuer } from "@riklr/key0";
+import { AccessTokenIssuer } from "@key0ai/key0";
 
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
@@ -741,7 +741,7 @@ bun run build        # Compile to ./dist
 ## Documentation
 
 - [SPEC.md](./SPEC.md) — Protocol specification
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/key0`)
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/key0ai/key0`)
 - [setup-ui.md](./docs/setup-ui.md) — Setup UI: architecture, Docker integration, config flow, plan editor
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
 - [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns

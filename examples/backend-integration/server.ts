@@ -10,8 +10,8 @@
  *   bun run start
  */
 
-import type { AccessTokenPayload } from "@riklr/key0";
-import { validateKey0Token } from "@riklr/key0";
+import type { AccessTokenPayload } from "@key0ai/key0";
+import { validateKey0Token } from "@key0ai/key0";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);

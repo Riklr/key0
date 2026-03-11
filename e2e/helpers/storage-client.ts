@@ -3,7 +3,7 @@
  * Uses the store interface instead of direct Redis access.
  */
 
-import type { IChallengeStore } from "@riklr/key0";
+import type { IChallengeStore } from "@key0ai/key0";
 import { KEY0_URL } from "../fixtures/constants.ts";
 import {
 	connectRedis,

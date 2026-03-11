@@ -1,6 +1,6 @@
-import type { NetworkName } from "@riklr/key0";
-import { AccessTokenIssuer, X402Adapter } from "@riklr/key0";
-import { honoValidateAccessToken, key0App } from "@riklr/key0/hono";
+import type { NetworkName } from "@key0ai/key0";
+import { AccessTokenIssuer, X402Adapter } from "@key0ai/key0";
+import { honoValidateAccessToken, key0App } from "@key0ai/key0/hono";
 import { Hono } from "hono";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
