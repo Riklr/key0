@@ -3,8 +3,13 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-export default function AgentGateScene() {
+export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const phaseRef = useRef(0);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     const el = mountRef.current;
@@ -21,7 +26,7 @@ export default function AgentGateScene() {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, size.w / size.h, 0.1, 100);
-    camera.setViewOffset(size.w, size.h, 0, -100, size.w, size.h);
+    camera.setViewOffset(size.w, size.h, 0, 0, size.w, size.h);
     camera.position.set(0, 0, 16);
 
     function onResize(entries?: ResizeObserverEntry[]) {
@@ -35,7 +40,7 @@ export default function AgentGateScene() {
       size.h = h;
       renderer.setSize(w, h);
       camera.aspect = w / h;
-      const viewY = Math.round(-100 * (h / 550));
+      const viewY = Math.round(0 * (h / 550));
       camera.setViewOffset(w, h, 0, viewY, w, h);
       camera.updateProjectionMatrix();
     }
@@ -64,7 +69,7 @@ export default function AgentGateScene() {
       const tex = new THREE.CanvasTexture(canvas);
       const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false });
       const sprite = new THREE.Sprite(mat);
-      sprite.scale.set(4.4, 0.96, 1);
+      sprite.scale.set(3.3, 0.72, 1);
       return sprite;
     }
 
@@ -742,6 +747,81 @@ export default function AgentGateScene() {
       pauseDur: 0.5,
     };
 
+    // ── Scene 2 state machine ───────────────────────────────────────
+    const s2State = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "entering" | "active" | "exiting",
+      enterDur: 0.5,
+      exitDur: 0.5,
+    };
+
+    function resetScene1ToNodesVisible() {
+      agent.group.visible = true;
+      agent.group.scale.setScalar(1);
+      agent.wireMat.opacity = 0.85;
+      agent.coreMat.opacity = 1;
+      agent.labelMat.opacity = 1;
+      nodes[0].done = true;
+
+      server.group.visible = true;
+      server.group.scale.setScalar(1);
+      const allSrvMats = server.mats;
+      const srvWire = allSrvMats[allSrvMats.length - 1];
+      allSrvMats.forEach((m) => { m.opacity = m === srvWire ? 0.45 : 1; });
+      server.labelMat.opacity = 1;
+      nodes[1].done = true;
+      nodes[2].done = true;
+
+      lineMat.opacity = 0; lineGeo.setDrawRange(0, 0);
+      returnMat.opacity = 0; returnGeo.setDrawRange(0, 0);
+      directMat.opacity = 0; directGeo.setDrawRange(0, 0);
+      (pingBall.material as THREE.MeshBasicMaterial).opacity = 0; pingBall.visible = false;
+      a2DirectMat.opacity = 0; a2DirectGeo.setDrawRange(0, 0);
+      (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0; a2PingBall.visible = false;
+      coin.group.visible = false; coin.group.scale.setScalar(0);
+      verifiedText.sprite.visible = false; verifiedText.mat.opacity = 0;
+      payServerText.sprite.visible = false; payServerText.mat.opacity = 0;
+      keySprite.sprite.visible = false; keySprite.mat.opacity = 0;
+      agent1transSprite.sprite.visible = false; agent1transSprite.mat.opacity = 0;
+      agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
+      agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
+      ripples.forEach((r) => { r.sprite.visible = false; });
+
+      activeAgent = agent;
+      lineState.phase = "wait"; lineState.timer = 0;
+      payServerState.active = false; payServerState.timer = 0; payServerState.done = false;
+      coinState.active = false; coinState.timer = 0; coinState.done = false;
+      agent1transState.active = false; agent1transState.timer = 0; agent1transState.done = false;
+      agent1transScaleState.active = false; agent1transScaleState.timer = 0; agent1transScaleState.done = false;
+      agent1transScale2State.active = false; agent1transScale2State.timer = 0; agent1transScale2State.done = false;
+      agent1transSprite.sprite.scale.set(AGENT1TRANS_FULL_W, AGENT1TRANS_FULL_H, 1);
+      agent1transSprite.setNormalBg?.();
+      agent2transState.active = false; agent2transState.timer = 0; agent2transState.done = false;
+      agent2transScaleState.active = false; agent2transScaleState.timer = 0; agent2transScaleState.done = false;
+      agent2transSprite.sprite.scale.set(AGENT2TRANS_FULL_W, AGENT2TRANS_FULL_H, 1);
+      agent2transSprite.setNormalBg?.();
+      agent3transState.active = false; agent3transState.timer = 0; agent3transState.done = false;
+      agent3transSprite.sprite.scale.set(AGENT3TRANS_FULL_W, AGENT3TRANS_FULL_H, 1);
+      textState.active = false; textState.timer = 0; textState.done = false;
+      returnLineState.triggered = false; returnLineState.phase = "wait"; returnLineState.timer = 0;
+      keyState.active = false; keyState.timer = 0; keyState.done = false;
+      keyForwardState.active = false; keyForwardState.timer = 0; keyForwardState.phase = "pause";
+      rippleState.active = false; rippleState.timer = 0; rippleState.triggered = false;
+      postKeyState.active = false; postKeyState.timer = 0; postKeyState.phase = "idle";
+      directLineDrawState.timer = 0; directLineDrawState.done = false;
+      pingState.timer = 0; pingState.forward = true;
+      agent2PostKeyState.active = false; agent2PostKeyState.timer = 0; agent2PostKeyState.phase = "idle";
+      a2DirectLineDrawState.timer = 0; a2DirectLineDrawState.done = false;
+      a2PingState.timer = 0;
+      agent2SpawnState.active = false; agent2SpawnState.timer = 0; agent2SpawnState.phase = "idle";
+      agent3SpawnState.active = false; agent3SpawnState.timer = 0; agent3SpawnState.phase = "idle";
+      fullResetState.active = false; fullResetState.timer = 0; fullResetState.phase = "idle";
+      agent2.group.visible = false;
+      agent3.group.visible = false;
+    }
+    // ─────────────────────────────────────────────────────────────────
+
     function getReturnCurvePoint(t: number, fromX: number, fromY: number, toX: number, toY: number) {
       const cpX = (fromX + toX) / 2;
       const cpY = (fromY + toY) / 2 - 1.6;
@@ -919,7 +999,78 @@ export default function AgentGateScene() {
       lastTime = now;
       clock += dt;
 
+      // ── Scene 2 phase handler ──────────────────────────────────────
+      {
+        const wantPhase = phaseRef.current;
+
+        if (wantPhase === 1 && !s2State.active && s2State.phase === "idle") {
+          s2State.active = true;
+          s2State.phase = "entering";
+          s2State.timer = 0;
+          fullResetState.active = false;
+        }
+
+        if (wantPhase === 0 && s2State.active && s2State.phase === "active") {
+          s2State.phase = "exiting";
+          s2State.timer = 0;
+        }
+
+        if (s2State.active) {
+          s2State.timer += dt;
+
+          if (s2State.phase === "entering") {
+            const p = Math.min(s2State.timer / s2State.enterDur, 1);
+            setNodeOpacity(nodes[0], 1 - p);
+            setNodeOpacity(nodes[1], 1 - p);
+            lineMat.opacity = Math.max(0, lineMat.opacity - dt / s2State.enterDur);
+            returnMat.opacity = Math.max(0, returnMat.opacity - dt / s2State.enterDur);
+            directMat.opacity = Math.max(0, directMat.opacity - dt / s2State.enterDur);
+            a2DirectMat.opacity = Math.max(0, a2DirectMat.opacity - dt / s2State.enterDur);
+            if (p >= 1) {
+              setNodeOpacity(nodes[0], 0);
+              setNodeOpacity(nodes[1], 0);
+              agent.group.visible = false;
+              server.group.visible = false;
+              lineMat.opacity = 0; lineGeo.setDrawRange(0, 0);
+              returnMat.opacity = 0; returnGeo.setDrawRange(0, 0);
+              directMat.opacity = 0; directGeo.setDrawRange(0, 0);
+              a2DirectMat.opacity = 0; a2DirectGeo.setDrawRange(0, 0);
+              (pingBall.material as THREE.MeshBasicMaterial).opacity = 0; pingBall.visible = false;
+              (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0; a2PingBall.visible = false;
+              coin.group.visible = false; coin.group.scale.setScalar(0);
+              verifiedText.sprite.visible = false; verifiedText.mat.opacity = 0;
+              payServerText.sprite.visible = false; payServerText.mat.opacity = 0;
+              keySprite.sprite.visible = false; keySprite.mat.opacity = 0;
+              agent1transSprite.sprite.visible = false; agent1transSprite.mat.opacity = 0;
+              agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
+              agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
+              ripples.forEach((r) => { r.sprite.visible = false; });
+              s2State.phase = "active";
+              s2State.timer = 0;
+            }
+          }
+
+          if (s2State.phase === "exiting") {
+            const p = Math.min(s2State.timer / s2State.exitDur, 1);
+            agent.group.visible = true;
+            server.group.visible = true;
+            setNodeOpacity(nodes[0], p);
+            setNodeOpacity(nodes[1], p);
+            agent.group.scale.setScalar(1);
+            server.group.scale.setScalar(1);
+            if (p >= 1) {
+              s2State.active = false;
+              s2State.phase = "idle";
+              s2State.timer = 0;
+              resetScene1ToNodesVisible();
+            }
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────
+
       nodes.forEach((node) => {
+        if (s2State.active && node.type !== "logo") return;
         if (node.done) return;
         if (node.type === "logo" && !logo.loaded()) return;
         node.t += dt;
@@ -941,6 +1092,7 @@ export default function AgentGateScene() {
       });
 
       nodes.forEach((node, i) => {
+        if (s2State.active && node.type !== "logo") return;
         if (node.t < node.delay) return;
         if (node.type === "agent" && postKeyState.phase !== "idle") return;
         const f = floats[i];
@@ -949,6 +1101,7 @@ export default function AgentGateScene() {
         mesh.position.y = y;
       });
 
+      if (!s2State.active) {
       server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
 
       if (agent.wire) {
@@ -1892,6 +2045,7 @@ export default function AgentGateScene() {
           }
         }
       }
+      } // end !s2State.active guard
 
       const lerpSpeed = drag.active ? 12 : 4;
       drag.offsetTheta += (drag.targetTheta - drag.offsetTheta) * Math.min(lerpSpeed * dt, 1);
