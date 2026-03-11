@@ -7,7 +7,6 @@ import type {
 	AccessGrant,
 	AccessRequest,
 	NetworkConfig,
-	ProductTier,
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
@@ -51,10 +50,10 @@ export class Key0Executor implements AgentExecutor {
 				return;
 			}
 
-			// ----- Route by tierId presence -----
-			// If tierId is present → purchase flow (handleAccessRequest)
+			// ----- Route by planId presence -----
+			// If planId is present → purchase flow (handleAccessRequest)
 			// Otherwise → discovery flow (handleDiscovery)
-			if (payload["tierId"]) {
+			if (payload["planId"]) {
 				await this.handleAccessRequest(
 					payload as unknown as AccessRequest,
 					taskId,
@@ -96,8 +95,8 @@ export class Key0Executor implements AgentExecutor {
 	}
 
 	// ===================================================================
-	// Handler: Discovery — AccessRequest without tierId
-	// Returns product catalog as a completed task (mirrors MCP discover_products)
+	// Handler: Discovery — AccessRequest without planId
+	// Returns product catalog as a completed task
 	// ===================================================================
 
 	private handleDiscovery(taskId: string, contextId: string, eventBus: ExecutionEventBus): void {
@@ -108,12 +107,10 @@ export class Key0Executor implements AgentExecutor {
 			chainId: this.networkConfig.chainId,
 			walletAddress: this.config.walletAddress,
 			asset: "USDC",
-			products: this.config.products.map((tier: ProductTier) => ({
-				tierId: tier.tierId,
-				label: tier.label,
-				amount: tier.amount,
-				resourceType: tier.resourceType,
-				accessDurationSeconds: tier.accessDurationSeconds,
+			plans: this.config.plans.map((plan) => ({
+				planId: plan.planId,
+				unitAmount: plan.unitAmount,
+				description: plan.description,
 			})),
 		};
 
@@ -130,12 +127,8 @@ export class Key0Executor implements AgentExecutor {
 					role: "agent",
 					parts: [
 						{
-							kind: "text",
-							text: "Available products and pricing:",
-						},
-						{
 							kind: "data",
-							data: catalog as any,
+							data: catalog,
 						},
 					],
 				},
@@ -221,7 +214,7 @@ export class Key0Executor implements AgentExecutor {
 			);
 		}
 
-		// 2. Look up the challenge record to get tierId, resourceId, requestId
+		// 2. Look up the challenge record to get planId, resourceId, requestId
 		const record = await this.engine.getChallengeRecord(challengeId);
 		if (!record) {
 			throw new Key0Error(
@@ -231,7 +224,7 @@ export class Key0Executor implements AgentExecutor {
 			);
 		}
 
-		const { tierId, resourceId, requestId } = record;
+		const { planId, resourceId, requestId } = record;
 
 		// 3. Emit payment-submitted (working state)
 		this.publishWorkingTask(
@@ -274,7 +267,7 @@ export class Key0Executor implements AgentExecutor {
 		// 6. Issue access grant via the engine
 		const grant: AccessGrant = await this.engine.processHttpPayment(
 			requestId,
-			tierId,
+			planId,
 			resourceId,
 			txHash,
 			payer as `0x${string}` | undefined,
