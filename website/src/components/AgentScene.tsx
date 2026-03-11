@@ -159,6 +159,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
       const allMats: THREE.Material[] = [monoMat, wireMat];
       let halfWidth = 0;
+      let halfHeight = 0;
       let loaded = false;
 
       const loader = new GLTFLoader();
@@ -192,6 +193,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         );
 
         halfWidth = (scaledSize.x + padX) / 2;
+        halfHeight = (scaledSize.y + padY) / 2;
 
         group.add(model);
         loaded = true;
@@ -204,6 +206,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         loaded: () => loaded,
         getHitX: () => -halfWidth,
         getHitXRight: () => halfWidth,
+        getHitYTop: () => halfHeight,
+        getHitYBottom: () => -halfHeight,
       };
     }
 
@@ -747,14 +751,186 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       pauseDur: 0.5,
     };
 
-    // ── Scene 2 state machine ───────────────────────────────────────
+    // ── Scene 2 ──────────────────────────────────────────────────────
+    const S2_POSITIONS = [
+      new THREE.Vector3(-10, 3, 0),
+      new THREE.Vector3(10, 3, 0),
+      new THREE.Vector3(-10, -4, 0),
+      new THREE.Vector3(10, -4, 0),
+    ];
+    const S2_LABELS = ["ChatGPT", "Claude", "Gemini", "OpenClaw"];
+    const S2_ARC_DIRS = [1, 1, -1, -1];
+    const S2_ORBIT_DIRS = [1, -1, -1, 1];
+    const S2_ORBIT_SPEED = 0.3;
+    const S2_ORBITS = S2_POSITIONS.map((pos) => ({
+      radius: Math.abs(pos.x),
+      initAngle: pos.x < 0 ? Math.PI : 0,
+      y: pos.y,
+      angle: pos.x < 0 ? Math.PI : 0,
+    }));
+    const S2_LINE_SEGS = 60;
+
+    const S2_SPHERE_R = 1.26 * 0.75;
+    const s2Agents = S2_POSITIONS.map((pos, i) => {
+      const group = new THREE.Group();
+      const wireMat = new THREE.MeshBasicMaterial({ color: 0x3a3a3a, wireframe: true, transparent: true, opacity: 0 });
+      const wire = new THREE.Mesh(new THREE.SphereGeometry(S2_SPHERE_R, 10, 7), wireMat);
+      group.add(wire);
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0 });
+      const core = new THREE.Mesh(new THREE.SphereGeometry(S2_SPHERE_R * 0.38, 12, 10), coreMat);
+      group.add(core);
+      const label = makeLabel(S2_LABELS[i]);
+      label.position.set(0, 1.6, 0);
+      group.add(label);
+      group.scale.setScalar(0);
+      group.position.copy(pos);
+      group.visible = false;
+      scene.add(group);
+      return { group, wire, wireMat, coreMat, label, labelMat: label.material as THREE.SpriteMaterial };
+    });
+
+    const s2Lines = S2_POSITIONS.map(() => {
+      const pts = new Float32Array((S2_LINE_SEGS + 1) * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+      geo.setDrawRange(0, 0);
+      const mat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0 });
+      const line = new THREE.Line(geo, mat);
+      scene.add(line);
+      return { pts, geo, mat, line };
+    });
+
+    const S2_CONN_LABELS = ["A2A", "HTTP", "HTTP", "MCP"];
+    function makeConnLabel(text: string) {
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d")!;
+      ctx.font = "bold 36px 'DM Mono', monospace";
+      const tw = ctx.measureText(text).width;
+      const padX = 16, padTop = 12, padBottom = 8, textH = 36;
+      const CW = tw + padX * 2;
+      const CH = textH + padTop + padBottom;
+      c.width = CW; c.height = CH;
+      ctx.font = "bold 36px 'DM Mono', monospace";
+      const r = 8;
+      ctx.beginPath();
+      ctx.moveTo(r, 0); ctx.lineTo(CW - r, 0);
+      ctx.quadraticCurveTo(CW, 0, CW, r);
+      ctx.lineTo(CW, CH - r); ctx.quadraticCurveTo(CW, CH, CW - r, CH);
+      ctx.lineTo(r, CH); ctx.quadraticCurveTo(0, CH, 0, CH - r);
+      ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(text, CW / 2, padTop + textH * 0.8);
+      const tex = new THREE.CanvasTexture(c);
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      const worldH = 0.72;
+      sprite.scale.set(worldH * (CW / CH), worldH, 1);
+      sprite.visible = false;
+      scene.add(sprite);
+      return { sprite, mat };
+    }
+    const s2HttpLabels = S2_CONN_LABELS.map((txt) => makeConnLabel(txt));
+
+    const s2PingBalls = S2_POSITIONS.map(() => {
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0 })
+      );
+      ball.visible = false;
+      scene.add(ball);
+      return ball;
+    });
+    const s2PingStates = S2_POSITIONS.map(() => ({ t: 0, forward: true }));
+
+    function getS2Curve(idx: number, t: number) {
+      const agentPos = s2Agents[idx].group.position;
+      const fromX = agentPos.x;
+      const fromY = agentPos.y;
+      const fromZ = agentPos.z;
+      const logoX = logo.group.position.x;
+      const logoY = logo.group.position.y;
+      const logoZ = logo.group.position.z;
+
+      let toX: number, toY: number;
+      if (logo.loaded()) {
+        const dx = fromX - logoX;
+        const dy = fromY - logoY;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          toX = logoX + (dx > 0 ? logo.getHitXRight() : logo.getHitX());
+          toY = logoY;
+        } else {
+          toX = logoX;
+          toY = logoY + (dy > 0 ? logo.getHitYTop() : logo.getHitYBottom());
+        }
+      } else {
+        toX = 0;
+        toY = logoY;
+      }
+
+      const cpX = (fromX + toX) / 2;
+      const cpY = (fromY + toY) / 2 + S2_ARC_DIRS[idx] * 1.8;
+      const cpZ = (fromZ + logoZ) / 2;
+      const mt = 1 - t;
+      return {
+        x: mt * mt * fromX + 2 * mt * t * cpX + t * t * toX,
+        y: mt * mt * fromY + 2 * mt * t * cpY + t * t * toY,
+        z: mt * mt * fromZ + 2 * mt * t * cpZ + t * t * logoZ,
+      };
+    }
+
+    const S2_SWIVEL_MAX = 10 * (Math.PI / 180);
+    function updateS2Orbits(delta: number) {
+      S2_ORBITS.forEach((orb, i) => {
+        orb.angle += S2_ORBIT_DIRS[i] * S2_ORBIT_SPEED * delta;
+        const swivel = Math.sin(orb.angle) * S2_SWIVEL_MAX;
+        const a = orb.initAngle + swivel;
+        s2Agents[i].group.position.x = Math.cos(a) * orb.radius;
+        s2Agents[i].group.position.z = Math.sin(a) * orb.radius;
+      });
+    }
+
     const s2State = {
       active: false,
       timer: 0,
-      phase: "idle" as "idle" | "entering" | "active" | "exiting",
+      phase: "idle" as "idle" | "entering" | "popIn" | "pause" | "drawLines" | "labelIn" | "active" | "exiting",
       enterDur: 0.5,
+      popInDur: 0.55,
+      pauseDur: 0.2,
+      drawLinesDur: 0.9,
+      labelInDur: 0.35,
       exitDur: 0.5,
     };
+
+    function resetS2Objects() {
+      S2_ORBITS.forEach((orb, i) => {
+        orb.angle = orb.initAngle;
+        s2Agents[i].group.position.copy(S2_POSITIONS[i]);
+      });
+      s2Agents.forEach(a => {
+        a.group.visible = false;
+        a.group.scale.setScalar(0);
+        a.wireMat.opacity = 0;
+        a.coreMat.opacity = 0;
+        a.labelMat.opacity = 0;
+      });
+      s2Lines.forEach(l => {
+        l.mat.opacity = 0;
+        l.geo.setDrawRange(0, 0);
+      });
+      s2HttpLabels.forEach(l => {
+        l.sprite.visible = false;
+        l.mat.opacity = 0;
+      });
+      s2PingBalls.forEach(b => {
+        b.visible = false;
+        (b.material as THREE.MeshBasicMaterial).opacity = 0;
+      });
+    }
 
     function resetScene1ToNodesVisible() {
       agent.group.visible = true;
@@ -1017,9 +1193,14 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
         if (s2State.active) {
           s2State.timer += dt;
+          const st = s2State.timer;
+
+          if (s2State.phase !== "entering" && s2State.phase !== "exiting") {
+            updateS2Orbits(dt);
+          }
 
           if (s2State.phase === "entering") {
-            const p = Math.min(s2State.timer / s2State.enterDur, 1);
+            const p = Math.min(st / s2State.enterDur, 1);
             setNodeOpacity(nodes[0], 1 - p);
             setNodeOpacity(nodes[1], 1 - p);
             lineMat.opacity = Math.max(0, lineMat.opacity - dt / s2State.enterDur);
@@ -1045,13 +1226,154 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
               agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
               ripples.forEach((r) => { r.sprite.visible = false; });
+              s2Agents.forEach(a => { a.group.visible = true; });
+              s2State.phase = "popIn";
+              s2State.timer = 0;
+            }
+          }
+
+          if (s2State.phase === "popIn") {
+            const p = Math.min(st / s2State.popInDur, 1);
+            const sc = easeOutBack(p);
+            const op = Math.min(st / (s2State.popInDur * 0.4), 1);
+            s2Agents.forEach(a => {
+              a.group.scale.setScalar(sc);
+              a.wireMat.opacity = op * 0.85;
+              a.coreMat.opacity = op;
+              a.labelMat.opacity = op;
+              a.wire.rotation.y += dt * 0.3;
+              a.wire.rotation.x += dt * 0.1;
+            });
+            if (p >= 1) {
+              s2Agents.forEach(a => { a.group.scale.setScalar(1); });
+              s2State.phase = "pause";
+              s2State.timer = 0;
+            }
+          }
+
+          if (s2State.phase === "pause") {
+            s2Agents.forEach(a => {
+              a.wire.rotation.y += dt * 0.3;
+              a.wire.rotation.x += dt * 0.1;
+            });
+            if (st >= s2State.pauseDur) {
+              s2Lines.forEach(l => { l.mat.opacity = 0.7; });
+              s2State.phase = "drawLines";
+              s2State.timer = 0;
+            }
+          }
+
+          if (s2State.phase === "drawLines") {
+            const p = Math.min(st / s2State.drawLinesDur, 1);
+            const tipIdx = Math.floor(p * S2_LINE_SEGS);
+            s2Lines.forEach((line, i) => {
+              for (let j = 0; j <= tipIdx; j++) {
+                const t2 = j / S2_LINE_SEGS;
+                const pt = getS2Curve(i, t2);
+                line.pts[j * 3] = pt.x;
+                line.pts[j * 3 + 1] = pt.y;
+                line.pts[j * 3 + 2] = pt.z;
+              }
+              line.geo.attributes.position.needsUpdate = true;
+              line.geo.setDrawRange(0, tipIdx + 1);
+            });
+            s2Agents.forEach(a => {
+              a.wire.rotation.y += dt * 0.3;
+              a.wire.rotation.x += dt * 0.1;
+            });
+            if (p >= 1) {
+              s2Lines.forEach(l => { l.geo.setDrawRange(0, S2_LINE_SEGS + 1); });
+              s2HttpLabels.forEach(l => { l.sprite.visible = true; });
+              s2State.phase = "labelIn";
+              s2State.timer = 0;
+            }
+          }
+
+          if (s2State.phase === "labelIn") {
+            const p = Math.min(st / s2State.labelInDur, 1);
+            s2HttpLabels.forEach((l, i) => {
+              l.mat.opacity = p;
+              const mid = getS2Curve(i, 0.5);
+              const t1 = getS2Curve(i, 0.45);
+              const t2 = getS2Curve(i, 0.55);
+              let angle = Math.atan2(t2.y - t1.y, t2.x - t1.x);
+              if (angle > Math.PI / 2) angle -= Math.PI;
+              if (angle < -Math.PI / 2) angle += Math.PI;
+              l.sprite.material.rotation = angle;
+              l.sprite.position.set(
+                mid.x + (s2Agents[i].group.position.x > 0 ? -0.6 : 0.6),
+                mid.y + S2_ARC_DIRS[i] * 0.55,
+                mid.z + 0.1
+              );
+            });
+            s2Agents.forEach(a => {
+              a.wire.rotation.y += dt * 0.3;
+              a.wire.rotation.x += dt * 0.1;
+            });
+            if (p >= 1) {
+              s2HttpLabels.forEach(l => { l.mat.opacity = 1; });
+              s2PingBalls.forEach(b => {
+                b.visible = true;
+                (b.material as THREE.MeshBasicMaterial).opacity = 0.4;
+              });
+              s2PingStates.forEach(ps => { ps.t = 0; ps.forward = true; });
               s2State.phase = "active";
               s2State.timer = 0;
             }
           }
 
+          if (s2State.phase === "active") {
+            const PING_DUR = 1.95;
+            s2Agents.forEach(a => {
+              a.wire.rotation.y += dt * 0.3;
+              a.wire.rotation.x += dt * 0.1;
+            });
+            s2PingStates.forEach((ps, i) => {
+              ps.t += dt;
+              if (ps.t >= PING_DUR) { ps.t -= PING_DUR; ps.forward = !ps.forward; }
+              const pingT = ps.forward ? ps.t / PING_DUR : 1 - ps.t / PING_DUR;
+              const pp = getS2Curve(i, pingT);
+              s2PingBalls[i].position.set(pp.x, pp.y, pp.z + 0.2);
+            });
+            s2Lines.forEach((line, i) => {
+              for (let j = 0; j <= S2_LINE_SEGS; j++) {
+                const t2 = j / S2_LINE_SEGS;
+                const pt = getS2Curve(i, t2);
+                line.pts[j * 3] = pt.x;
+                line.pts[j * 3 + 1] = pt.y;
+                line.pts[j * 3 + 2] = pt.z;
+              }
+              line.geo.attributes.position.needsUpdate = true;
+            });
+            s2HttpLabels.forEach((l, i) => {
+              const mid = getS2Curve(i, 0.5);
+              const t1 = getS2Curve(i, 0.45);
+              const t2 = getS2Curve(i, 0.55);
+              let angle = Math.atan2(t2.y - t1.y, t2.x - t1.x);
+              if (angle > Math.PI / 2) angle -= Math.PI;
+              if (angle < -Math.PI / 2) angle += Math.PI;
+              l.sprite.material.rotation = angle;
+              l.sprite.position.set(
+                mid.x + (s2Agents[i].group.position.x > 0 ? -0.6 : 0.6),
+                mid.y + S2_ARC_DIRS[i] * 0.55,
+                mid.z + 0.1
+              );
+            });
+          }
+
           if (s2State.phase === "exiting") {
-            const p = Math.min(s2State.timer / s2State.exitDur, 1);
+            const p = Math.min(st / s2State.exitDur, 1);
+            const inv = 1 - p;
+            s2Agents.forEach(a => {
+              a.wireMat.opacity = inv * 0.85;
+              a.coreMat.opacity = inv;
+              a.labelMat.opacity = inv;
+            });
+            s2Lines.forEach(l => { l.mat.opacity = inv * 0.7; });
+            s2HttpLabels.forEach(l => { l.mat.opacity = inv; });
+            s2PingBalls.forEach(b => {
+              (b.material as THREE.MeshBasicMaterial).opacity = inv * 0.4;
+            });
             agent.group.visible = true;
             server.group.visible = true;
             setNodeOpacity(nodes[0], p);
@@ -1059,6 +1381,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
             agent.group.scale.setScalar(1);
             server.group.scale.setScalar(1);
             if (p >= 1) {
+              resetS2Objects();
               s2State.active = false;
               s2State.phase = "idle";
               s2State.timer = 0;
@@ -1101,6 +1424,14 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         mesh.position.y = y;
       });
 
+      if (logo.loaded() && logo.group.scale.x > 0.05) {
+        const baseAngle = (-35 * Math.PI) / 180;
+        const maxOffset = (20 * Math.PI) / 180;
+        const angle = baseAngle + Math.sin(clock * 0.6) * maxOffset;
+        logo.group.rotation.y = angle;
+        logo.wireBox.rotation.y = angle;
+      }
+
       if (!s2State.active) {
       server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
 
@@ -1115,14 +1446,6 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       if (agent3.wire && agent3.group.visible) {
         agent3.wire.rotation.y += dt * 0.3;
         agent3.wire.rotation.x += dt * 0.1;
-      }
-
-      if (logo.loaded() && logo.group.scale.x > 0.05) {
-        const baseAngle = (-35 * Math.PI) / 180;
-        const maxOffset = (20 * Math.PI) / 180;
-        const angle = baseAngle + Math.sin(clock * 0.6) * maxOffset;
-        logo.group.rotation.y = angle;
-        logo.wireBox.rotation.y = angle;
       }
 
       const allDone = nodes.every((n) => n.done);
