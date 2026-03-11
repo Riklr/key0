@@ -19,7 +19,6 @@
 import {
 	AccessTokenIssuer,
 	type AuthHeaderProvider,
-	createRemoteResourceVerifier,
 	createRemoteTokenIssuer,
 	type IChallengeStore,
 	type ISeenTxStore,
@@ -137,13 +136,6 @@ if (BACKEND_AUTH_STRATEGY === "jwt") {
 // Determine token issuance mode
 const tokenMode = (process.env.TOKEN_MODE || "native") as "native" | "remote";
 
-// Create remote verifier (calls backend to verify resources)
-const remoteVerifier = createRemoteResourceVerifier({
-	url: `${BACKEND_API_URL}/internal/verify-resource`,
-	auth: authProvider,
-	timeoutMs: 5000,
-});
-
 // Create token issuer callback based on mode
 let fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
@@ -250,7 +242,6 @@ app.use(
 			network: NETWORK,
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
 			plans,
-			onVerifyResource: remoteVerifier,
 			fetchResourceCredentials,
 			onPaymentReceived: async (grant) => {
 				// Notify backend when payment is received

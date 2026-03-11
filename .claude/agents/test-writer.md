@@ -41,9 +41,7 @@ PAID → PAID                     (idempotent re-verification)
 | Code | HTTP | When |
 |------|------|------|
 | `INVALID_REQUEST` | 400 | Invalid UUID, cancel non-PENDING |
-| `RESOURCE_NOT_FOUND` | 404 | `onVerifyResource` returns false |
 | `TIER_NOT_FOUND` | 400 | planId not in plan catalog |
-| `RESOURCE_VERIFY_TIMEOUT` | 504 | `onVerifyResource` never resolves |
 | `CHALLENGE_NOT_FOUND` | 404 | Unknown challengeId |
 | `CHALLENGE_EXPIRED` | 410 | TTL elapsed before payment |
 | `CHAIN_MISMATCH` | 400 | proof.chainId ≠ challenge.chainId |

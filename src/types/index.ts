@@ -30,7 +30,6 @@ export type {
 	NetworkConfig,
 	NetworkName,
 	Plan,
-	ResourceVerifier,
 	SellerConfig,
 	TokenIssuanceResult,
 } from "./config.js";

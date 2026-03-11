@@ -87,15 +87,6 @@ export function generateEnv(config: Config): string {
 		);
 	}
 
-	if (config.verifyResourceApi) {
-		lines.push(
-			"",
-			"# ── Resource Verification ─────────────────────────────────────────────────────",
-			"",
-			`VERIFY_RESOURCE_API=${config.verifyResourceApi}`,
-		);
-	}
-
 	if (config.mcpEnabled) {
 		lines.push(
 			"",
@@ -179,9 +170,6 @@ export function generateDockerRun(config: Config): string {
 	if (config.challengeTtlSeconds !== "900") {
 		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
-	if (config.verifyResourceApi) {
-		envFlags.push(`-e VERIFY_RESOURCE_API=${config.verifyResourceApi}`);
-	}
 	if (config.mcpEnabled) {
 		envFlags.push(`-e MCP_ENABLED=true`);
 	}
@@ -229,9 +217,6 @@ export function generateDockerCompose(config: Config): string {
 	}
 	if (config.challengeTtlSeconds !== "900") {
 		envVars.CHALLENGE_TTL_SECONDS = config.challengeTtlSeconds;
-	}
-	if (config.verifyResourceApi) {
-		envVars.VERIFY_RESOURCE_API = config.verifyResourceApi;
 	}
 	if (config.mcpEnabled) {
 		envVars.MCP_ENABLED = "true";

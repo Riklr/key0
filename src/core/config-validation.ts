@@ -60,11 +60,6 @@ export function validateSellerConfig(config: SellerConfig): void {
 		}
 	}
 
-	// Validate onVerifyResource is a function
-	if (typeof config.onVerifyResource !== "function") {
-		throw new Error("SellerConfig: onVerifyResource must be a function");
-	}
-
 	// Validate fetchResourceCredentials is a function
 	if (typeof config.fetchResourceCredentials !== "function") {
 		throw new Error("SellerConfig: fetchResourceCredentials must be a function");

@@ -37,9 +37,6 @@ export interface Config {
 	// Challenge
 	challengeTtlSeconds: string;
 
-	// Resource Verification
-	verifyResourceApi: string;
-
 	// MCP
 	mcpEnabled: boolean;
 
@@ -88,8 +85,6 @@ export const defaultConfig: Config = {
 	],
 
 	challengeTtlSeconds: "900",
-
-	verifyResourceApi: "",
 
 	mcpEnabled: false,
 

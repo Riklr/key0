@@ -1,10 +1,5 @@
 import type { NetworkName } from "@riklr/key0";
-import {
-	AccessTokenIssuer,
-	RedisChallengeStore,
-	RedisSeenTxStore,
-	X402Adapter,
-} from "@riklr/key0";
+import { AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore, X402Adapter } from "@riklr/key0";
 import { key0Router, validateAccessToken } from "@riklr/key0/express";
 import express from "express";
 import Redis from "ioredis";
@@ -63,16 +58,6 @@ app.use(
 					expiresIn: 86400,
 				},
 			],
-			onVerifyResource: async (resourceId: string, _planId: string) => {
-				// Accept "default" for general API access (tier-scoped)
-				if (resourceId === "default") {
-					return true;
-				}
-
-				// In a real app, check your database for specific resources
-				const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
-				return validResources.includes(resourceId);
-			},
 			fetchResourceCredentials: async (params) => {
 				// Generate JWT using the opt-in AccessTokenIssuer utility
 				const ttl = params.planId === "single-photo" ? 3600 : 86400;

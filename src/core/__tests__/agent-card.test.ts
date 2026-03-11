@@ -20,7 +20,6 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 				resourceType: "photo",
 			},
 		],
-		onVerifyResource: async () => true,
 		fetchResourceCredentials: async () => ({
 			token: "test-token",
 			expiresAt: new Date(),

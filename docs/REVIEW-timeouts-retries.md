@@ -134,36 +134,6 @@ const receipt = await publicClient.waitForTransactionReceipt({
 
 ---
 
-### T6. `onVerifyResource` timeout timer is never cleared (LOW)
-
-**File**: `src/core/challenge-engine.ts:163-174`, repeated at `:468-479`, `:558-569`
-
-**Problem**: The `setTimeout` in the `Promise.race` pattern is never cleared when the `onVerifyResource` resolves before the timeout. This leaks a timer handle. While Node/Bun will GC it, under high concurrency this creates unnecessary timer pressure.
-
-**Current code**:
-```ts
-const exists = await Promise.race([
-  this.config.onVerifyResource(resourceId, req.planId),
-  new Promise<never>((_, reject) =>
-    setTimeout(() => reject(...), timeoutMs)
-  ),
-]);
-```
-
-**Fix**: Clear the timer on resolution:
-
-```ts
-let timer: ReturnType<typeof setTimeout>;
-const exists = await Promise.race([
-  this.config.onVerifyResource(resourceId, req.planId).finally(() => clearTimeout(timer)),
-  new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(...), timeoutMs);
-  }),
-]);
-```
-
----
-
 ## Retry Gaps
 
 ### R1. No retry on `fetchResourceCredentials` failure — PAID record orphaned (CRITICAL)
@@ -286,26 +256,7 @@ try {
 
 ---
 
-### S2. `processHttpPayment` verifies resource AFTER settlement (HIGH)
-
-**File**: `src/integrations/x402-http-middleware.ts:179-193`, `src/integrations/express.ts:202-221`
-
-**Problem**: In the HTTP flow (Transport 1 and 2), the sequence is:
-1. `settlePayment()` — money moves on-chain
-2. `engine.processHttpPayment()` — which calls `onVerifyResource()` again
-
-If `onVerifyResource` fails in step 2 (resource deleted between challenge and payment), the payment has **already been settled on-chain** but the engine throws `RESOURCE_NOT_FOUND`. The money is on-chain in the seller's wallet, no PAID record exists, and no refund mechanism kicks in.
-
-**Impact**: Client pays, resource no longer exists, no refund path.
-
-**Fix options**:
-1. Skip re-verification in `processHttpPayment` (the resource was already verified during challenge phase)
-2. If re-verification is needed, do it BEFORE settlement
-3. If verification fails post-settlement, create the PAID record anyway so the refund cron can handle it
-
----
-
-### S3. No recovery path for PAID records without `fromAddress` (MEDIUM)
+### S2. No recovery path for PAID records without `fromAddress` (MEDIUM)
 
 **File**: `src/core/storage/redis.ts:270`
 
@@ -676,7 +627,6 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 
 | Operation | Has Timeout? | Default | Configurable? |
 |-----------|-------------|---------|---------------|
-| `onVerifyResource` | Yes | 5s | `resourceVerifyTimeoutMs` |
 | `fetchResourceCredentials` | Yes | 15s | `tokenIssueTimeoutMs` |
 | `settleViaFacilitator` /verify | Yes | 30s | No (hardcoded) |
 | `settleViaFacilitator` /settle | Yes | 60s | No (hardcoded) |
@@ -689,7 +639,6 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 | `acquireRedisLock` | Yes | 30s max wait | `maxWaitMs` param |
 | `oauthClientCredentialsAuth` fetch | **NO** | - | - |
 | `buildDockerTokenIssuer` fetch | **NO** | - | - |
-| `RemoteResourceVerifier` | Yes | 5s | `timeoutMs` |
 | `RemoteTokenIssuer` | Yes | 10s | `timeoutMs` |
 | Challenge TTL (Redis key) | Yes | 900s | `challengeTTLSeconds` |
 | Record TTL (Redis key) | Yes | 7 days | `recordTTLSeconds` |
@@ -702,7 +651,6 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 | Operation | Has Retry? | Strategy | Idempotent? |
 |-----------|-----------|----------|-------------|
 | `fetchResourceCredentials` | Yes | 2 retries, exponential backoff (500ms base), **not on timeout** | Depends on implementation |
-| `onVerifyResource` | **NO** | - | Yes (read-only) |
 | Facilitator /verify | **NO** | - | Yes (read-only) |
 | Facilitator /settle | Yes | 2 retries, exponential backoff (500ms base), **not on PAYMENT_FAILED** | Partially (nonce-bound) |
 | Gas wallet settle | **NO** | - | No (nonce increments) |

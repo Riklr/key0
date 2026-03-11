@@ -39,7 +39,6 @@ export default function App() {
 						providerName: data.config.providerName ?? "",
 						providerUrl: data.config.providerUrl ?? "",
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
-						verifyResourceApi: data.config.verifyResourceApi ?? "",
 						mcpEnabled: data.config.mcpEnabled ?? false,
 						backendAuthStrategy: data.config.backendAuthStrategy ?? "shared-secret",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
@@ -207,17 +206,6 @@ export default function App() {
 									value={config.issueTokenApi}
 									onChange={(e) => set("issueTokenApi", e.target.value)}
 									placeholder="https://api.example.com/issue-token"
-								/>
-							</Field>
-
-							<Field
-								label="Verify Resource API"
-								hint="Optional — Key0 POSTs here before payment to check if the resource exists. Skipped if empty."
-							>
-								<Input
-									value={config.verifyResourceApi}
-									onChange={(e) => set("verifyResourceApi", e.target.value)}
-									placeholder="https://api.example.com/verify-resource"
 								/>
 							</Field>
 

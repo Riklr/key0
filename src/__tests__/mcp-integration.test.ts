@@ -63,7 +63,6 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 			},
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async () => true,
 		fetchResourceCredentials: async (params) => {
 			const { AccessTokenIssuer } = await import("../core/access-token.js");
 			const issuer = new AccessTokenIssuer(SECRET);
@@ -497,44 +496,6 @@ describe("createMcpServer — request_access happy path", () => {
 		// Idempotent: same challenge, returns cached grant
 		expect(body2.status).toBe("access_granted");
 		expect(body2.challengeId).toBe(body1.challengeId);
-	});
-
-	test("verifyResource is called before settlement — RESOURCE_NOT_FOUND aborts before settlement", async () => {
-		let settleWasCalled = false;
-		settlePaymentImpl = async () => {
-			settleWasCalled = true;
-			return {
-				txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
-				settleResponse: {
-					success: true,
-					transaction: `0x${"cc".repeat(32)}`,
-					network: "eip155:84532",
-				},
-			};
-		};
-
-		const { engine, config } = makeEngine({
-			config: {
-				onVerifyResource: async () => false,
-			},
-		});
-		const server = createMcpServer(engine, config);
-		const payment = makePaymentPayload();
-
-		const result = (await callTool(
-			server,
-			"request_access",
-			{ planId: "basic", resourceId: "default" },
-			{ "x402/payment": payment },
-		)) as {
-			isError: true;
-			content: Array<{ text: string }>;
-		};
-
-		expect(settleWasCalled).toBe(false);
-		expect(result.isError).toBe(true);
-		const body = JSON.parse(result.content[0]!.text) as { code: string };
-		expect(body.code).toBe("RESOURCE_NOT_FOUND");
 	});
 
 	test("fetchResourceCredentials return value becomes the accessToken in the grant", async () => {

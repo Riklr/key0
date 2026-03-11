@@ -41,8 +41,6 @@ export type Plan = {
 	readonly tags?: readonly string[]; // ["most-popular"]
 };
 
-export type ResourceVerifier = (resourceId: string, planId: string) => Promise<boolean>;
-
 /**
  * Minimal Redis interface required for distributed gas wallet lock.
  * Satisfied by any ioredis client instance.
@@ -70,10 +68,6 @@ export type SellerConfig = {
 
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900
-
-	// Resource verification callback
-	readonly onVerifyResource: ResourceVerifier;
-	readonly resourceVerifyTimeoutMs?: number; // defaults to 5000
 
 	// Credential issuance callback (required)
 	/**

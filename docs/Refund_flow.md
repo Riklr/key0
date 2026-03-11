@@ -176,7 +176,6 @@ const { requestHandler } = createKey0({
     plans: [
       { planId: 'report-v1', unitAmount: '$2.00' },
     ],
-    onVerifyResource: async (id) => db.resources.exists(id),
     fetchResourceCredentials: async ({ challengeId, resourceId, planId }) => ({
       token: jwt.sign({ jti: challengeId, sub: resourceId, plan: planId }, SECRET, { expiresIn: '2h' }),
       expiresAt: new Date(Date.now() + 7200_000),

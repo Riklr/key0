@@ -14,7 +14,6 @@ function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		plans: [
 			{ planId: "single", displayName: "Single", unitAmount: "$0.10", resourceType: "photo" },
 		],
-		onVerifyResource: async () => true,
 		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
 			expiresAt: new Date(Date.now() + 3600 * 1000),

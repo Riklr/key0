@@ -31,9 +31,6 @@ function makeConfig(): SellerConfig {
 			{ planId: "album", displayName: "Full Album", unitAmount: "$1.00", resourceType: "album" },
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async (resourceId: string) => {
-			return resourceId !== "nonexistent";
-		},
 		fetchResourceCredentials: async (params) => {
 			const { token, expiresAt } = await issuer.sign(
 				{
@@ -229,32 +226,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 		expect(c1["challengeId"]).toBe(c2["challengeId"]);
 	});
 
-	test("3. Resource not found returns failed task", async () => {
-		const adapter = new MockPaymentAdapter();
-		const config = makeConfig();
-		const { executor } = createKey0({
-			config,
-			adapter,
-			store: new TestChallengeStore(),
-			seenTxStore: new TestSeenTxStore(),
-		});
-
-		const events = await runTask(executor, {
-			type: "AccessRequest",
-			requestId: uuidv4(),
-			resourceId: "nonexistent",
-			planId: "single",
-			clientAgentId: "agent://e2e-test",
-		});
-
-		expect(extractTaskState(events)).toBe("failed");
-		const task = events.find((e: any) => e.kind === "task");
-		expect(task).toBeDefined();
-		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
-		expect(textPart.text).toContain("not found");
-	});
-
-	test("4. Default resourceId when not provided", async () => {
+	test("3. Default resourceId when not provided", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createKey0({

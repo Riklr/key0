@@ -42,9 +42,6 @@ function makeConfig(): SellerConfig {
 			},
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async (resourceId: string) => {
-			return resourceId !== "nonexistent";
-		},
 		fetchResourceCredentials: async (params) => {
 			const { token, expiresAt } = await issuer.sign(
 				{
@@ -288,35 +285,6 @@ describe("x402-http-middleware", () => {
 				Buffer.from(mockRes.headers["payment-required"]!, "base64").toString(),
 			);
 			expect(decodedHeader.x402Version).toBe(2);
-		});
-
-		test("should return 404 for nonexistent resource", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [
-							{
-								kind: "data",
-								data: {
-									type: "AccessRequest",
-									requestId: "req-123",
-									planId: "basic",
-									resourceId: "nonexistent",
-								},
-							},
-						],
-					},
-				},
-			});
-
-			const next = (() => {}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(mockRes.statusCode).toBe(404);
-			expect(mockRes.jsonData.code).toBe("RESOURCE_NOT_FOUND");
 		});
 
 		test("should return 400 for invalid tier", async () => {
@@ -627,12 +595,6 @@ describe("x402-http-middleware", () => {
 				'Plan "invalid-tier" not found',
 			);
 		});
-
-		test("should reject nonexistent resource", async () => {
-			await expect(engine.requestHttpAccess("req-1", "basic", "nonexistent")).rejects.toThrow(
-				'Resource "nonexistent" not found',
-			);
-		});
 	});
 
 	describe("ChallengeEngine.processHttpPayment", () => {
@@ -743,12 +705,6 @@ describe("x402-http-middleware", () => {
 			await expect(
 				engine.processHttpPayment("req-1", "invalid-tier", "default", txHash),
 			).rejects.toThrow('Plan "invalid-tier" not found');
-		});
-
-		test("should reject nonexistent resource via verifyResource (pre-settlement check)", async () => {
-			await expect(engine.verifyResource("nonexistent", "basic")).rejects.toThrow(
-				'Resource "nonexistent" not found',
-			);
 		});
 
 		test("should reject double-spend (same txHash twice)", async () => {

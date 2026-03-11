@@ -269,26 +269,21 @@ Engine method: `requestAccess()` or `requestHttpAccess()`
 1. Validate `requestId` (UUID format)
 2. Extract/default `resourceId` (`"default"`) and `clientAgentId` (`"anonymous"` or `"x402-http"`)
 3. Look up `planId` in `SellerConfig.plans` — throw `TIER_NOT_FOUND` (400) if missing
-4. Call `onVerifyResource(resourceId, planId)` with timeout (default 5s, configurable via `resourceVerifyTimeoutMs`)
-  - Timeout → `RESOURCE_VERIFY_TIMEOUT` (504)
-  - Returns false → `RESOURCE_NOT_FOUND` (404)
-5. **Idempotency check**: `store.findActiveByRequestId(requestId)`
+4. **Idempotency check**: `store.findActiveByRequestId(requestId)`
   - If PENDING and not expired → return existing challenge
   - If DELIVERED with grant → throw `PROOF_ALREADY_REDEEMED` (200, includes grant in details)
   - If EXPIRED/CANCELLED → fall through to create new
-6. Generate `challengeId` (UUID via adapter for A2A, `http-{uuid}` for HTTP)
-7. Create PENDING `ChallengeRecord`, store via `store.create()`
-8. Return `X402Challenge` (A2A) or `{ challengeId }` (HTTP)
+5. Generate `challengeId` (UUID via adapter for A2A, `http-{uuid}` for HTTP)
+6. Create PENDING `ChallengeRecord`, store via `store.create()`
+7. Return `X402Challenge` (A2A) or `{ challengeId }` (HTTP)
 
 ### Phase 2 — Settlement + Token Issuance
 
-The transport layer first verifies the resource via `engine.verifyResource()`, then calls `settlePayment()` to settle the EIP-3009 signature on-chain, then passes the result to `engine.processHttpPayment()`.
-
-**Important**: Resource verification happens BEFORE settlement to avoid money-at-risk (if a resource disappears between challenge and payment, the client is not charged).
+The transport layer calls `settlePayment()` to settle the EIP-3009 signature on-chain, then passes the result to `engine.processHttpPayment()`.
 
 Engine method: `processHttpPayment(requestId, planId, resourceId, txHash, fromAddress?)`
 
-1. Look up plan (resource verification is NOT done here — callers must verify before settlement)
+1. Look up plan — throw `TIER_NOT_FOUND` (400) if missing
 2. **Double-spend guard**: `seenTxStore.get(txHash)` — throw `TX_ALREADY_REDEEMED` (409)
 3. Find PENDING record by `requestId` — or auto-create one if challenge phase was skipped or expired
 4. **Atomic transition**: PENDING → PAID (with `txHash`, `paidAt`, `fromAddress`)
@@ -434,7 +429,7 @@ payment-signature: eyJ4NDAyVm... (base64-encoded X402PaymentPayload)
 { "planId": "basic", "requestId": "550e8400-...", "resourceId": "photo-123" }
 ```
 
-Server decodes header → `engine.verifyResource()` → `settlePayment()` → `engine.processHttpPayment()` → returns `AccessGrant`.
+Server decodes header → `settlePayment()` → `engine.processHttpPayment()` → returns `AccessGrant`.
 
 ```
 HTTP/1.1 200 OK
@@ -477,7 +472,7 @@ POST {basePath}/jsonrpc
         │       → engine.requestHttpAccess() → HTTP 402 + payment-required header
         │
         └── Has payment-signature header?
-                → engine.verifyResource() → settlePayment() → engine.processHttpPayment() → HTTP 200 + AccessGrant
+                → settlePayment() → engine.processHttpPayment() → HTTP 200 + AccessGrant
 ```
 
 The middleware extracts `AccessRequest` from `params.message.parts` — either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON.
@@ -798,7 +793,6 @@ key0:challenge:{challengeId}
 
 | Code                      | HTTP    | When                                                   |
 | ------------------------- | ------- | ------------------------------------------------------ |
-| `RESOURCE_NOT_FOUND`      | 404     | `onVerifyResource()` returns false                     |
 | `TIER_NOT_FOUND`          | 400     | `planId` not in `SellerConfig.plans`                |
 | `CHALLENGE_NOT_FOUND`     | 404     | `store.get(challengeId)` returns null                  |
 | `CHALLENGE_EXPIRED`       | 410     | Challenge `expiresAt <= now` or state not PENDING      |
@@ -811,7 +805,6 @@ key0:challenge:{challengeId}
 | `INVALID_REQUEST`         | 400/401 | Malformed input or invalid JWT                         |
 | `PAYMENT_FAILED`          | 400     | Settlement failed                                      |
 | `ADAPTER_ERROR`           | 500     | Payment adapter threw                                  |
-| `RESOURCE_VERIFY_TIMEOUT` | 504     | `onVerifyResource()` timed out                         |
 | `TOKEN_ISSUE_FAILED`      | 500     | `fetchResourceCredentials()` threw                                 |
 | `TOKEN_ISSUE_TIMEOUT`     | 504     | `fetchResourceCredentials()` timed out                             |
 | `INTERNAL_ERROR`          | 500     | Unexpected failure                                     |
@@ -839,12 +832,11 @@ key0:challenge:{challengeId}
 | --- | ------------------------------ | --------------------------------- | -------------------------------------- |
 | 1   | UUID format validation         | `validateUUID()`                  | Malformed requestId                    |
 | 2   | Plan exists in plan catalog    | `findPlan()`                      | Invalid plan requests                  |
-| 3   | Resource verification          | `onVerifyResource()` with timeout | Access to nonexistent resources        |
-| 4   | Idempotency (requestId lookup) | `store.findActiveByRequestId()`   | Duplicate challenge creation           |
-| 5   | State check (PENDING required) | `challenge.state` check           | Acting on expired/cancelled challenges |
-| 6   | Double-spend pre-check         | `seenTxStore.get(txHash)`         | Reusing a txHash                       |
-| 7   | Atomic state transition        | Lua `HGET + HSET`                 | Concurrent double-redemption           |
-| 8   | Atomic txHash claim            | `SET NX`                          | Race condition double-spend            |
+| 3   | Idempotency (requestId lookup) | `store.findActiveByRequestId()`   | Duplicate challenge creation           |
+| 4   | State check (PENDING required) | `challenge.state` check           | Acting on expired/cancelled challenges |
+| 5   | Double-spend pre-check         | `seenTxStore.get(txHash)`         | Reusing a txHash                       |
+| 6   | Atomic state transition        | Lua `HGET + HSET`                 | Concurrent double-redemption           |
+| 7   | Atomic txHash claim            | `SET NX`                          | Race condition double-spend            |
 
 
 ### Invariants
@@ -854,8 +846,7 @@ key0:challenge:{challengeId}
 3. **JWT security** — minimum 32-char secret, supports HS256/RS256, fallback secrets for rotation
 4. **Refunds cannot double-fire** — atomic PAID→REFUND_PENDING transition ensures only one cron worker processes each record
 5. **Nonce serialization for gas wallet** — Redis distributed lock (with 30s max-wait timeout) or in-process queue prevents nonce conflicts during settlement
-6. **Resource verified before settlement** — transports call `engine.verifyResource()` before `settlePayment()` to prevent charging for nonexistent resources
-7. **Outbox pattern for grant delivery** — `accessGrant` is persisted to the PAID record before returning to the client, so a failure in the DELIVERED transition doesn't lose the grant; refund cron skips records with `accessGrant` set
+6. **Outbox pattern for grant delivery** — `accessGrant` is persisted to the PAID record before returning to the client, so a failure in the DELIVERED transition doesn't lose the grant; refund cron skips records with `accessGrant` set
 
 ---
 

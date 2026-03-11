@@ -189,37 +189,13 @@ export class ChallengeEngine {
 		const resourceId = req.resourceId || "default";
 		const clientAgentId = req.clientAgentId || "anonymous";
 
-		// 2. Validate tier
-		//TODO This should be validated by onVerifyResource hook no need here
+		// 2. Validate plan
 		const tier = this.findPlan(req.planId);
 		if (!tier) {
 			throw new Key0Error("TIER_NOT_FOUND", `Plan "${req.planId}" not found in plan catalog`, 400);
 		}
 
-		// 3. Pre-flight resource check (with 5s timeout)
-		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
-		let timer: ReturnType<typeof setTimeout>;
-		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, req.planId).finally(() => clearTimeout(timer)),
-			new Promise<never>((_, reject) => {
-				timer = setTimeout(
-					() =>
-						reject(
-							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
-						),
-					timeoutMs,
-				);
-			}),
-		]);
-		if (!exists) {
-			throw new Key0Error(
-				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${req.planId}"`,
-				404,
-			);
-		}
-
-		// 4. Idempotency check
+		// 3. Idempotency check
 		const existing = await this.store.findActiveByRequestId(req.requestId);
 		if (existing) {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
@@ -236,7 +212,7 @@ export class ChallengeEngine {
 			// EXPIRED or CANCELLED → fall through to issue new challenge
 		}
 
-		// 5. Issue challenge via adapter
+		// 4. Issue challenge via adapter
 		const expiresAt = new Date(this.now() + this.challengeTTL);
 
 		const payload = await this.adapter.issueChallenge({
@@ -249,7 +225,7 @@ export class ChallengeEngine {
 			metadata: { clientAgentId: clientAgentId },
 		});
 
-		// 6. Create challenge record
+		// 5. Create challenge record
 		const now = new Date(this.now());
 		const record: ChallengeRecord = {
 			challengeId: payload.challengeId,
@@ -270,7 +246,7 @@ export class ChallengeEngine {
 
 		await this.store.create(record, { actor: "engine", reason: "challenge_created" });
 
-		// 7. Return challenge response
+		// 6. Return challenge response
 		return this.challengeToResponse(record);
 	}
 
@@ -568,36 +544,13 @@ export class ChallengeEngine {
 		planId: string,
 		resourceId: string,
 	): Promise<{ challengeId: string }> {
-		// 1. Validate tier
+		// 1. Validate plan
 		const tier = this.findPlan(planId);
 		if (!tier) {
 			throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
 		}
 
-		// 2. Verify resource exists
-		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
-		let timer: ReturnType<typeof setTimeout>;
-		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, planId).finally(() => clearTimeout(timer)),
-			new Promise<never>((_, reject) => {
-				timer = setTimeout(
-					() =>
-						reject(
-							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
-						),
-					timeoutMs,
-				);
-			}),
-		]);
-		if (!exists) {
-			throw new Key0Error(
-				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${planId}"`,
-				404,
-			);
-		}
-
-		// 3. Idempotency — same logic as requestAccess
+		// 2. Idempotency — same logic as requestAccess
 		const existing = await this.store.findActiveByRequestId(requestId);
 		if (existing) {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
@@ -614,7 +567,7 @@ export class ChallengeEngine {
 			// EXPIRED or CANCELLED → fall through to create new record
 		}
 
-		// 4. Create PENDING record
+		// 3. Create PENDING record
 		const challengeId = `http-${crypto.randomUUID()}`;
 		const expiresAt = new Date(this.now() + this.challengeTTL);
 		const now402 = new Date(this.now());
@@ -641,34 +594,6 @@ export class ChallengeEngine {
 	}
 
 	/**
-	 * Verify that a resource exists and is available for the given tier.
-	 * Call this BEFORE settlement to avoid money-at-risk if the resource disappears.
-	 */
-	async verifyResource(resourceId: string, planId: string): Promise<void> {
-		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
-		let timer: ReturnType<typeof setTimeout>;
-		const exists = await Promise.race([
-			this.config.onVerifyResource(resourceId, planId).finally(() => clearTimeout(timer)),
-			new Promise<never>((_, reject) => {
-				timer = setTimeout(
-					() =>
-						reject(
-							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
-						),
-					timeoutMs,
-				);
-			}),
-		]);
-		if (!exists) {
-			throw new Key0Error(
-				"RESOURCE_NOT_FOUND",
-				`Resource "${resourceId}" not found or not available for tier "${planId}"`,
-				404,
-			);
-		}
-	}
-
-	/**
 	 * Process an HTTP x402 payment with full lifecycle tracking.
 	 * Used by the x402 HTTP middleware when a client sends PAYMENT-SIGNATURE header
 	 * with an EIP-3009 signed authorization that has been settled via the gas wallet
@@ -677,9 +602,6 @@ export class ChallengeEngine {
 	 * Lifecycle: looks up PENDING record (or auto-creates one if step 1 was skipped),
 	 * transitions PENDING → PAID → DELIVERED. If fetchResourceCredentials throws, record stays
 	 * PAID and the refund cron can pick it up.
-	 *
-	 * NOTE: Resource verification is NOT performed here — callers must verify the
-	 * resource BEFORE settlement (via engine.verifyResource()) to avoid money-at-risk.
 	 */
 	async processHttpPayment(
 		requestId: string,

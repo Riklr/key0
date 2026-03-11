@@ -277,7 +277,6 @@ type SellerConfig = {
   challengeTTLSeconds?: number;         // default: 900 (15 min)
 
   // Callbacks (mandatory)
-  onVerifyResource: (resourceId: string, planId: string) => Promise<boolean>;
   fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
   // Callbacks (optional)
@@ -287,7 +286,6 @@ type SellerConfig = {
   // Customization
   basePath?: string;                    // default: "/a2a"
   resourceEndpointTemplate?: string;    // use {resourceId} placeholder
-  resourceVerifyTimeoutMs?: number;     // default: 5000
 
   // Settlement strategy
   gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (no facilitator)
@@ -345,12 +343,9 @@ Returns the agent card. No auth required.
 
 **Output (active challenge exists for requestId)**: Same `X402Challenge` — idempotent, same `challengeId`
 
-**Output (resource not found)**: `Key0Error` with `code: "RESOURCE_NOT_FOUND"`
-
 **Pre-flight checks**:
 1. Validate `planId` is a known plan.
-2. Verify `resourceId` exists via `onVerifyResource` (with timeout).
-3. Check for active challenge for `requestId` → return it (idempotency).
+2. Check for active challenge for `requestId` → return it (idempotency).
 
 ---
 
@@ -497,8 +492,6 @@ type VerificationResult = {
 
 ### 9.3 Pre-flight Resource Check
 
-Before issuing a challenge, `onVerifyResource` confirms the resource exists and the plan grants access. If it fails → return `RESOURCE_NOT_FOUND` (no challenge issued, no billing risk). The callback has a configurable timeout (default 5s) via `resourceVerifyTimeoutMs`.
-
 ### 9.4 Payment Expiration
 
 - Challenge has `expiresAt` (default: 15 minutes from issuance).
@@ -544,7 +537,6 @@ Step 3: Define pricing plans
   plans: [{ planId, displayName, unitAmount, resourceType, expiresIn }]
 
 Step 4: Implement callbacks
-  onVerifyResource(resourceId, planId): Promise<boolean>
   fetchResourceCredentials(params): Promise<TokenIssuanceResult>
   onPaymentReceived?(grant): Promise<void>   // optional
 
@@ -621,8 +613,7 @@ Key0 is a **self-hosted open-source SDK**. There is no central registry or SaaS 
 | OQ-2 | Refund SLA for late-landed payments after challenge expiry? | Open — `onChallengeExpired` hook enables custom logic |
 | OQ-3 | Shared challenge registry for multi-seller discovery? | Out of scope |
 | OQ-4 | Bind access token to submitting wallet address to prevent bearer theft? | Open |
-| OQ-5 | Multi-page resources: one payment per session or per page? | Open — left to seller's `onVerifyResource` logic |
-| OQ-6 | `onVerifyResource` async timeout? | **Resolved** — `resourceVerifyTimeoutMs` (default 5s) |
+| OQ-5 | Multi-page resources: one payment per session or per page? | Open — left to seller's plan configuration |
 
 ---
 

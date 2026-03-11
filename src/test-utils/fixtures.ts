@@ -42,7 +42,6 @@ export function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfi
 		plans: [
 			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
 		],
-		onVerifyResource: async () => true,
 		fetchResourceCredentials: async () => ({
 			token: "test-token-123",
 			expiresAt: new Date(Date.now() + 3600_000),

@@ -33,7 +33,7 @@ MCP Client (Claude/Cursor/Claude Code)
 │            │   to /x402/access with PAYMENT-SIGNATURE│
 │            │                                         │
 │            └─ Has _meta["x402/payment"]?             │
-│                 → verifyResource() → settlePayment()  │
+│                 → settlePayment()  │
 │                 → processHttpPayment()
 │                 → AccessGrant + _meta["x402/payment-response"]
 │                                                      │
@@ -182,7 +182,6 @@ For clients implementing the x402 MCP transport spec (e.g. Cloudflare `withX402C
 | Error | Response |
 |-------|----------|
 | Malformed `_meta["x402/payment"]` (`INVALID_REQUEST`) | `isError: true` + `Key0Error` JSON (Zod validation failure) |
-| Resource not found (`RESOURCE_NOT_FOUND`) | `isError: true` + `Key0Error` JSON (checked before settlement) |
 | Payment failed / settlement error | `isError: true` + `structuredContent` with error message and `accepts[]` (client can retry) |
 | Already redeemed (`PROOF_ALREADY_REDEEMED`) | Returns cached `AccessGrant` (idempotent) |
 | Plan not found | `isError: true` + `Key0Error` JSON |
@@ -256,8 +255,7 @@ The MCP integration reuses existing infrastructure with no changes:
 |-----------|------|---------|
 | `buildHttpPaymentRequirements()` | `settlement.ts` | Builds x402 v2 `accepts[]` array |
 | `settlePayment()` | `settlement.ts` | Facilitator or gas wallet settlement |
-| `engine.verifyResource()` | `challenge-engine.ts` | Pre-settlement resource verification |
-| `engine.processHttpPayment()` | `challenge-engine.ts` | Full lifecycle: create challenge → verify → issue token |
+| `engine.processHttpPayment()` | `challenge-engine.ts` | Full lifecycle: create challenge → verify plan → issue token |
 | `X402PaymentPayload`, `X402SettleResponse` | `x402-extension.ts` | x402 protocol types |
 
 ### Request IDs
@@ -271,7 +269,6 @@ In Path A (HTTP x402), the MCP tool only returns payment requirements — the ac
 Before settlement, the native payment path performs:
 
 1. **Zod payload validation** — `_meta["x402/payment"]` is validated against a schema requiring `x402Version` (number), `network` (string), and `payload` (object). Malformed payloads throw `INVALID_REQUEST` (400).
-2. **Resource verification** — `engine.verifyResource(resourceId, planId)` is called before `settlePayment()` to prevent burning USDC for non-existent or suspended resources (security invariant S2).
 
 ### Testing with curl
 

@@ -76,7 +76,7 @@ Client → Protected API with Bearer JWT
 
 `SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, `expiresIn`, optional `description`, `features`, `tags`).
 
-Required callbacks: `onVerifyResource` (check resource exists and plan is valid), `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.).
+Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.).
 
 Optional callbacks: `onPaymentReceived`, `onChallengeExpired`.
 

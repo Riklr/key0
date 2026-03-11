@@ -61,7 +61,6 @@ app.get("/api/setup/status", (_req, res) => {
 			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 			gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
 			walletPrivateKey: process.env.KEY0_WALLET_PRIVATE_KEY ? "••••••" : "",
-			verifyResourceApi: process.env.VERIFY_RESOURCE_API ?? "",
 			mcpEnabled: process.env.MCP_ENABLED === "true",
 			refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
 			refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
@@ -94,7 +93,6 @@ interface SetupBody {
 		tags?: string[];
 	}>;
 	challengeTtlSeconds: string;
-	verifyResourceApi: string;
 	mcpEnabled: boolean;
 	backendAuthStrategy: "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
@@ -145,9 +143,6 @@ app.post("/api/setup", async (req, res) => {
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
-	}
-	if (body.verifyResourceApi) {
-		lines.push(`VERIFY_RESOURCE_API=${body.verifyResourceApi}`);
 	}
 	if (body.mcpEnabled) {
 		lines.push(`MCP_ENABLED=true`);
@@ -250,7 +245,6 @@ if (!isConfigured) {
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
-	const _VERIFY_RESOURCE_API = process.env.VERIFY_RESOURCE_API;
 	const _MCP_ENABLED = process.env.MCP_ENABLED === "true";
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
@@ -315,15 +309,6 @@ if (!isConfigured) {
 		auditStore = new RedisAuditStore({ redis });
 		console.log("[key0] Using Redis storage:", REDIS_URL);
 	}
-
-	// Resource verification — remote endpoint or allow-all
-	const _onVerifyResource = _VERIFY_RESOURCE_API
-		? key0.createRemoteResourceVerifier({
-				url: _VERIFY_RESOURCE_API,
-				...(ISSUE_TOKEN_API_SECRET ? { secret: ISSUE_TOKEN_API_SECRET } : {}),
-				timeoutMs: 5000,
-			})
-		: async () => true;
 
 	// Token issuance
 	const fetchResourceCredentials = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
@@ -553,7 +538,6 @@ if (!isConfigured) {
 				plans,
 				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 				basePath: BASE_PATH,
-				onVerifyResource: _onVerifyResource,
 				fetchResourceCredentials,
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,

@@ -210,9 +210,6 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					return buildPaymentRequiredResult(planId, resourceId, config, networkConfig);
 				}
 
-				// Has payment — verify resource before settlement to avoid money-at-risk (S2)
-				await engine.verifyResource(resourceId, planId);
-
 				const { txHash, settleResponse, payer } = await settlePayment(
 					paymentPayload,
 					config,

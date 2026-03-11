@@ -211,8 +211,7 @@ Install the SDK and add Key0 as middleware inside your existing application. You
 │  discover    │───────▶│  │           Key0 Middleware              │  │
 │              │◀───────│  │  /.well-known/agent.json  (auto-generated)  │  │
 │              │        │  │  /x402/access  (x402 payment + settlement)  │  │
-│  request     │───────▶│  │  onVerifyResource()  ──▶  your DB/logic     │  │
-│              │        │  │  [store: PENDING]                          │  │
+│  request     │───────▶│  │  [store: PENDING]                          │  │
 │              │◀───────│  │  402 + payment terms                        │  │
 │  [pays USDC on Base]  │  │                                             │  │
 │  retry +sig  │───────▶│  │  settle on-chain                           │  │
@@ -275,9 +274,6 @@ app.use(
           expiresIn: 3600,
         },
       ],
-      onVerifyResource: async (resourceId, planId) => {
-        return true; // check your DB here
-      },
       fetchResourceCredentials: async (params) => {
         return tokenIssuer.sign(
           { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
@@ -363,10 +359,8 @@ fastify.listen({ port: 3000 });
 | `walletAddress` | `0x${string}` | ✅ | — | USDC-receiving wallet |
 | `network` | `"testnet" \| "mainnet"` | ✅ | — | Base Sepolia or Base |
 | `plans` | `Plan[]` | ✅ | — | Pricing plans |
-| `onVerifyResource` | `(resourceId, planId) => Promise<boolean>` | ✅ | — | Check the resource exists and plan is valid |
 | `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
-| `resourceVerifyTimeoutMs` | `number` | | `5000` | Timeout for `onVerifyResource` |
 | `basePath` | `string` | | `"/a2a"` | A2A endpoint path prefix |
 | `resourceEndpointTemplate` | `string` | | auto | URL template (use `{resourceId}`) |
 | `gasWalletPrivateKey` | `0x${string}` | | — | Private key for self-contained settlement |
@@ -643,7 +637,6 @@ All state transitions are recorded in an immutable audit log (`IAuditStore`) for
 - **On-chain verification** — Payments are verified against the actual blockchain (recipient, amount, timing)
 - **Challenge expiry** — Challenges expire after `challengeTTLSeconds` (default 15 minutes)
 - **Secret rotation** — `AccessTokenIssuer.verifyWithFallback()` supports rotating secrets with zero downtime
-- **Resource verification timeout** — `onVerifyResource` has a configurable timeout (default 5s) to prevent hanging
 
 ## Token Issuance
 

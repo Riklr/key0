@@ -47,10 +47,6 @@ const gate = key0App({
 				expiresIn: 86400,
 			},
 		],
-		onVerifyResource: async (resourceId: string, _planId: string) => {
-			const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
-			return validResources.includes(resourceId);
-		},
 		fetchResourceCredentials: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
 			const ttl = params.planId === "single-photo" ? 3600 : 86400;

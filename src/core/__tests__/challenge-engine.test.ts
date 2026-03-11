@@ -22,7 +22,6 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async () => true,
 		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
 			expiresAt: new Date(Date.now() + 3600 * 1000),
@@ -98,20 +97,6 @@ describe("ChallengeEngine.requestAccess", () => {
 		const c1 = await engine.requestAccess(req);
 		const c2 = await engine.requestAccess(req);
 		expect(c1.challengeId).toBe(c2.challengeId);
-	});
-
-	test("resource not found: throws RESOURCE_NOT_FOUND", async () => {
-		const { engine } = makeEngine({
-			config: { onVerifyResource: async () => false },
-		});
-		const req = makeRequest();
-		try {
-			await engine.requestAccess(req);
-			expect(true).toBe(false); // should not reach
-		} catch (err) {
-			expect(err).toBeInstanceOf(Key0Error);
-			expect((err as Key0Error).code).toBe("RESOURCE_NOT_FOUND");
-		}
 	});
 
 	test("tier not found: throws TIER_NOT_FOUND", async () => {
@@ -537,41 +522,6 @@ describe("ChallengeEngine.getChallenge", () => {
 	test("returns null for non-existent", async () => {
 		const { engine } = makeEngine();
 		expect(await engine.getChallenge("nonexistent")).toBeNull();
-	});
-});
-
-describe("ChallengeEngine.onVerifyResource timeout", () => {
-	test("times out slow onVerifyResource with RESOURCE_VERIFY_TIMEOUT", async () => {
-		const { engine } = makeEngine({
-			config: {
-				onVerifyResource: () => new Promise(() => {}), // never resolves
-				resourceVerifyTimeoutMs: 50, // 50ms timeout for fast test
-			},
-		});
-
-		const req = makeRequest();
-		try {
-			await engine.requestAccess(req);
-			expect(true).toBe(false);
-		} catch (err) {
-			expect(err).toBeInstanceOf(Key0Error);
-			const agErr = err as Key0Error;
-			expect(agErr.code).toBe("RESOURCE_VERIFY_TIMEOUT");
-			expect(agErr.httpStatus).toBe(504);
-		}
-	});
-
-	test("does not timeout fast onVerifyResource", async () => {
-		const { engine } = makeEngine({
-			config: {
-				onVerifyResource: async () => true,
-				resourceVerifyTimeoutMs: 5000,
-			},
-		});
-
-		const req = makeRequest();
-		const challenge = await engine.requestAccess(req);
-		expect(challenge.type).toBe("X402Challenge");
 	});
 });
 
