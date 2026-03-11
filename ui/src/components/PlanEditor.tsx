@@ -31,7 +31,10 @@ export function PlanEditor({ plans, onChange }: PlanEditorProps) {
 	return (
 		<div className="space-y-4">
 			{plans.map((p, i) => (
-				<div key={i} className="relative rounded-inner bg-surface shadow-neu-inset p-4 space-y-3">
+				<div
+					key={`${p.planId || "plan"}-${i}`}
+					className="relative rounded-inner bg-surface shadow-neu-inset p-4 space-y-3"
+				>
 					{/* Header */}
 					<div className="flex items-center justify-between">
 						<span className="text-xs font-bold font-display text-muted uppercase tracking-wider">

@@ -52,54 +52,57 @@ function TerminalView({ blocks }: { blocks: TerminalBlock[] }) {
 	return (
 		<div className="font-mono text-xs leading-relaxed space-y-1">
 			{blocks.map((b, i) => {
+				const key = `${b.kind}-${i}`;
 				switch (b.kind) {
 					case "comment":
 						return (
-							<div key={i} className="text-[#636363] mt-4 first:mt-0">
+							<div key={key} className="text-[#636363] mt-4 first:mt-0">
 								{b.text}
 							</div>
 						);
 					case "command":
 						return (
-							<div key={i} className="mt-2 first:mt-0">
+							<div key={key} className="mt-2 first:mt-0">
 								<span className="text-[#7ec699]">$ </span>
 								<span className="text-[#e0e0e0]">{b.text}</span>
 							</div>
 						);
 					case "prompt":
 						return (
-							<div key={i} className="mt-4 first:mt-0">
+							<div key={key} className="mt-4 first:mt-0">
 								<span className="text-[#6cb6ff]">❯ </span>
 								<span className="text-[#e0e0e0]">{b.text}</span>
 							</div>
 						);
 					case "status":
 						return (
-							<div key={i} className="mt-2 whitespace-pre-wrap">
+							<div key={key} className="mt-2 whitespace-pre-wrap">
 								<span className="text-[#d4a054]">⏺ </span>
 								<span className="text-[#c8c8c8]">{b.text}</span>
 							</div>
 						);
 					case "table":
 						return (
-							<pre key={i} className="text-[#e0e0e0] whitespace-pre pl-4 my-1">
+							<pre key={key} className="text-[#e0e0e0] whitespace-pre pl-4 my-1">
 								{b.text}
 							</pre>
 						);
 					case "output":
 						return (
-							<div key={i} className="text-[#a0a0a0] whitespace-pre-wrap pl-2">
+							<div key={key} className="text-[#a0a0a0] whitespace-pre-wrap pl-2">
 								{b.text}
 							</div>
 						);
 					case "json":
 						return (
-							<pre key={i} className="text-[#c8c8c8] whitespace-pre-wrap break-all pl-2">
+							<pre key={key} className="text-[#c8c8c8] whitespace-pre-wrap break-all pl-2">
 								{b.text}
 							</pre>
 						);
 					case "collapsible-json":
-						return <CollapsibleJson key={i} summary={b.summary ?? "{ ... }"} text={b.text} />;
+						return <CollapsibleJson key={key} summary={b.summary ?? "{ ... }"} text={b.text} />;
+					default:
+						return null;
 				}
 			})}
 		</div>

@@ -17,7 +17,8 @@
 			},
 			"suspicious": {
 				"noImplicitAnyLet": "warn",
-				"noExplicitAny": "off"
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "warn"
 			},
 			"correctness": {}
 		}
@@ -31,6 +32,12 @@
 		"formatter": {
 			"quoteStyle": "double",
 			"semicolons": "always"
+		}
+	},
+	"css": {
+		"parser": {
+			"cssModules": false,
+			"tailwindDirectives": true
 		}
 	},
 	"overrides": []
