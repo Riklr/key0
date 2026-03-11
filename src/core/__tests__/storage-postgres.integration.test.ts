@@ -54,8 +54,9 @@ function makeGrant(): AccessGrant {
 	};
 }
 
-// Skip the whole suite if no Postgres URL is configured.
-const describeIfPg = PG_URL ? describe : describe.skip;
+// Skip the whole suite if KEY0_TEST_PG_URL is not explicitly set.
+// The fallback URL is just a convenience default — it may not be reachable.
+const describeIfPg = process.env["KEY0_TEST_PG_URL"] ? describe : describe.skip;
 
 describeIfPg("PostgresChallengeStore (real Postgres)", () => {
 	// biome-ignore lint/suspicious/noExplicitAny: postgres.js runtime type
