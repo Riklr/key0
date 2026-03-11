@@ -1317,9 +1317,10 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
           fullResetState.active = false;
 
           if (s2WasActive) {
-            // Fast re-entry: hide scene 1, show scene 2 at full state
             setNodeOpacity(nodes[0], 0); agent.group.visible = false;
             setNodeOpacity(nodes[1], 0); server.group.visible = false;
+            agent2.group.visible = false;
+            agent3.group.visible = false;
             lineMat.opacity = 0; lineGeo.setDrawRange(0, 0);
             returnMat.opacity = 0; returnGeo.setDrawRange(0, 0);
             directMat.opacity = 0; directGeo.setDrawRange(0, 0);
@@ -1365,8 +1366,19 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
           if (s2State.phase === "entering") {
             const p = Math.min(s2State.timer / s2State.enterDur, 1);
-            setNodeOpacity(nodes[0], 1 - p);
-            setNodeOpacity(nodes[1], 1 - p);
+            const inv = 1 - p;
+            setNodeOpacity(nodes[0], inv);
+            setNodeOpacity(nodes[1], inv);
+            if (agent2.group.visible) {
+              agent2.wireMat.opacity = inv * 0.85;
+              agent2.coreMat.opacity = inv;
+              (agent2.labelMat as THREE.SpriteMaterial).opacity = inv;
+            }
+            if (agent3.group.visible) {
+              agent3.wireMat.opacity = inv * 0.85;
+              agent3.coreMat.opacity = inv;
+              (agent3.labelMat as THREE.SpriteMaterial).opacity = inv;
+            }
             lineMat.opacity = Math.max(0, lineMat.opacity - dt / s2State.enterDur);
             returnMat.opacity = Math.max(0, returnMat.opacity - dt / s2State.enterDur);
             directMat.opacity = Math.max(0, directMat.opacity - dt / s2State.enterDur);
@@ -1376,6 +1388,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               setNodeOpacity(nodes[1], 0);
               agent.group.visible = false;
               server.group.visible = false;
+              agent2.group.visible = false;
+              agent3.group.visible = false;
               lineMat.opacity = 0; lineGeo.setDrawRange(0, 0);
               returnMat.opacity = 0; returnGeo.setDrawRange(0, 0);
               directMat.opacity = 0; directGeo.setDrawRange(0, 0);
