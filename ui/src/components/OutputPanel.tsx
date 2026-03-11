@@ -269,7 +269,7 @@ export function OutputPanel({ config }: OutputPanelProps) {
 					</div>
 				) : (
 					<div className="h-full overflow-auto rounded-inner bg-surface shadow-neu-inset p-4">
-						<pre className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-all font-mono">
+						<pre className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words font-mono">
 							{deployOutputs[deployTab].content}
 						</pre>
 					</div>

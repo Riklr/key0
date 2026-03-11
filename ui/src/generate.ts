@@ -384,22 +384,29 @@ function serializePlan(p: Plan) {
 	};
 }
 
+// ── Separator helpers (60-char wide, safe for narrow panels) ─────────────────
+const _HR = "# " + "─".repeat(58);
+const _sec = (name: string): string => {
+	const prefix = `# ── ${name} `;
+	return prefix + "─".repeat(Math.max(0, 60 - prefix.length));
+};
+
 export function generateEnv(config: Config): string {
 	const lines: string[] = [
-		"# ──────────────────────────────────────────────────────────────────────────────",
+		_HR,
 		"# Key0 Docker — Generated Configuration",
-		"# ──────────────────────────────────────────────────────────────────────────────",
+		_HR,
 		"",
-		"# ── Required ──────────────────────────────────────────────────────────────────",
+		_sec("Required"),
 		"",
 		`KEY0_WALLET_ADDRESS=${config.walletAddress}`,
 		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
 		"",
-		"# ── Network ───────────────────────────────────────────────────────────────────",
+		_sec("Network"),
 		"",
 		`KEY0_NETWORK=${config.network}`,
 		"",
-		"# ── Storage ───────────────────────────────────────────────────────────────────",
+		_sec("Storage"),
 		"",
 		`STORAGE_BACKEND=${config.storageBackend}`,
 		`REDIS_URL=${config.redisUrl}`,
@@ -411,7 +418,7 @@ export function generateEnv(config: Config): string {
 
 	lines.push(
 		"",
-		"# ── Server ────────────────────────────────────────────────────────────────────",
+		_sec("Server"),
 		"",
 		`PORT=${config.port}`,
 	);
@@ -422,7 +429,7 @@ export function generateEnv(config: Config): string {
 
 	lines.push(
 		"",
-		"# ── Agent Card ────────────────────────────────────────────────────────────────",
+		_sec("Agent Card"),
 		"",
 	);
 	lines.push(`AGENT_NAME=${_deriveAgentName(config.providerName)}`);
@@ -441,7 +448,7 @@ export function generateEnv(config: Config): string {
 		const plansJson = JSON.stringify(config.plans.map(serializePlan), null, 2);
 		lines.push(
 			"",
-			"# ── Pricing Plans ─────────────────────────────────────────────────────────────",
+			_sec("Pricing Plans"),
 			"",
 			`PLANS='${plansJson}'`,
 		);
@@ -450,7 +457,7 @@ export function generateEnv(config: Config): string {
 	if (config.challengeTtlSeconds && config.challengeTtlSeconds !== "900") {
 		lines.push(
 			"",
-			"# ── Challenge ─────────────────────────────────────────────────────────────────",
+			_sec("Challenge"),
 			"",
 			`CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`,
 		);
@@ -459,7 +466,7 @@ export function generateEnv(config: Config): string {
 	if (config.mcpEnabled) {
 		lines.push(
 			"",
-			"# ── MCP ───────────────────────────────────────────────────────────────────────",
+			_sec("MCP"),
 			"",
 			"MCP_ENABLED=true",
 		);
@@ -468,7 +475,7 @@ export function generateEnv(config: Config): string {
 	if (config.backendAuthStrategy !== "none" || config.issueTokenApiSecret) {
 		lines.push(
 			"",
-			"# ── Token API Auth ────────────────────────────────────────────────────────────",
+			_sec("Token API Auth"),
 			"",
 		);
 		if (config.backendAuthStrategy !== "none") {
@@ -482,7 +489,7 @@ export function generateEnv(config: Config): string {
 	if (config.gasWalletPrivateKey) {
 		lines.push(
 			"",
-			"# ── Settlement ────────────────────────────────────────────────────────────────",
+			_sec("Settlement"),
 			"",
 			`GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`,
 		);
@@ -491,7 +498,7 @@ export function generateEnv(config: Config): string {
 	if (config.walletPrivateKey) {
 		lines.push(
 			"",
-			"# ── Refund Cron ───────────────────────────────────────────────────────────────",
+			_sec("Refund Cron"),
 			"",
 			`KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
 		);
