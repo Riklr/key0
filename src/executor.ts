@@ -7,6 +7,7 @@ import type {
 	AccessGrant,
 	AccessRequest,
 	NetworkConfig,
+	ProductTier,
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
@@ -52,6 +53,11 @@ export class Key0Executor implements AgentExecutor {
 
 			// ----- Route by type -----
 			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
+				// Discovery case: AccessRequest without tierId → return product catalog
+				if (!payload["tierId"]) {
+					this.handleDiscovery(taskId, contextId, eventBus);
+					return;
+				}
 				await this.handleAccessRequest(
 					payload as unknown as AccessRequest,
 					taskId,
@@ -96,6 +102,56 @@ export class Key0Executor implements AgentExecutor {
 
 	async cancelTask(_taskId: string, _eventBus: ExecutionEventBus): Promise<void> {
 		// No-op for now as tasks are synchronous
+	}
+
+	// ===================================================================
+	// Handler: Discovery — AccessRequest without tierId
+	// Returns product catalog as a completed task (mirrors MCP discover_products)
+	// ===================================================================
+
+	private handleDiscovery(taskId: string, contextId: string, eventBus: ExecutionEventBus): void {
+		const catalog = {
+			agent: this.config.agentName,
+			description: this.config.agentDescription,
+			network: this.config.network,
+			chainId: this.networkConfig.chainId,
+			walletAddress: this.config.walletAddress,
+			asset: "USDC",
+			products: this.config.products.map((tier: ProductTier) => ({
+				tierId: tier.tierId,
+				label: tier.label,
+				amount: tier.amount,
+				resourceType: tier.resourceType,
+				accessDurationSeconds: tier.accessDurationSeconds,
+			})),
+		};
+
+		const task: Task = {
+			kind: "task",
+			id: taskId,
+			contextId,
+			status: {
+				state: "completed",
+				timestamp: new Date().toISOString(),
+				message: {
+					kind: "message",
+					messageId: uuidv4(),
+					role: "agent",
+					parts: [
+						{
+							kind: "text",
+							text: "Available products and pricing:",
+						},
+						{
+							kind: "data",
+							data: catalog as any,
+						},
+					],
+				},
+			},
+		};
+
+		eventBus.publish(task);
 	}
 
 	// ===================================================================

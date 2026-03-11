@@ -155,10 +155,11 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 			seenTxStore: new TestSeenTxStore(),
 		});
 
-		// Agent card check
+		// Agent card check — single request-access skill with all tiers in pricing
 		expect(agentCard.name).toBe("E2E Test Agent");
-		expect(agentCard.skills).toHaveLength(2);
-		expect(agentCard.skills[0]!.pricing).toHaveLength(1);
+		expect(agentCard.skills).toHaveLength(1);
+		expect(agentCard.skills[0]!.id).toBe("request-access");
+		expect(agentCard.skills[0]!.pricing).toHaveLength(2);
 
 		// Verify x402 extension is declared
 		expect(agentCard.capabilities.extensions).toBeDefined();
