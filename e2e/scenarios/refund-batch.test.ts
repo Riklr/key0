@@ -9,9 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
-
 import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
-
 import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { pollUntil } from "../helpers/wait.ts";
 
@@ -36,7 +34,7 @@ describe("Refund Batch Processing", () => {
 					requestId: crypto.randomUUID(),
 					clientAgentId: `agent://${clientAddr}`,
 					resourceId: `batch-refund-resource-${i}`,
-					planId: DEFAULT_TIER_ID,
+					tierId: DEFAULT_TIER_ID,
 					amount: "$0.01",
 					amountRaw: REFUND_AMOUNT_RAW,
 					destination: key0Addr,

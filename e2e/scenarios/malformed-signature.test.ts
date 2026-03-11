@@ -13,7 +13,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
 import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 
 describe("Malformed PAYMENT-SIGNATURE", () => {
@@ -25,7 +24,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": "this-is-not-valid-base64-json!!!",
 			},
 			body: JSON.stringify({
-				planId: DEFAULT_TIER_ID,
+				tierId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});
@@ -46,7 +45,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": nonJsonBase64,
 			},
 			body: JSON.stringify({
-				planId: DEFAULT_TIER_ID,
+				tierId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});
@@ -68,7 +67,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 				"payment-signature": encoded,
 			},
 			body: JSON.stringify({
-				planId: DEFAULT_TIER_ID,
+				tierId: DEFAULT_TIER_ID,
 				requestId: crypto.randomUUID(),
 			}),
 		});

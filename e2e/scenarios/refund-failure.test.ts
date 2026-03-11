@@ -19,9 +19,7 @@ import {
 	REFUND_FAIL_REDIS_URL,
 	REFUND_POLL_TIMEOUT_MS,
 } from "../fixtures/constants.ts";
-
 import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
-
 import {
 	printLogs,
 	type StackConfig,
@@ -100,7 +98,7 @@ describe("Refund Failure", () => {
 				requestId: crypto.randomUUID(),
 				clientAgentId: `agent://${clientAddr}`,
 				resourceId: "refund-fail-resource",
-				planId: DEFAULT_TIER_ID,
+				tierId: DEFAULT_TIER_ID,
 				amount: "$0.10",
 				amountRaw: 100_000n,
 				destination: key0Addr,

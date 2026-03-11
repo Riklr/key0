@@ -1,21 +1,22 @@
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
-import type {
-	AccessGrant,
-	AccessRequest,
-	ChallengeRecord,
-	IChallengeStore,
-	IPaymentAdapter,
-	ISeenTxStore,
-	NetworkConfig,
-	PaymentProof,
-	Plan,
-	SellerConfig,
-	X402Challenge,
-	X402PaymentRequiredResponse,
-	X402SettleResponse,
+import {
+	type AccessGrant,
+	type AccessRequest,
+	CHAIN_CONFIGS,
+	CHAIN_ID_TO_NETWORK,
+	type ChallengeRecord,
+	type IChallengeStore,
+	type IPaymentAdapter,
+	type ISeenTxStore,
+	Key0Error,
+	type NetworkConfig,
+	type PaymentProof,
+	type ProductTier,
+	type SellerConfig,
+	type X402Challenge,
+	type X402PaymentRequiredResponse,
+	type X402SettleResponse,
 } from "../types/index.js";
-import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, Key0Error } from "../types/index.js";
-
 import { validateSellerConfig } from "./config-validation.js";
 import { validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 
@@ -52,7 +53,7 @@ export class ChallengeEngine {
 	}
 
 	/**
-	 * Call fetchResourceCredentials with a timeout and configurable retries with exponential backoff.
+	 * Call onIssueToken with a timeout and configurable retries with exponential backoff.
 	 * On timeout, throws TOKEN_ISSUE_TIMEOUT. On final failure, re-throws the original error.
 	 */
 	private async issueTokenWithRetry(
@@ -64,7 +65,7 @@ export class ChallengeEngine {
 		const callWithTimeout = () => {
 			let timer: ReturnType<typeof setTimeout>;
 			return Promise.race([
-				this.config.fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
+				this.config.onIssueToken(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() => reject(new Key0Error("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
@@ -94,8 +95,8 @@ export class ChallengeEngine {
 		throw lastError;
 	}
 
-	private findPlan(planId: string): Plan | undefined {
-		return this.config.plans.find((t: Plan) => t.planId === planId);
+	private findTier(tierId: string): ProductTier | undefined {
+		return this.config.products.find((t: ProductTier) => t.tierId === tierId);
 	}
 
 	private challengeToResponse(record: ChallengeRecord): X402Challenge {
@@ -103,7 +104,7 @@ export class ChallengeEngine {
 			type: "X402Challenge",
 			challengeId: record.challengeId,
 			requestId: record.requestId,
-			planId: record.planId,
+			tierId: record.tierId,
 			amount: record.amount,
 			asset: "USDC",
 			chainId: record.chainId,
@@ -143,11 +144,11 @@ export class ChallengeEngine {
 					extra: {
 						challengeId: record.challengeId,
 						requestId: record.requestId,
-						planId: record.planId,
+						tierId: record.tierId,
 						amount: record.amount,
 						chainId: record.chainId,
 						expiresAt: record.expiresAt.toISOString(),
-						description: `${record.planId} plan access — ${record.amount} USDC`,
+						description: `${record.tierId} tier access — ${record.amount} USDC`,
 					},
 				},
 			],
@@ -182,20 +183,48 @@ export class ChallengeEngine {
 	}
 
 	async requestAccess(req: AccessRequest): Promise<X402Challenge> {
-		// 1. Validate input - only requestId and planId are mandatory
+		// 1. Validate input - only requestId and tierId are mandatory
 		validateUUID(req.requestId, "requestId");
 
 		// Provide defaults for optional fields
 		const resourceId = req.resourceId || "default";
 		const clientAgentId = req.clientAgentId || "anonymous";
 
-		// 2. Validate plan
-		const tier = this.findPlan(req.planId);
+		// 2. Validate tier
+		//TODO This should be validated by onVerifyResource hook no need here
+		const tier = this.findTier(req.tierId);
 		if (!tier) {
-			throw new Key0Error("TIER_NOT_FOUND", `Plan "${req.planId}" not found in plan catalog`, 400);
+			throw new Key0Error(
+				"TIER_NOT_FOUND",
+				`Tier "${req.tierId}" not found in product catalog`,
+				400,
+			);
 		}
 
-		// 3. Idempotency check
+		// 3. Pre-flight resource check (with 5s timeout)
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(resourceId, req.tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() =>
+						reject(
+							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				);
+			}),
+		]);
+		if (!exists) {
+			throw new Key0Error(
+				"RESOURCE_NOT_FOUND",
+				`Resource "${resourceId}" not found or not available for tier "${req.tierId}"`,
+				404,
+			);
+		}
+
+		// 4. Idempotency check
 		const existing = await this.store.findActiveByRequestId(req.requestId);
 		if (existing) {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
@@ -212,29 +241,29 @@ export class ChallengeEngine {
 			// EXPIRED or CANCELLED → fall through to issue new challenge
 		}
 
-		// 4. Issue challenge via adapter
+		// 5. Issue challenge via adapter
 		const expiresAt = new Date(this.now() + this.challengeTTL);
 
 		const payload = await this.adapter.issueChallenge({
 			requestId: req.requestId,
 			resourceId: resourceId,
-			planId: req.planId,
-			amount: tier.unitAmount,
+			tierId: req.tierId,
+			amount: tier.amount,
 			destination: this.config.walletAddress,
 			expiresAt,
 			metadata: { clientAgentId: clientAgentId },
 		});
 
-		// 5. Create challenge record
+		// 6. Create challenge record
 		const now = new Date(this.now());
 		const record: ChallengeRecord = {
 			challengeId: payload.challengeId,
 			requestId: req.requestId,
 			clientAgentId: clientAgentId,
 			resourceId: resourceId,
-			planId: req.planId,
-			amount: tier.unitAmount,
-			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+			tierId: req.tierId,
+			amount: tier.amount,
+			amountRaw: parseDollarToUsdcMicro(tier.amount),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -246,7 +275,7 @@ export class ChallengeEngine {
 
 		await this.store.create(record, { actor: "engine", reason: "challenge_created" });
 
-		// 6. Return challenge response
+		// 7. Return challenge response
 		return this.challengeToResponse(record);
 	}
 
@@ -397,11 +426,12 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId: challenge.resourceId,
-			planId: challenge.planId,
+			tierId: challenge.tierId,
 			txHash: proof.txHash,
 		});
 
 		const accessToken = tokenResult.token;
+		const expiresAt = tokenResult.expiresAt;
 		const tokenType = tokenResult.tokenType || "Bearer";
 
 		const grant: AccessGrant = {
@@ -410,9 +440,10 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			accessToken,
 			tokenType: tokenType as "Bearer",
+			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId: challenge.resourceId,
-			planId: challenge.planId,
+			tierId: challenge.tierId,
 			txHash: proof.txHash,
 			explorerUrl,
 		};
@@ -539,16 +570,39 @@ export class ChallengeEngine {
 	 */
 	async requestHttpAccess(
 		requestId: string,
-		planId: string,
+		tierId: string,
 		resourceId: string,
 	): Promise<{ challengeId: string }> {
-		// 1. Validate plan
-		const tier = this.findPlan(planId);
+		// 1. Validate tier
+		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
+			throw new Key0Error("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
 		}
 
-		// 2. Idempotency — same logic as requestAccess
+		// 2. Verify resource exists
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() =>
+						reject(
+							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				);
+			}),
+		]);
+		if (!exists) {
+			throw new Key0Error(
+				"RESOURCE_NOT_FOUND",
+				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				404,
+			);
+		}
+
+		// 3. Idempotency — same logic as requestAccess
 		const existing = await this.store.findActiveByRequestId(requestId);
 		if (existing) {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
@@ -565,7 +619,7 @@ export class ChallengeEngine {
 			// EXPIRED or CANCELLED → fall through to create new record
 		}
 
-		// 3. Create PENDING record
+		// 4. Create PENDING record
 		const challengeId = `http-${crypto.randomUUID()}`;
 		const expiresAt = new Date(this.now() + this.challengeTTL);
 		const now402 = new Date(this.now());
@@ -575,9 +629,9 @@ export class ChallengeEngine {
 			requestId,
 			clientAgentId: "x402-http",
 			resourceId,
-			planId,
-			amount: tier.unitAmount,
-			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+			tierId,
+			amount: tier.amount,
+			amountRaw: parseDollarToUsdcMicro(tier.amount),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -592,26 +646,57 @@ export class ChallengeEngine {
 	}
 
 	/**
+	 * Verify that a resource exists and is available for the given tier.
+	 * Call this BEFORE settlement to avoid money-at-risk if the resource disappears.
+	 */
+	async verifyResource(resourceId: string, tierId: string): Promise<void> {
+		const timeoutMs = this.config.resourceVerifyTimeoutMs ?? 5000;
+		let timer: ReturnType<typeof setTimeout>;
+		const exists = await Promise.race([
+			this.config.onVerifyResource(resourceId, tierId).finally(() => clearTimeout(timer)),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() =>
+						reject(
+							new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Resource verification timed out", 504),
+						),
+					timeoutMs,
+				);
+			}),
+		]);
+		if (!exists) {
+			throw new Key0Error(
+				"RESOURCE_NOT_FOUND",
+				`Resource "${resourceId}" not found or not available for tier "${tierId}"`,
+				404,
+			);
+		}
+	}
+
+	/**
 	 * Process an HTTP x402 payment with full lifecycle tracking.
 	 * Used by the x402 HTTP middleware when a client sends PAYMENT-SIGNATURE header
 	 * with an EIP-3009 signed authorization that has been settled via the gas wallet
 	 * or facilitator.
 	 *
 	 * Lifecycle: looks up PENDING record (or auto-creates one if step 1 was skipped),
-	 * transitions PENDING → PAID → DELIVERED. If fetchResourceCredentials throws, record stays
+	 * transitions PENDING → PAID → DELIVERED. If onIssueToken throws, record stays
 	 * PAID and the refund cron can pick it up.
+	 *
+	 * NOTE: Resource verification is NOT performed here — callers must verify the
+	 * resource BEFORE settlement (via engine.verifyResource()) to avoid money-at-risk.
 	 */
 	async processHttpPayment(
 		requestId: string,
-		planId: string,
+		tierId: string,
 		resourceId: string,
 		txHash: `0x${string}`,
 		fromAddress?: `0x${string}`,
 	): Promise<AccessGrant> {
 		// 1. Validate tier
-		const tier = this.findPlan(planId);
+		const tier = this.findTier(tierId);
 		if (!tier) {
-			throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
+			throw new Key0Error("TIER_NOT_FOUND", `Tier "${tierId}" not found in product catalog`, 400);
 		}
 
 		// 3. Double-spend guard
@@ -657,9 +742,9 @@ export class ChallengeEngine {
 				requestId,
 				clientAgentId: "x402-http",
 				resourceId,
-				planId,
-				amount: tier.unitAmount,
-				amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+				tierId,
+				amount: tier.amount,
+				amountRaw: parseDollarToUsdcMicro(tier.amount),
 				asset: "USDC",
 				chainId: this.networkConfig.chainId,
 				destination: this.config.walletAddress,
@@ -719,11 +804,12 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			challengeId: challenge.challengeId,
 			resourceId,
-			planId,
+			tierId,
 			txHash,
 		});
 
 		const accessToken = tokenResult.token;
+		const expiresAt = tokenResult.expiresAt;
 		const tokenType = tokenResult.tokenType || "Bearer";
 
 		// 8. Build access grant
@@ -733,9 +819,10 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			accessToken,
 			tokenType: tokenType as "Bearer",
+			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId,
-			planId,
+			tierId,
 			txHash,
 			explorerUrl,
 		};

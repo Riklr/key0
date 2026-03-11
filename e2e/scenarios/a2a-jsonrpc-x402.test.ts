@@ -15,9 +15,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
 import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
-
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import type { AccessGrant } from "../helpers/client.ts";
 
@@ -25,7 +23,7 @@ const JSONRPC_URL = `${KEY0_URL}/a2a/jsonrpc`;
 
 /** Build a JSON-RPC message/send body with an AccessRequest data part */
 function buildJsonRpcRequest(
-	planId: string,
+	tierId: string,
 	requestId: string,
 	resourceId = "default",
 ): Record<string, unknown> {
@@ -41,7 +39,7 @@ function buildJsonRpcRequest(
 						data: {
 							type: "AccessRequest",
 							requestId,
-							planId,
+							tierId,
 							resourceId,
 							clientAgentId: "agent://e2e-test",
 						},

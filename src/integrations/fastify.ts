@@ -12,7 +12,7 @@ import { Key0Error } from "../types/index.js";
  *   fastify.register(key0Plugin, { config, adapter });
  */
 export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Promise<void> {
-	const { requestHandler, agentCard } = createKey0(opts);
+	const { requestHandler: _requestHandler, agentCard } = createKey0(opts);
 
 	// Agent Card
 	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -20,7 +20,7 @@ export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Pr
 	});
 
 	// A2A endpoint
-	const basePath = opts.config.basePath ?? "/a2a";
+	const basePath = opts.config.basePath ?? "/agent";
 	fastify.post(basePath, async (_request: FastifyRequest, reply: FastifyReply) => {
 		// TODO: Use official A2A Fastify handler when available
 		return reply.code(501).send({ error: "Fastify support pending A2A SDK update" });
