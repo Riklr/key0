@@ -8,8 +8,13 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+
 import { key0WalletAddress, makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readAuditHistory, readChallengeRecord, readChallengeState } from "../helpers/storage-client.ts";
+import {
+	readAuditHistory,
+	readChallengeRecord,
+	readChallengeState,
+} from "../helpers/storage-client.ts";
 
 describe("Happy Path with State Verification", () => {
 	test("challenge record transitions PENDING → DELIVERED with correct fields", async () => {
@@ -18,7 +23,7 @@ describe("Happy Path with State Verification", () => {
 
 		// Step 1: Request access → PENDING
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -29,7 +34,7 @@ describe("Happy Path with State Verification", () => {
 		const pendingRecord = await readChallengeRecord(challengeId);
 		expect(pendingRecord).not.toBeNull();
 		expect(pendingRecord!["requestId"]).toBe(requestId);
-		expect(pendingRecord!["tierId"]).toBe(DEFAULT_TIER_ID);
+		expect(pendingRecord!["planId"]).toBe(DEFAULT_TIER_ID);
 		expect(pendingRecord!["destination"]).toBe(key0WalletAddress());
 		expect(pendingRecord!["asset"]).toBe("USDC");
 		expect(pendingRecord!["chainId"]).toBe("84532");
@@ -42,7 +47,7 @@ describe("Happy Path with State Verification", () => {
 		});
 
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,

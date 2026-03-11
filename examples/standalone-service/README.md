@@ -2,6 +2,8 @@
 
 This example demonstrates how to deploy Key0 as a **separate service** that communicates with your backend via HTTP.
 
+> **Tip:** For the simplest standalone deployment, use the Docker image directly — run `docker compose -f docker/docker-compose.yml up` and configure everything via the built-in Setup UI at `http://localhost:3000/setup`. This example is for when you need to customize the server code beyond what env vars provide.
+
 ## Architecture
 
 ```
@@ -29,7 +31,7 @@ This example demonstrates how to deploy Key0 as a **separate service** that comm
    - `INTERNAL_AUTH_SECRET`: Shared secret for service-to-service auth
    - `USE_GAS_WALLET`: Set to `true` to enable gas wallet facilitation mode
    - `GAS_WALLET_PRIVATE_KEY`: Private key for gas wallet (required if USE_GAS_WALLET=true)
-   - `PRODUCTS`: JSON array of product tiers
+   - `PLANS`: JSON array of pricing plans
 
 3. **Install dependencies:**
    ```bash
@@ -110,7 +112,7 @@ TOKEN_MODE=remote
 
 1. `POST /internal/verify-resource` - Verify resource exists
    ```json
-   { "resourceId": "photo-1", "tierId": "basic" }
+   { "resourceId": "photo-1", "planId": "basic" }
    ```
    Response: `{ "valid": true }`
 
@@ -120,7 +122,7 @@ TOKEN_MODE=remote
      "requestId": "uuid",
      "challengeId": "uuid",
      "resourceId": "photo-1",
-     "tierId": "basic",
+     "planId": "basic",
      "txHash": "0x..."
    }
    ```

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { KEY0_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+
+import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
+
 import type { AgentCard } from "../helpers/client.ts";
 
 describe("Agent Card", () => {
@@ -37,11 +39,11 @@ describe("Agent Card", () => {
 		const card = (await res.json()) as AgentCard;
 
 		const skill = card.skills.find((s) => s.id === DEFAULT_TIER_ID);
-		const tier = skill?.pricing?.[0];
-		expect(tier).toBeDefined();
-		expect(typeof tier?.amount).toBe("string");
-		// Amount should be a dollar string
-		expect(tier?.amount).toMatch(/^\$/);
-		expect(tier?.chainId).toBe(84532); // Base Sepolia
+		const plan = skill?.pricing?.[0];
+		expect(plan).toBeDefined();
+		expect(typeof plan?.unitAmount).toBe("string");
+		// unitAmount should be a dollar string
+		expect(plan?.unitAmount).toMatch(/^\$/);
+		expect(plan?.chainId).toBe(84532); // Base Sepolia
 	});
 });

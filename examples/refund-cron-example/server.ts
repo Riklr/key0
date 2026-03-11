@@ -65,19 +65,8 @@ app.use(
 			walletAddress: WALLET,
 			network: NETWORK,
 			challengeTTLSeconds: 900,
-			products: [
-				{
-					tierId: "single",
-					label: "Single access",
-					amount: "$0.10",
-					resourceType: "data",
-					accessDurationSeconds: 3600,
-				},
-			],
-			onVerifyResource: async (resourceId: string) => {
-				return ["item-1", "item-2", "item-3"].includes(resourceId);
-			},
-			onIssueToken: async (params) => {
+			plans: [{ planId: "single", unitAmount: "$0.10", description: "Single access." }],
+			fetchResourceCredentials: async (params) => {
 				console.log("New token issued", params);
 				throw new Error("No Token Issued"); // NOTE: This is for testing the refund cron
 
@@ -87,7 +76,7 @@ app.use(
 				// 		sub: params.requestId,
 				// 		jti: params.challengeId,
 				// 		resourceId: params.resourceId,
-				// 		tierId: params.tierId,
+				// 		planId: params.planId,
 				// 		txHash: params.txHash,
 				// 	},
 				// 	3600,

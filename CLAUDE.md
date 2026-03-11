@@ -47,7 +47,7 @@ Client → Protected API with Bearer JWT
    - `challenge-engine.ts` — State machine (PENDING → PAID → DELIVERED | PENDING → EXPIRED | PENDING → CANCELLED | PAID → REFUND_PENDING → REFUNDED | PAID → REFUND_PENDING → REFUND_FAILED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
    - `access-token.ts` — JWT issuance/verification (HS256 or RS256). Supports fallback secrets for zero-downtime rotation.
    - `agent-card.ts` — Auto-generates A2A discovery card from `SellerConfig`.
-   - `storage/` — `IChallengeStore` + `ISeenTxStore` with Redis implementations (`RedisChallengeStore`, `RedisSeenTxStore`). Uses atomic Lua scripts for concurrent state transitions. Both are required fields.
+   - `storage/` — `IChallengeStore` + `ISeenTxStore` with Redis (`RedisChallengeStore`, `RedisSeenTxStore`) and Postgres (`PostgresChallengeStore`, `PostgresSeenTxStore`) implementations. Uses atomic Lua scripts (Redis) or row-level locking (Postgres) for concurrent state transitions. Both store fields are required.
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
@@ -56,6 +56,8 @@ Client → Protected API with Bearer JWT
 5. **Executor** (`src/executor.ts`) — `Key0Executor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 
 6. **Factory** (`src/factory.ts`) — `createKey0()` wires everything together and returns `{ requestHandler, agentCard, engine, executor }`.
+
+7. **Utils** (`src/utils/`) — Shared utilities: `gas-wallet-lock.ts` provides distributed locking for gas wallet settlement (Redis-based across replicas, in-process serial queue for single-instance).
 
 ### Entry Points
 
@@ -68,15 +70,17 @@ Client → Protected API with Bearer JWT
 
 ### Auth Helpers (`src/helpers/`)
 
-`createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
+`noAuth`, `createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
 
 ## Key Configuration
 
-`SellerConfig` drives everything: `walletAddress`, `network`, `accessTokenSecret`, `products` (array of tiers with `tierId`, `amount`, `accessDurationSeconds`).
+`SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, optional `description`).
 
-Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT generation), `resourceVerifier` (custom access control per request).
+Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.).
 
-When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_products` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
+Optional callbacks: `onPaymentReceived`, `onChallengeExpired`.
+
+When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_plans` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
 
 ## Code Style
 

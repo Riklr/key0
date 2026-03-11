@@ -4,7 +4,6 @@ export type NetworkName = "mainnet" | "testnet";
 
 export type TokenIssuanceResult = {
 	readonly token: string;
-	readonly expiresAt: Date;
 	readonly tokenType?: string; // Default "Bearer"
 };
 
@@ -12,7 +11,7 @@ export type IssueTokenParams = {
 	readonly requestId: string;
 	readonly challengeId: string;
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly txHash: string;
 };
 
@@ -30,15 +29,11 @@ export type NetworkConfig = {
 	};
 };
 
-export type ProductTier = {
-	readonly tierId: string;
-	readonly label: string;
-	readonly amount: string; // "$0.10"
-	readonly resourceType: string; // "photo" | "report" | "api-call"
-	readonly accessDurationSeconds?: number; // undefined = single-use
+export type Plan = {
+	readonly planId: string;
+	readonly unitAmount: string; // "$0.10"
+	readonly description?: string;
 };
-
-export type ResourceVerifier = (resourceId: string, tierId: string) => Promise<boolean>;
 
 /**
  * Minimal Redis interface required for distributed gas wallet lock.
@@ -63,24 +58,20 @@ export type SellerConfig = {
 	readonly network: NetworkName;
 
 	// Product catalog
-	readonly products: readonly ProductTier[];
+	readonly plans: readonly Plan[];
 
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900
 
-	// Resource verification callback
-	readonly onVerifyResource: ResourceVerifier;
-	readonly resourceVerifyTimeoutMs?: number; // defaults to 5000
-
-	// Token issuance callback (required)
+	// Credential issuance callback (required)
 	/**
-	 * Callback that issues an access token after payment is verified.
+	 * Callback that fetches/issues resource credentials after payment is verified.
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
 	 */
-	readonly onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
-	/** Timeout for onIssueToken callback in ms. Default: 15000. */
+	readonly fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+	/** Timeout for fetchResourceCredentials callback in ms. Default: 15000. */
 	readonly tokenIssueTimeoutMs?: number;
-	/** Max retries for onIssueToken on failure. Default: 2. */
+	/** Max retries for fetchResourceCredentials on failure. Default: 2. */
 	readonly tokenIssueRetries?: number;
 
 	// Lifecycle hooks (optional)

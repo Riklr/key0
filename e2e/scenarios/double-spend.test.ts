@@ -20,7 +20,7 @@ describe("Double Spend Protection", () => {
 		// ── Challenge 1 ─────────────────────────────────────────────
 		const req1 = crypto.randomUUID();
 		const { paymentRequired: pr1 } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: req1,
 		});
 
@@ -33,7 +33,7 @@ describe("Double Spend Protection", () => {
 
 		// Submit to challenge 1 — should succeed
 		const result1 = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: req1,
 			auth,
 			paymentRequired: pr1,
@@ -44,14 +44,14 @@ describe("Double Spend Protection", () => {
 		// ── Challenge 2 ─────────────────────────────────────────────
 		const req2 = crypto.randomUUID();
 		const { paymentRequired: pr2 } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: req2,
 		});
 
 		// Reuse the SAME auth (same nonce — already burned on-chain).
 		// Update accepted requirements to point to challenge 2's requirements.
 		const result2 = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: req2,
 			auth, // same nonce → burned on-chain → transferWithAuthorization reverts
 			paymentRequired: pr2,

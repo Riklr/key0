@@ -5,7 +5,7 @@ export type AccessTokenPayload = JWTPayload & {
 	readonly sub: string; // requestId
 	readonly jti: string; // challengeId
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly txHash: string;
 };
 

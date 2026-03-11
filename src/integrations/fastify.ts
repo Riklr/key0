@@ -1,6 +1,6 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type Key0Config, createKey0 } from "../factory.js";
+import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { Key0Error } from "../types/index.js";
@@ -11,10 +11,7 @@ import { Key0Error } from "../types/index.js";
  * Usage:
  *   fastify.register(key0Plugin, { config, adapter });
  */
-export async function key0Plugin(
-	fastify: FastifyInstance,
-	opts: Key0Config,
-): Promise<void> {
+export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Promise<void> {
 	const { requestHandler, agentCard } = createKey0(opts);
 
 	// Agent Card
@@ -23,7 +20,7 @@ export async function key0Plugin(
 	});
 
 	// A2A endpoint
-	const basePath = opts.config.basePath ?? "/agent";
+	const basePath = opts.config.basePath ?? "/a2a";
 	fastify.post(basePath, async (_request: FastifyRequest, reply: FastifyReply) => {
 		// TODO: Use official A2A Fastify handler when available
 		return reply.code(501).send({ error: "Fastify support pending A2A SDK update" });

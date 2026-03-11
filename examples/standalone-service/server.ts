@@ -19,12 +19,12 @@
 import {
 	AccessTokenIssuer,
 	type AuthHeaderProvider,
-	createRemoteResourceVerifier,
 	createRemoteTokenIssuer,
 	type IChallengeStore,
 	type ISeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
+	noAuth,
 	PostgresChallengeStore,
 	PostgresSeenTxStore,
 	processRefunds,
@@ -45,7 +45,7 @@ const NETWORK = (process.env.KEY0_NETWORK ?? "testnet") as NetworkName;
 const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
-const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
+const BACKEND_AUTH_STRATEGY = process.env.BACKEND_AUTH_STRATEGY || "none"; // "none" | "shared-secret" | "jwt"
 const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "redis"; // "redis" | "postgres"
 
 // Gas wallet configuration for facilitation
@@ -83,8 +83,12 @@ if (STORAGE_BACKEND === "postgres" && !process.env.DATABASE_URL) {
 	process.exit(1);
 }
 
-if (AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
+if (BACKEND_AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 	console.error("ERROR: INTERNAL_AUTH_SECRET is required for shared-secret auth");
+	process.exit(1);
+}
+if (BACKEND_AUTH_STRATEGY === "jwt" && !SECRET) {
+	console.error("ERROR: KEY0_ACCESS_TOKEN_SECRET is required for jwt auth");
 	process.exit(1);
 }
 
@@ -122,30 +126,27 @@ let authProvider: AuthHeaderProvider;
 // This is used for service-to-service auth, not for access tokens issued to agents
 const serviceTokenIssuer = new AccessTokenIssuer(SECRET);
 
-if (AUTH_STRATEGY === "jwt") {
+if (BACKEND_AUTH_STRATEGY === "jwt") {
 	// Strategy 2: Signed JWT
 	// Requires SECRET to be a private key (PEM) if algorithm is RS256, or shared secret for HS256
 	// The backend must have the corresponding public key or shared secret
 	console.log("Using Signed JWT auth strategy for backend communication");
 	authProvider = signedJwtAuth(serviceTokenIssuer, "backend-service");
-} else {
-	// Strategy 1: Shared Secret (default)
+} else if (BACKEND_AUTH_STRATEGY === "shared-secret") {
+	// Strategy 1: Shared Secret
 	console.log("Using Shared Secret auth strategy for backend communication");
 	authProvider = sharedSecretAuth("X-Internal-Auth", INTERNAL_AUTH_SECRET);
+} else {
+	// No auth
+	console.log("Using No Auth strategy for backend communication");
+	authProvider = noAuth();
 }
 
 // Determine token issuance mode
 const tokenMode = (process.env.TOKEN_MODE || "native") as "native" | "remote";
 
-// Create remote verifier (calls backend to verify resources)
-const remoteVerifier = createRemoteResourceVerifier({
-	url: `${BACKEND_API_URL}/internal/verify-resource`,
-	auth: authProvider,
-	timeoutMs: 5000,
-});
-
 // Create token issuer callback based on mode
-let onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+let fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
 if (tokenMode === "remote") {
 	// Remote mode: Call backend to issue tokens
@@ -155,44 +156,52 @@ if (tokenMode === "remote") {
 		auth: authProvider,
 		timeoutMs: 10000,
 	});
-	onIssueToken = remoteTokenIssuer;
+	fetchResourceCredentials = remoteTokenIssuer;
 } else {
 	// Native mode: Generate JWT locally using AccessTokenIssuer utility
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
-	onIssueToken = async (params) => {
-		//NOTE: Testing for refund cron
-		// throw new Error("Not issuing tokens for refund cron");
+	fetchResourceCredentials = async (params) => {
+		const ttl = 3600;
 
-		//NOTE: Remove this after testing refund cron
 		return localTokenIssuer.sign(
 			{
 				sub: params.requestId,
 				jti: params.challengeId,
 				resourceId: params.resourceId,
-				tierId: params.tierId,
+				planId: params.planId,
 				txHash: params.txHash,
 			},
-			3600, // Default TTL, could be made configurable
+			ttl,
 		);
 	};
 }
 
 // Product catalog
-const products = [
+const plans = [
 	{
-		tierId: "basic",
-		label: "Basic Access",
-		amount: "$0.99",
-		resourceType: "api-call",
-		accessDurationSeconds: 3600,
+		planId: "basic",
+		unitAmount: "$0.015",
+		description:
+			"Pay-as-you-go. Best for low-volume or unpredictable workloads. 2 concurrent agents, 10 requests/minute, email support.",
 	},
 	{
-		tierId: "premium",
-		label: "Premium Access",
-		amount: "$4.99",
-		resourceType: "api-call",
-		accessDurationSeconds: 86400,
+		planId: "starter-monthly",
+		unitAmount: "$15.00",
+		description:
+			"Starter (monthly). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
+	},
+	{
+		planId: "starter-yearly",
+		unitAmount: "$168.00",
+		description:
+			"Starter (yearly — save 7%). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
+	},
+	{
+		planId: "pro-monthly",
+		unitAmount: "$150.00",
+		description:
+			"Pro (monthly). Best for teams with high-volume workloads. 16,500 requests/month, 50 concurrent agents, 1,000 requests/minute, priority email + Slack. Past 16,500 requests: $0.012/req.",
 	},
 ] as const;
 
@@ -209,9 +218,8 @@ app.use(
 				"0x0000000000000000000000000000000000000000") as `0x${string}`,
 			network: NETWORK,
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
-			products,
-			onVerifyResource: remoteVerifier,
-			onIssueToken,
+			plans,
+			fetchResourceCredentials,
 			onPaymentReceived: async (grant) => {
 				// Notify backend when payment is received
 				try {

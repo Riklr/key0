@@ -8,7 +8,7 @@ export const CHAIN_ID = 84532;
 export const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`;
 export const USDC_DOMAIN = { name: "USDC", version: "2" } as const;
 
-/** Default tier configured in the Docker server's PRODUCTS env */
+/** Default plan configured in the Docker server's PLANS env */
 export const DEFAULT_TIER_ID = "basic";
 export const DEFAULT_TIER_AMOUNT_MICRO = 100_000n; // $0.10 USDC
 

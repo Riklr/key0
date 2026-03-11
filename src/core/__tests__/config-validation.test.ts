@@ -11,11 +11,9 @@ function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
-		products: [{ tierId: "single", label: "Single", amount: "$0.10", resourceType: "photo" }],
-		onVerifyResource: async () => true,
-		onIssueToken: async (params) => ({
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
+		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
-			expiresAt: new Date(Date.now() + 3600 * 1000),
 		}),
 		...overrides,
 	};
@@ -56,64 +54,66 @@ describe("validateSellerConfig", () => {
 		);
 	});
 
-	test("rejects missing onIssueToken", () => {
+	test("rejects missing fetchResourceCredentials", () => {
 		expect(() =>
-			validateSellerConfig(makeValidConfig({ onIssueToken: undefined as unknown as never })),
-		).toThrow("onIssueToken must be a function");
+			validateSellerConfig(
+				makeValidConfig({ fetchResourceCredentials: undefined as unknown as never }),
+			),
+		).toThrow("fetchResourceCredentials must be a function");
 	});
 
-	test("rejects non-function onIssueToken", () => {
+	test("rejects non-function fetchResourceCredentials", () => {
 		expect(() =>
-			validateSellerConfig(makeValidConfig({ onIssueToken: "not-a-function" as unknown as never })),
-		).toThrow("onIssueToken must be a function");
+			validateSellerConfig(
+				makeValidConfig({ fetchResourceCredentials: "not-a-function" as unknown as never }),
+			),
+		).toThrow("fetchResourceCredentials must be a function");
 	});
 
-	test("rejects empty products array", () => {
-		expect(() => validateSellerConfig(makeValidConfig({ products: [] }))).toThrow(
-			"at least one tier",
-		);
+	test("rejects empty plans array", () => {
+		expect(() => validateSellerConfig(makeValidConfig({ plans: [] }))).toThrow("at least one plan");
 	});
 
-	test("rejects product with empty tierId", () => {
+	test("rejects plan with empty planId", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					products: [{ tierId: "", label: "X", amount: "$0.10", resourceType: "photo" }],
+					plans: [{ planId: "", unitAmount: "$0.10" }],
 				}),
 			),
-		).toThrow("non-empty tierId");
+		).toThrow("non-empty planId");
 	});
 
-	test("rejects duplicate tierIds", () => {
+	test("rejects duplicate planIds", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					products: [
-						{ tierId: "same", label: "A", amount: "$0.10", resourceType: "photo" },
-						{ tierId: "same", label: "B", amount: "$0.20", resourceType: "photo" },
+					plans: [
+						{ planId: "same", unitAmount: "$0.10" },
+						{ planId: "same", unitAmount: "$0.20" },
 					],
 				}),
 			),
-		).toThrow('duplicate tierId "same"');
+		).toThrow('duplicate planId "same"');
 	});
 
-	test("rejects invalid tier amount format", () => {
+	test("rejects invalid plan unitAmount format", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					products: [{ tierId: "bad", label: "X", amount: "0.10", resourceType: "photo" }],
+					plans: [{ planId: "bad", unitAmount: "0.10" }],
 				}),
 			),
-		).toThrow('invalid amount "0.10"');
+		).toThrow('invalid unitAmount "0.10"');
 	});
 
-	test("accepts multiple valid tiers", () => {
+	test("accepts multiple valid plans", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					products: [
-						{ tierId: "basic", label: "Basic", amount: "$0.10", resourceType: "photo" },
-						{ tierId: "premium", label: "Premium", amount: "$1.00", resourceType: "photo" },
+					plans: [
+						{ planId: "basic", unitAmount: "$0.10" },
+						{ planId: "premium", unitAmount: "$1.00" },
 					],
 				}),
 			),

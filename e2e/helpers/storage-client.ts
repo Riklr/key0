@@ -79,7 +79,7 @@ export async function readChallengeRecord(
 			requestId: record.requestId,
 			clientAgentId: record.clientAgentId,
 			resourceId: record.resourceId,
-			tierId: record.tierId,
+			planId: record.planId,
 			amount: record.amount,
 			amountRaw: String(record.amountRaw),
 			asset: record.asset,
@@ -117,7 +117,7 @@ export async function writePaidChallengeRecord(record: {
 	requestId: string;
 	clientAgentId: string;
 	resourceId: string;
-	tierId: string;
+	planId: string;
 	amount: string;
 	amountRaw: bigint;
 	destination: `0x${string}`;
@@ -224,9 +224,7 @@ export async function expireRequestIdIndex(requestId: string): Promise<boolean> 
  * Read the audit history for a challenge.
  * Uses the /test/audit/:challengeId HTTP endpoint (works for both backends).
  */
-export async function readAuditHistory(
-	challengeId: string,
-): Promise<
+export async function readAuditHistory(challengeId: string): Promise<
 	{
 		id?: string | number;
 		challengeId: string;

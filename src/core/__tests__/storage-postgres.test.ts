@@ -144,7 +144,7 @@ function createMockSql() {
 					request_id: values[2],
 					client_agent_id: values[3],
 					resource_id: values[4],
-					tier_id: values[5],
+					plan_id: values[5],
 					amount: values[6],
 					amount_raw: values[7],
 					asset: values[8],
@@ -301,6 +301,8 @@ function createMockSql() {
 	// Add helper methods
 	sql.unsafe = (str: string) => str;
 	sql.json = (obj: unknown) => obj;
+	// biome-ignore lint/suspicious/noExplicitAny: mock implementation
+	sql.begin = async (fn: (sql: any) => Promise<any>) => fn(sql);
 
 	// Expose tables for inspection
 	(sql as unknown as { _tables: Map<string, Row[]> })._tables = tables;
@@ -319,6 +321,8 @@ function createMockSql() {
 		unsafe(value: string): any;
 		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		json(value: unknown): any;
+		// biome-ignore lint/suspicious/noExplicitAny: mock type
+		begin(fn: (sql: any) => Promise<any>): Promise<any>;
 		_tables: Map<string, Row[]>; // for inspection
 	} & { _tables: Map<string, Row[]> };
 }
@@ -331,7 +335,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",
@@ -352,10 +356,9 @@ function makeGrant(): AccessGrant {
 		requestId: "r1",
 		accessToken: "tok",
 		tokenType: "Bearer",
-		expiresAt: "2025-01-01T13:00:00.000Z",
 		resourceEndpoint: "https://example.com/api/photos/42",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
 		explorerUrl: "https://sepolia.basescan.org/tx/0x...",
 	};
@@ -385,7 +388,7 @@ describe("PostgresChallengeStore", () => {
 		expect(loaded!.requestId).toBe(record.requestId);
 		expect(loaded!.clientAgentId).toBe(record.clientAgentId);
 		expect(loaded!.resourceId).toBe(record.resourceId);
-		expect(loaded!.tierId).toBe(record.tierId);
+		expect(loaded!.planId).toBe(record.planId);
 		expect(loaded!.amount).toBe(record.amount);
 		expect(loaded!.amountRaw).toBe(record.amountRaw);
 		expect(loaded!.asset).toBe(record.asset);

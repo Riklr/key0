@@ -110,8 +110,8 @@ function createMockRedis() {
 
 			// Collect field/value updates
 			const fieldUpdates: Record<string, string> = {};
-			// Apply field/value pairs (start after the 7 fixed ARGV slots)
-			for (let i = numKeys + 7; i < args.length; i += 2) {
+			// Apply field/value pairs (start after the 8 fixed ARGV slots: fromState, toState, challengeId, score, now, actor, reason, auditTTL)
+			for (let i = numKeys + 8; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
 				fieldUpdates[args[i] as string] = args[i + 1] as string;
 			}
@@ -219,7 +219,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",
@@ -240,10 +240,9 @@ function makeGrant(): AccessGrant {
 		requestId: "r1",
 		accessToken: "tok",
 		tokenType: "Bearer",
-		expiresAt: "2025-01-01T13:00:00.000Z",
 		resourceEndpoint: "https://example.com/api/photos/42",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
 		explorerUrl: "https://sepolia.basescan.org/tx/0x...",
 	};
@@ -273,7 +272,7 @@ describe("RedisChallengeStore", () => {
 		expect(loaded!.requestId).toBe(record.requestId);
 		expect(loaded!.clientAgentId).toBe(record.clientAgentId);
 		expect(loaded!.resourceId).toBe(record.resourceId);
-		expect(loaded!.tierId).toBe(record.tierId);
+		expect(loaded!.planId).toBe(record.planId);
 		expect(loaded!.amount).toBe(record.amount);
 		expect(loaded!.amountRaw).toBe(record.amountRaw);
 		expect(loaded!.asset).toBe(record.asset);

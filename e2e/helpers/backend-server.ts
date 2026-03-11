@@ -26,7 +26,7 @@ export function startBackend(): Promise<Server> {
 
 	// ── Token issuance ──────────────────────────────────────────────────────
 	app.post("/internal/issue-token", async (req, res) => {
-		const { challengeId, requestId, resourceId, tierId, txHash } = req.body as Record<
+		const { challengeId, requestId, resourceId, planId, txHash } = req.body as Record<
 			string,
 			string
 		>;
@@ -42,14 +42,13 @@ export function startBackend(): Promise<Server> {
 			return;
 		}
 
-		const token = await new SignJWT({ challengeId, requestId, resourceId, tierId, txHash })
+		const token = await new SignJWT({ challengeId, requestId, resourceId, planId, txHash })
 			.setProtectedHeader({ alg: "HS256" })
 			.setIssuedAt()
 			.setExpirationTime("1h")
 			.sign(secretBytes);
 
-		const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
-		res.json({ token, expiresAt, tokenType: "Bearer" });
+		res.json({ token, tokenType: "Bearer" });
 	});
 
 	// ── Per-challenge failure control ────────────────────────────────────────

@@ -1,10 +1,5 @@
 import type { NetworkName } from "@riklr/key0";
-import {
-	AccessTokenIssuer,
-	RedisChallengeStore,
-	RedisSeenTxStore,
-	X402Adapter,
-} from "@riklr/key0";
+import { AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore, X402Adapter } from "@riklr/key0";
 import { key0Router, validateAccessToken } from "@riklr/key0/express";
 import express from "express";
 import Redis from "ioredis";
@@ -47,48 +42,26 @@ app.use(
 			walletAddress: WALLET,
 			network: NETWORK,
 			challengeTTLSeconds: 900,
-			products: [
-				{
-					tierId: "single-photo",
-					label: "Single Photo",
-					amount: "$0.10",
-					resourceType: "photo",
-					accessDurationSeconds: 3600,
-				},
-				{
-					tierId: "full-album",
-					label: "Full Album Access",
-					amount: "$1.00",
-					resourceType: "album",
-					accessDurationSeconds: 86400,
-				},
+			plans: [
+				{ planId: "single-photo", unitAmount: "$0.10", description: "Single photo access." },
+				{ planId: "full-album", unitAmount: "$1.00", description: "Full album access (24h)." },
 			],
-			onVerifyResource: async (resourceId: string, _tierId: string) => {
-				// Accept "default" for general API access (tier-scoped)
-				if (resourceId === "default") {
-					return true;
-				}
-
-				// In a real app, check your database for specific resources
-				const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
-				return validResources.includes(resourceId);
-			},
-			onIssueToken: async (params) => {
+			fetchResourceCredentials: async (params) => {
 				// Generate JWT using the opt-in AccessTokenIssuer utility
-				const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+				const ttl = params.planId === "single-photo" ? 3600 : 86400;
 				return tokenIssuer.sign(
 					{
 						sub: params.requestId,
 						jti: params.challengeId,
 						resourceId: params.resourceId,
-						tierId: params.tierId,
+						planId: params.planId,
 						txHash: params.txHash,
 					},
 					ttl,
 				);
 			},
 			onPaymentReceived: async (grant) => {
-				console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
+				console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
 				console.log(`  TX: ${grant.explorerUrl}`);
 			},
 			resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,

@@ -13,21 +13,13 @@ export function validateUUID(value: string, label: string): void {
 
 export function validateTxHash(value: string): asserts value is `0x${string}` {
 	if (!TX_RE.test(value)) {
-		throw new Key0Error(
-			"INVALID_REQUEST",
-			"txHash must be a 0x-prefixed 64-char hex string",
-			400,
-		);
+		throw new Key0Error("INVALID_REQUEST", "txHash must be a 0x-prefixed 64-char hex string", 400);
 	}
 }
 
 export function validateAddress(value: string): asserts value is `0x${string}` {
 	if (!ADDR_RE.test(value)) {
-		throw new Key0Error(
-			"INVALID_REQUEST",
-			"Address must be a 0x-prefixed 40-char hex string",
-			400,
-		);
+		throw new Key0Error("INVALID_REQUEST", "Address must be a 0x-prefixed 40-char hex string", 400);
 	}
 }
 
@@ -39,10 +31,6 @@ export function validateNonEmpty(value: string, label: string): void {
 
 export function validateDollarAmount(value: string, label: string): void {
 	if (!DOLLAR_RE.test(value)) {
-		throw new Key0Error(
-			"INVALID_REQUEST",
-			`${label} must be a dollar amount (e.g. "$0.10")`,
-			400,
-		);
+		throw new Key0Error("INVALID_REQUEST", `${label} must be a dollar amount (e.g. "$0.10")`, 400);
 	}
 }

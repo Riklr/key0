@@ -25,7 +25,7 @@ describe("Cancel Challenge", () => {
 
 		// Step 1: Request access → PENDING
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -48,7 +48,7 @@ describe("Cancel Challenge", () => {
 		});
 
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,
@@ -64,7 +64,7 @@ describe("Cancel Challenge", () => {
 
 		// Create and cancel
 		const { challengeId: firstId } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -75,7 +75,7 @@ describe("Cancel Challenge", () => {
 
 		// Re-request with same requestId
 		const { challengeId: secondId } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 

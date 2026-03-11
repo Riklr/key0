@@ -23,7 +23,7 @@ describe("Expired Challenge Proof Submission", () => {
 
 		// Step 1: Request access → get challenge
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -39,7 +39,7 @@ describe("Expired Challenge Proof Submission", () => {
 
 		// Step 4: Submit payment — should be rejected by pre-settlement check
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,
@@ -60,7 +60,7 @@ describe("Expired Challenge Proof Submission", () => {
 
 		// Step 1: Create initial challenge
 		const { challengeId: firstId } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -71,7 +71,7 @@ describe("Expired Challenge Proof Submission", () => {
 
 		// Step 3: Re-request with same requestId → new challenge
 		const { challengeId: secondId } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 

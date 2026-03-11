@@ -36,7 +36,7 @@ function makePaidChallenge(overrides?: Partial<ChallengeRecord>): ChallengeRecor
 		requestId: crypto.randomUUID(),
 		clientAgentId: "did:example:buyer",
 		resourceId: "resource-1",
-		tierId: "basic",
+		planId: "basic",
 		amount: "$0.10",
 		amountRaw: 100_000n,
 		asset: "USDC",

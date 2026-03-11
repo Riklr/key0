@@ -6,11 +6,11 @@ import {
 	UserBuilder,
 } from "@a2a-js/sdk/server/express";
 import { type NextFunction, type Request, type Response, Router } from "express";
-import { type Key0Config, createKey0 } from "../factory.js";
+import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import type { X402PaymentRequiredResponse } from "../types/index.js";
-import { Key0Error, CHAIN_CONFIGS } from "../types/index.js";
+import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { mountMcpRoutes } from "./mcp.js";
 import {
 	buildDiscoveryResponse,
@@ -65,16 +65,16 @@ export function key0Router(opts: Key0Config): Router {
 
 			// Parse body (allow empty for discovery)
 			const body = req.body || {};
-			const { tierId, resourceId = "default" } = body;
+			const { planId, resourceId = "default" } = body;
 			let { requestId } = body;
 
 			// Check for PAYMENT-SIGNATURE header
 			const paymentSignature = req.headers["payment-signature"] as string | undefined;
 			console.log(`[x402-access] PAYMENT-SIGNATURE present: ${!!paymentSignature}`);
 
-			// ===== CASE 1: No tierId → Discovery (402 with all tiers, no PENDING record) =====
-			if (!tierId) {
-				console.log("[x402-access] → CASE 1: No tierId provided, returning discovery 402");
+			// ===== CASE 1: No planId → Discovery (402 with all tiers, no PENDING record) =====
+			if (!planId) {
+				console.log("[x402-access] → CASE 1: No planId provided, returning discovery 402");
 
 				const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
 				console.log(
@@ -107,24 +107,24 @@ export function key0Router(opts: Key0Config): Router {
 			}
 
 			console.log(
-				`[x402-access] Parsed request - tierId: ${tierId}, requestId: ${requestId}, resourceId: ${resourceId}`,
+				`[x402-access] Parsed request - planId: ${planId}, requestId: ${requestId}, resourceId: ${resourceId}`,
 			);
 
-			// ===== CASE 2: tierId present, no PAYMENT-SIGNATURE → Challenge (402 + PENDING record) =====
+			// ===== CASE 2: planId present, no PAYMENT-SIGNATURE → Challenge (402 + PENDING record) =====
 			if (!paymentSignature) {
 				console.log(
-					"[x402-access] → CASE 2: tierId provided, no PAYMENT-SIGNATURE, issuing 402 challenge",
+					"[x402-access] → CASE 2: planId provided, no PAYMENT-SIGNATURE, issuing 402 challenge",
 				);
 				console.log(`[x402-access] Creating PENDING record for requestId: ${requestId}`);
 
 				// Create PENDING record via engine (handles tier/resource validation and idempotency)
-				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
+				const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
 				console.log(`[x402-access] ✓ PENDING record created, challengeId=${challengeId}`);
 
 				// Build payment requirements with schema
-				console.log(`[x402-access] Building payment requirements for tier: ${tierId}`);
+				console.log(`[x402-access] Building payment requirements for tier: ${planId}`);
 				const requirements: X402PaymentRequiredResponse = buildHttpPaymentRequirements(
-					tierId,
+					planId,
 					resourceId,
 					opts.config,
 					networkConfig,
@@ -132,9 +132,9 @@ export function key0Router(opts: Key0Config): Router {
 						inputSchema: {
 							type: "object",
 							properties: {
-								tierId: {
+								planId: {
 									type: "string",
-									description: `Tier to purchase. Must be '${tierId}'`,
+									description: `Tier to purchase. Must be '${planId}'`,
 								},
 								requestId: {
 									type: "string",
@@ -145,14 +145,13 @@ export function key0Router(opts: Key0Config): Router {
 									description: "Optional: Specific resource identifier (defaults to 'default')",
 								},
 							},
-							required: ["tierId"],
+							required: ["planId"],
 						},
 						outputSchema: {
 							type: "object",
 							properties: {
 								accessToken: { type: "string", description: "JWT token for API access" },
 								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-								expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 								resourceEndpoint: {
 									type: "string",
 									description: "URL to access the protected resource",
@@ -161,7 +160,7 @@ export function key0Router(opts: Key0Config): Router {
 								explorerUrl: { type: "string", description: "Blockchain explorer URL" },
 							},
 						},
-						description: `Access to ${resourceId} via ${tierId} tier`,
+						description: `Access to ${resourceId} via ${planId} tier`,
 					},
 				);
 				console.log(`[x402-access] Payment requirements:`, JSON.stringify(requirements, null, 2));
@@ -185,7 +184,7 @@ export function key0Router(opts: Key0Config): Router {
 				});
 			}
 
-			// ===== CASE 3: tierId + PAYMENT-SIGNATURE → Settle and return access grant =====
+			// ===== CASE 3: planId + PAYMENT-SIGNATURE → Settle and return access grant =====
 			console.log("[x402-access] → CASE 3: Processing payment");
 			console.log(
 				`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`,
@@ -198,9 +197,6 @@ export function key0Router(opts: Key0Config): Router {
 				console.log("[x402-access] ✓ Already delivered, returning cached grant");
 				return res.status(200).json(existingGrant);
 			}
-
-			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
-			await engine.verifyResource(resourceId, tierId);
 
 			// Decode header then settle via shared settlement layer
 			console.log("[x402-access] Decoding payment signature...");
@@ -226,7 +222,7 @@ export function key0Router(opts: Key0Config): Router {
 			console.log(`[x402-access] Processing payment for requestId: ${requestId}`);
 			const grant = await engine.processHttpPayment(
 				requestId,
-				tierId,
+				planId,
 				resourceId,
 				txHash,
 				payer as `0x${string}` | undefined,

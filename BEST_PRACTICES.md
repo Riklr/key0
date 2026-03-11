@@ -107,7 +107,7 @@ Agents are focused AI personas invoked with `@agent-name`. Each has a restricted
 2. **Double-spend prevention** — `markUsed()` return value is checked; rollback guard exists if transition fails after marking
 3. **On-chain verification completeness** — all six checks present: receipt status, Transfer event, `to` address, amount, chainId, timestamp window
 4. **JWT security** — `jti` = challengeId, HS256 secret ≥ 32 chars, `exp` present, no algorithm confusion
-5. **Callback safety** — `onPaymentReceived` is fire-and-forget (correct), `onIssueToken` errors are caught
+5. **Callback safety** — `onPaymentReceived` is fire-and-forget (correct), `fetchResourceCredentials` errors are caught
 
 It outputs a PASS/FAIL/N/A verdict per invariant and a final APPROVE / REQUEST CHANGES verdict.
 
@@ -167,7 +167,7 @@ The invariants (in brief):
 2. `markUsed()` return value checked + rollback guard if `transition()` subsequently fails
 3. All 6 on-chain checks: receipt status, Transfer event, `to` address, amount, chainId, timestamp
 4. JWT has `jti` = challengeId, `exp`, secret ≥ 32 chars
-5. `onPaymentReceived` fire-and-forget; `onIssueToken` errors caught
+5. `onPaymentReceived` fire-and-forget; `fetchResourceCredentials` errors caught
 
 ### `test-conventions`
 

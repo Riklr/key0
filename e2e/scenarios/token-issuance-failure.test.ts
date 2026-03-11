@@ -1,7 +1,7 @@
 /**
  * Token Issuance Failure — critical invariant: record stays PAID when token issuance fails.
  *
- * Security invariant: if onIssueToken fails, the challenge record MUST remain in PAID state
+ * Security invariant: if fetchResourceCredentials fails, the challenge record MUST remain in PAID state
  * so the refund cron can pick it up. It must NOT be rolled back to PENDING or deleted.
  *
  * Uses per-challengeId failure (/test/fail-for-challenge) instead of the global mode toggle
@@ -20,7 +20,7 @@ describe("Token Issuance Failure", () => {
 
 		// Step 1: Request access
 		const { challengeId, paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -42,7 +42,7 @@ describe("Token Issuance Failure", () => {
 		// Step 3: Submit payment — gas wallet settles, but backend returns 500
 		// Key0 should return an error response (HTTP 500)
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 			auth,
 			paymentRequired,

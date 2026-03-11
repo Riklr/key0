@@ -34,39 +34,34 @@ export function validateSellerConfig(config: SellerConfig): void {
 		);
 	}
 
-	// Validate products array
-	if (!config.products || config.products.length === 0) {
-		throw new Error("SellerConfig: products must contain at least one tier");
+	// Validate plans array
+	if (!config.plans || config.plans.length === 0) {
+		throw new Error("SellerConfig: plans must contain at least one plan");
 	}
 
-	// Validate each product tier
-	const tierIds = new Set<string>();
-	for (const tier of config.products) {
-		if (!tier.tierId || tier.tierId.trim().length === 0) {
-			throw new Error("SellerConfig: each product tier must have a non-empty tierId");
+	// Validate each plan
+	const planIds = new Set<string>();
+	for (const plan of config.plans) {
+		if (!plan.planId || plan.planId.trim().length === 0) {
+			throw new Error("SellerConfig: each plan must have a non-empty planId");
 		}
 
-		if (tierIds.has(tier.tierId)) {
-			throw new Error(`SellerConfig: duplicate tierId "${tier.tierId}"`);
+		if (planIds.has(plan.planId)) {
+			throw new Error(`SellerConfig: duplicate planId "${plan.planId}"`);
 		}
-		tierIds.add(tier.tierId);
+		planIds.add(plan.planId);
 
 		try {
-			validateDollarAmount(tier.amount, `products[${tier.tierId}].amount`);
+			validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
 		} catch {
 			throw new Error(
-				`SellerConfig: product tier "${tier.tierId}" has invalid amount "${tier.amount}" (expected format: "$X.XX")`,
+				`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
 			);
 		}
 	}
 
-	// Validate onVerifyResource is a function
-	if (typeof config.onVerifyResource !== "function") {
-		throw new Error("SellerConfig: onVerifyResource must be a function");
-	}
-
-	// Validate onIssueToken is a function
-	if (typeof config.onIssueToken !== "function") {
-		throw new Error("SellerConfig: onIssueToken must be a function");
+	// Validate fetchResourceCredentials is a function
+	if (typeof config.fetchResourceCredentials !== "function") {
+		throw new Error("SellerConfig: fetchResourceCredentials must be a function");
 	}
 }

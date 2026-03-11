@@ -12,18 +12,9 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
-		products: [
-			{
-				tierId: "single",
-				label: "Single Photo",
-				amount: "$0.10",
-				resourceType: "photo",
-			},
-		],
-		onVerifyResource: async () => true,
-		onIssueToken: async () => ({
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
+		fetchResourceCredentials: async () => ({
 			token: "test-token",
-			expiresAt: new Date(),
 		}),
 		...overrides,
 	};
@@ -74,7 +65,7 @@ describe("buildAgentCard", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.skills).toHaveLength(1);
 		expect(card.skills[0]!.id).toBe("single");
-		expect(card.skills[0]!.name).toBe("Single Photo");
+		expect(card.skills[0]!.name).toBe("single");
 	});
 
 	test("skill description mentions x402 payment and 402 challenge", () => {
@@ -87,29 +78,29 @@ describe("buildAgentCard", () => {
 		const card = buildAgentCard(makeConfig());
 		const skill = card.skills[0]!;
 		expect(skill.pricing).toHaveLength(1);
-		expect(skill.pricing![0]!.tierId).toBe("single");
-		expect(skill.pricing![0]!.amount).toBe("$0.10");
+		expect(skill.pricing![0]!.planId).toBe("single");
+		expect(skill.pricing![0]!.unitAmount).toBe("$0.10");
 		expect(skill.pricing![0]!.asset).toBe("USDC");
 		expect(skill.pricing![0]!.chainId).toBe(84532); // testnet
 	});
 
 	test("multiple tiers produce multiple skills with one pricing each", () => {
 		const config = makeConfig({
-			products: [
-				{ tierId: "basic", label: "Basic", amount: "$0.10", resourceType: "photo" },
-				{ tierId: "premium", label: "Premium", amount: "$1.00", resourceType: "photo" },
-				{ tierId: "bulk", label: "Bulk", amount: "$5.00", resourceType: "photo" },
+			plans: [
+				{ planId: "basic", unitAmount: "$0.10" },
+				{ planId: "premium", unitAmount: "$1.00" },
+				{ planId: "bulk", unitAmount: "$5.00" },
 			],
 		});
 		const card = buildAgentCard(config);
 		expect(card.skills).toHaveLength(3);
 		expect(card.skills[0]!.id).toBe("basic");
 		expect(card.skills[0]!.pricing).toHaveLength(1);
-		expect(card.skills[0]!.pricing![0]!.tierId).toBe("basic");
+		expect(card.skills[0]!.pricing![0]!.planId).toBe("basic");
 		expect(card.skills[1]!.id).toBe("premium");
-		expect(card.skills[1]!.pricing![0]!.tierId).toBe("premium");
+		expect(card.skills[1]!.pricing![0]!.planId).toBe("premium");
 		expect(card.skills[2]!.id).toBe("bulk");
-		expect(card.skills[2]!.pricing![0]!.tierId).toBe("bulk");
+		expect(card.skills[2]!.pricing![0]!.planId).toBe("bulk");
 	});
 
 	test("mainnet uses correct chainId", () => {

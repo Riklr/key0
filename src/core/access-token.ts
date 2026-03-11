@@ -4,13 +4,12 @@ export type TokenClaims = {
 	readonly sub: string; // requestId
 	readonly jti: string; // challengeId
 	readonly resourceId: string;
-	readonly tierId: string;
+	readonly planId: string;
 	readonly txHash: string;
 };
 
 export type TokenResult = {
 	readonly token: string;
-	readonly expiresAt: Date;
 };
 
 export type AccessTokenIssuerConfig = {
@@ -88,7 +87,6 @@ export class AccessTokenIssuer {
 
 		return {
 			token,
-			expiresAt: new Date(exp * 1000),
 		};
 	}
 

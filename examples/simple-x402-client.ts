@@ -88,7 +88,7 @@ async function main() {
 		console.error("   No pricing found");
 		process.exit(1);
 	}
-	console.log(`   Using: ${pricing.label} — ${pricing.amount} USDC\n`);
+	console.log(`   Using: ${pricing.planId} — ${pricing.unitAmount} USDC\n`);
 
 	// -----------------------------------------------------------------------
 	// Step 2: Request access (initial call → HTTP 402)
@@ -101,7 +101,7 @@ async function main() {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
-			tierId: pricing.tierId,
+			planId: pricing.planId,
 			requestId,
 			resourceId: "photo-1",
 		}),
@@ -126,16 +126,16 @@ async function main() {
 	);
 	console.log("   Payment required:");
 	console.log(`     Asset:  ${paymentRequired.accepts[0].asset}`);
-	console.log(`     Amount: ${paymentRequired.accepts[0].amount} (${pricing.amount})`);
+	console.log(`     Amount: ${paymentRequired.accepts[0].amount} (${pricing.unitAmount})`);
 	console.log(`     PayTo:  ${paymentRequired.accepts[0].payTo}\n`);
 
 	// -----------------------------------------------------------------------
 	// Step 3: Pay USDC on-chain
 	// -----------------------------------------------------------------------
 	console.log("3. Paying USDC on-chain...");
-	const amountRaw = parseDollarToUsdcMicro(pricing.amount);
+	const amountRaw = parseDollarToUsdcMicro(pricing.unitAmount);
 	console.log(
-		`   Sending ${pricing.amount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`,
+		`   Sending ${pricing.unitAmount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`,
 	);
 
 	const txHash = await walletClient.writeContract({
@@ -179,7 +179,7 @@ async function main() {
 			"PAYMENT-SIGNATURE": paymentSignatureHeader,
 		},
 		body: JSON.stringify({
-			tierId: pricing.tierId,
+			planId: pricing.planId,
 			requestId,
 			resourceId: "photo-1",
 		}),
@@ -195,7 +195,6 @@ async function main() {
 	const grant: AccessGrant = await finalRes.json();
 	console.log("   Access granted!");
 	console.log(`     Token:     ${grant.accessToken.substring(0, 20)}...`);
-	console.log(`     Expires:   ${grant.expiresAt}`);
 	console.log(`     Resource:  ${grant.resourceEndpoint}`);
 	console.log(`     TX:        ${grant.explorerUrl}\n`);
 

@@ -106,7 +106,7 @@ async function main() {
 	}
 
 	const tier = requestSkill.pricing[0];
-	console.log(`   Tier: ${tier.label} — ${tier.amount} USDC on chain ${tier.chainId}\n`);
+	console.log(`   Tier: ${tier.planId} — ${tier.unitAmount} USDC on chain ${tier.chainId}\n`);
 
 	// -----------------------------------------------------------------------
 	// Step 2: Request access
@@ -133,7 +133,7 @@ async function main() {
 								type: "AccessRequest",
 								requestId,
 								resourceId: "photo-1",
-								tierId: tier.tierId,
+								planId: tier.planId,
 								clientAgentId: `agent://${account.address}`,
 							},
 							mimeType: "application/json",
@@ -228,7 +228,6 @@ async function main() {
 	const grant: AccessGrant = proofBody.result.status.message.parts[0].data;
 	console.log("   Access granted!");
 	console.log(`   Token type: ${grant.tokenType}`);
-	console.log(`   Expires: ${grant.expiresAt}`);
 	console.log(`   Resource: ${grant.resourceEndpoint}`);
 	console.log(`   TX: ${grant.explorerUrl}\n`);
 

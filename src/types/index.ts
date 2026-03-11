@@ -29,8 +29,7 @@ export type {
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,
-	ProductTier,
-	ResourceVerifier,
+	Plan,
 	SellerConfig,
 	TokenIssuanceResult,
 } from "./config.js";
@@ -39,11 +38,19 @@ export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
 export type { Key0ErrorCode } from "./errors.js";
 export { Key0Error } from "./errors.js";
 
-export type { AuditActor, AuditEntry, ChallengeTransitionUpdates, IAuditStore, IChallengeStore, ISeenTxStore, TransitionMeta } from "./storage.js";
 export type {
-	Key0Extension,
+	AuditActor,
+	AuditEntry,
+	ChallengeTransitionUpdates,
+	IAuditStore,
+	IChallengeStore,
+	ISeenTxStore,
+	TransitionMeta,
+} from "./storage.js";
+export type {
 	EIP3009Authorization,
 	FacilitatorVerifyResponse,
+	Key0Extension,
 	PaymentRequirements,
 	ResourceInfo,
 	X402PaymentPayload,
@@ -51,6 +58,7 @@ export type {
 	X402PaymentStatus,
 	X402SettleResponse,
 } from "./x402-extension.js";
+
 export {
 	CHAIN_ID_TO_NETWORK,
 	NETWORK_TO_CHAIN_ID,

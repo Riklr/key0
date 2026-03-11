@@ -128,10 +128,10 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			}
 
 			const resourceId = accessRequest.resourceId || "default";
-			const tierId = accessRequest.tierId;
+			const planId = accessRequest.planId;
 			const requestId = accessRequest.requestId || `http-${crypto.randomUUID()}`;
 			console.log(
-				`[x402-http-middleware] AccessRequest: tierId=${tierId}, resourceId=${resourceId}, requestId=${requestId}`,
+				`[x402-http-middleware] AccessRequest: planId=${planId}, resourceId=${resourceId}, requestId=${requestId}`,
 			);
 
 			// 5. Check for PAYMENT-SIGNATURE header
@@ -144,11 +144,11 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				// ===== STEP 1: No payment → create PENDING record and return HTTP 402 =====
 				console.log("[x402-http-middleware] → STEP 1: Issuing 402 challenge");
 
-				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
+				const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
 				console.log(`[x402-http-middleware] ✓ PENDING record created, challengeId=${challengeId}`);
 
 				const requirements = buildHttpPaymentRequirements(
-					tierId,
+					planId,
 					resourceId,
 					config,
 					networkConfig,
@@ -181,9 +181,6 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				return res.status(200).json(existingGrant);
 			}
 
-			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
-			await engine.verifyResource(resourceId, tierId);
-
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
 			const { txHash, settleResponse, payer } = await settlePayment(
@@ -196,7 +193,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 			const grant: AccessGrant = await engine.processHttpPayment(
 				requestId,
-				tierId,
+				planId,
 				resourceId,
 				txHash,
 				payer as `0x${string}` | undefined,

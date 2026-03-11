@@ -13,7 +13,7 @@ export function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): Chall
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",
@@ -39,11 +39,9 @@ export function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfi
 		providerUrl: "https://provider.example.com",
 		walletAddress: DEFAULT_WALLET,
 		network: "testnet",
-		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
-		onVerifyResource: async () => true,
-		onIssueToken: async () => ({
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
+		fetchResourceCredentials: async () => ({
 			token: "test-token-123",
-			expiresAt: new Date(Date.now() + 3600_000),
 		}),
 		...overrides,
 	};
@@ -56,7 +54,7 @@ export function makeAccessRequest(overrides?: Partial<AccessRequest>): AccessReq
 	return {
 		requestId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		clientAgentId: "agent://buyer",
 		...overrides,
 	};

@@ -10,16 +10,16 @@ Key0 lets you monetize any API: agents request access, pay via on-chain USDC, an
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker run riklr/key0:latest` | `bun add @riklr/key0` |
-| **Config** | Environment variables | TypeScript config |
-| **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
+| **Setup** | `docker compose up` → browser Setup UI | `bun add @riklr/key0` |
+| **Config** | Setup UI or environment variables | TypeScript config |
+| **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `fetchResourceCredentials` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
 
 ---
 
 ## Standalone Mode
 
-Run Key0 as a pre-built Docker container. No code required — configure entirely via environment variables and point it at your own token-issuance endpoint.
+Run Key0 as a pre-built Docker container. No code required — configure via the built-in Setup UI or environment variables, and point it at your own token-issuance endpoint.
 
 ```
 ┌──────────────┐        ┌───────────────────────────┐        ┌──────────────────┐
@@ -47,7 +47,26 @@ Run Key0 as a pre-built Docker container. No code required — configure entirel
 
 ### Quick Start
 
-**Two required environment variables:**
+There are two ways to configure Standalone mode:
+
+#### Option A: Setup UI (zero-config start)
+
+Just start the container with no environment variables — Key0 boots into **Setup Mode** and serves a browser-based configuration wizard:
+
+```bash
+docker compose -f docker/docker-compose.yml up
+# Open http://localhost:3000 → redirects to /setup
+```
+
+The Setup UI lets you configure everything visually: wallet address, network, pricing plans, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
+
+Configuration is persisted in a Docker volume (`key0-config`), so it survives `docker compose down` / `up` cycles.
+
+The Setup UI also works as a **standalone config generator** — open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy. See [`docs/setup-ui.md`](./docs/setup-ui.md) for architecture details.
+
+#### Option B: Environment variables
+
+Set the two required variables and start immediately:
 
 | Variable | Description |
 |---|---|
@@ -69,6 +88,8 @@ cp docker/.env.example docker/.env
 # Edit docker/.env: set KEY0_WALLET_ADDRESS and ISSUE_TOKEN_API
 docker compose -f docker/docker-compose.yml up
 ```
+
+> Even with env vars pre-configured, the Setup UI is always available at `/setup` for reconfiguration.
 
 ### Docker Image
 
@@ -95,10 +116,12 @@ Build from source: `docker build -t riklr/key0 .`
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
 | `PROVIDER_NAME` | | `Key0` | Your organization name shown in the agent card `provider` field |
 | `PROVIDER_URL` | | `https://key0.ai` | Your organization URL shown in the agent card `provider` field |
-| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
+| `PLANS` | | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of pricing plans — each with `planId`, `unitAmount`, and optional `description` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
-| `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
+| `BACKEND_AUTH_STRATEGY` | | `none` | How Key0 authenticates with `ISSUE_TOKEN_API` — `none`, `shared-secret`, or `jwt` |
+| `ISSUE_TOKEN_API_SECRET` | | — | Secret for `ISSUE_TOKEN_API` auth — Bearer token (shared-secret) or JWT signing key (jwt). Only used when `BACKEND_AUTH_STRATEGY` is not `none` |
+| `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover_plans` and `request_access` tools |
 | `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
 | `KEY0_WALLET_PRIVATE_KEY` | | — | Private key of `KEY0_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
@@ -108,27 +131,25 @@ Build from source: `docker build -t riklr/key0 .`
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
 | `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
 
+
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
 ### ISSUE_TOKEN_API Contract
 
-After on-chain payment is verified, Key0 POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching product tier:
+After on-chain payment is verified, Key0 POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching plan:
 
 ```json
 {
   "requestId": "uuid",
   "challengeId": "uuid",
   "resourceId": "photo-42",
-  "tierId": "basic",
+  "planId": "basic",
   "txHash": "0x...",
-  "label": "Basic",
-  "amount": "$0.10",
-  "resourceType": "api",
-  "accessDurationSeconds": 3600
+  "unitAmount": "$0.10"
 }
 ```
 
-Any extra fields you add to your `PRODUCTS` tiers are included automatically.
+Any extra fields you add to your `PLANS` plans are included automatically.
 
 Your endpoint can return any credential shape — the response is passed through to the client as-is:
 
@@ -189,13 +210,12 @@ Install the SDK and add Key0 as middleware inside your existing application. You
 │  discover    │───────▶│  │           Key0 Middleware              │  │
 │              │◀───────│  │  /.well-known/agent.json  (auto-generated)  │  │
 │              │        │  │  /x402/access  (x402 payment + settlement)  │  │
-│  request     │───────▶│  │  onVerifyResource()  ──▶  your DB/logic     │  │
-│              │        │  │  [store: PENDING]                          │  │
+│  request     │───────▶│  │  [store: PENDING]                          │  │
 │              │◀───────│  │  402 + payment terms                        │  │
 │  [pays USDC on Base]  │  │                                             │  │
 │  retry +sig  │───────▶│  │  settle on-chain                           │  │
 │              │        │  │  [PENDING → PAID]                          │  │
-│              │        │  │  onIssueToken()      ──▶  your JWT/key gen  │  │
+│              │        │  │  fetchResourceCredentials()      ──▶  your JWT/key gen  │  │
 │              │        │  │  [PAID → DELIVERED]                        │  │
 │              │◀───────│  │  AccessGrant (JWT or custom credential)     │  │
 │              │        │  └────────────────────────────────────────────┘  │
@@ -244,22 +264,13 @@ app.use(
       providerUrl: "https://example.com",
       walletAddress: "0xYourWalletAddress" as `0x${string}`,
       network: "testnet",
-      products: [
-        {
-          tierId: "basic",
-          label: "Basic Access",
-          amount: "$0.10",
-          resourceType: "api-call",
-          accessDurationSeconds: 3600,
-        },
+      plans: [
+        { planId: "basic", unitAmount: "$0.10", description: "Basic API access." },
       ],
-      onVerifyResource: async (resourceId, tierId) => {
-        return true; // check your DB here
-      },
-      onIssueToken: async (params) => {
+      fetchResourceCredentials: async (params) => {
         return tokenIssuer.sign(
           { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-          params.accessDurationSeconds,
+          3600,
         );
       },
     },
@@ -277,6 +288,8 @@ app.listen(3000);
 ```
 
 ### Hono
+
+> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
 
 ```typescript
 import { Hono } from "hono";
@@ -305,6 +318,8 @@ export default { port: 3000, fetch: app.fetch };
 ```
 
 ### Fastify
+
+> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
 
 ```typescript
 import Fastify from "fastify";
@@ -340,11 +355,9 @@ fastify.listen({ port: 3000 });
 | `providerUrl` | `string` | ✅ | — | Your company/org URL |
 | `walletAddress` | `0x${string}` | ✅ | — | USDC-receiving wallet |
 | `network` | `"testnet" \| "mainnet"` | ✅ | — | Base Sepolia or Base |
-| `products` | `ProductTier[]` | ✅ | — | Pricing tiers |
-| `onVerifyResource` | `(resourceId, tierId) => Promise<boolean>` | ✅ | — | Check the resource exists and tier is valid |
-| `onIssueToken` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
+| `plans` | `Plan[]` | ✅ | — | Pricing plans |
+| `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
-| `resourceVerifyTimeoutMs` | `number` | | `5000` | Timeout for `onVerifyResource` |
 | `basePath` | `string` | | `"/a2a"` | A2A endpoint path prefix |
 | `resourceEndpointTemplate` | `string` | | auto | URL template (use `{resourceId}`) |
 | `gasWalletPrivateKey` | `0x${string}` | | — | Private key for self-contained settlement |
@@ -354,15 +367,13 @@ fastify.listen({ port: 3000 });
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | — | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server — mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
-#### ProductTier
+#### Plan
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `tierId` | `string` | ✅ | Unique tier identifier |
-| `label` | `string` | ✅ | Display name |
-| `amount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
-| `resourceType` | `string` | ✅ | Category (e.g. `"photo"`, `"api-call"`) |
-| `accessDurationSeconds` | `number` | | Token validity; omit for single-use |
+| `planId` | `string` | ✅ | Unique plan identifier |
+| `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
+| `description` | `string` | | Free-form description of what the plan includes |
 
 #### IssueTokenParams
 
@@ -371,12 +382,12 @@ fastify.listen({ port: 3000 });
 | `challengeId` | `string` | Use as JWT `jti` for replay prevention |
 | `requestId` | `string` | Use as JWT `sub` |
 | `resourceId` | `string` | Purchased resource |
-| `tierId` | `string` | Purchased tier |
+| `planId` | `string` | Purchased plan |
 | `txHash` | `0x${string}` | On-chain transaction hash |
 
 ### Refund Cron (Embedded)
 
-When `onIssueToken` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
+When `fetchResourceCredentials` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
 
 ```
 ┌──────────────┐   ┌──────────────────────────────────────────────────┐   ┌──────────┐
@@ -385,7 +396,7 @@ When `onIssueToken` throws or the server crashes after payment but before delive
 │  pays USDC   │──▶│  │  Key0 Middleware                       │  │──▶│          │
 │              │   │  │  verify on-chain                            │  │◀──│          │
 │              │   │  │  PENDING ──────────────────────────▶ PAID   │  │   │          │
-│              │   │  │  onIssueToken() throws                      │  │   │          │
+│              │   │  │  fetchResourceCredentials() throws                      │  │   │          │
 │              │◀──│  │  record stays PAID                          │  │   │          │
 │              │   │  └────────────────────────────────────────────┘  │   │          │
 │              │   │                                                   │   │          │
@@ -473,13 +484,13 @@ Client Agent                          Seller Server
      |  <-- Protected content               |
 ```
 
-1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available products and pricing
-2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired tier
+1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available plans and pricing
+2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired plan
 3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
 4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
 5. **Proof** — Client submits a `PaymentProof` with the transaction hash
 6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
-7. **Grant** — Server calls `onIssueToken`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
+7. **Grant** — Server calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
 8. **Access** — Client uses the token as a Bearer header to access the protected resource
 
 ### HTTP x402 Flow (Gas Wallet / Facilitator)
@@ -489,11 +500,11 @@ Client                                Seller Server
      |                                      |
      |  1. POST /x402/access  {}            |
      |------------------------------------->|
-     |  <-- HTTP 402 + all tiers            |
+     |  <-- HTTP 402 + all plans            |
      |      (discovery, no PENDING record)  |
      |                                      |
      |  2. POST /x402/access               |
-     |     { tierId, requestId? }           |
+     |     { planId, requestId? }           |
      |------------------------------------->|
      |  <-- HTTP 402 + PaymentRequirements  |
      |       + challengeId                  |
@@ -501,7 +512,7 @@ Client                                Seller Server
      |       if omitted)                    |
      |                                      |
      |  3. POST /x402/access               |
-     |     { tierId, requestId }            |
+     |     { planId, requestId }            |
      |     + PAYMENT-SIGNATURE header       |
      |       (signed EIP-3009 auth)         |
      |------------------------------------->|
@@ -515,12 +526,12 @@ Client                                Seller Server
      |  <-- Protected content               |
 ```
 
-1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available tiers and pricing. No `PENDING` record is created.
-2. **Challenge** — Client POSTs `{ tierId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that tier. `requestId` is auto-generated if omitted.
-3. **Payment + Settlement** — Client resends with the same `{ tierId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
+1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available plans and pricing. No `PENDING` record is created.
+2. **Challenge** — Client POSTs `{ planId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that plan. `requestId` is auto-generated if omitted.
+3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
 4. **Access** — Client uses the token as a Bearer header to access the protected resource.
 
-If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
+If `fetchResourceCredentials` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
 ## Clients
 
@@ -560,7 +571,7 @@ This adds:
 - `POST /mcp` — Streamable HTTP transport endpoint
 
 **Two tools are exposed:**
-- `discover_products` — returns the product catalog (tiers, pricing, wallet, chainId)
+- `discover_plans` — returns the plan catalog (plans, pricing, wallet, chainId)
 - `request_access` — x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint. Includes pre-settlement resource verification, Zod payload validation, and deterministic request IDs for idempotent retry recovery
 
 **Connect from Claude Code** (`.mcp.json`):
@@ -585,7 +596,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 
 ## Storage
 
-Key0 requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
+Key0 requires a storage backend for challenge state and double-spend prevention. `store` and `seenTxStore` are mandatory fields. Both Redis and Postgres backends are supported.
 
 ```typescript
 import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
@@ -608,6 +619,10 @@ Redis storage provides:
 - Automatic TTL-based cleanup
 - Double-spend prevention with `SET NX`
 
+Postgres storage uses the same interface with row-level locking for atomic transitions. The schema uses `plan_id` as the column name (matching the `planId` TypeScript field).
+
+All state transitions are recorded in an immutable audit log (`IAuditStore`) for observability and debugging. Redis and Postgres audit store implementations are included.
+
 ## Security
 
 - **Pre-settlement state check** — Middleware checks challenge state before on-chain settlement to prevent duplicate USDC burns (DELIVERED returns cached grant, EXPIRED/CANCELLED reject without settling)
@@ -616,21 +631,22 @@ Redis storage provides:
 - **On-chain verification** — Payments are verified against the actual blockchain (recipient, amount, timing)
 - **Challenge expiry** — Challenges expire after `challengeTTLSeconds` (default 15 minutes)
 - **Secret rotation** — `AccessTokenIssuer.verifyWithFallback()` supports rotating secrets with zero downtime
-- **Resource verification timeout** — `onVerifyResource` has a configurable timeout (default 5s) to prevent hanging
 
 ## Token Issuance
 
-The `onIssueToken` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
+The `fetchResourceCredentials` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
 import { AccessTokenIssuer } from "@riklr/key0";
 
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
-onIssueToken: async (params) => {
+fetchResourceCredentials: async (params) => {
+  // TTL is entirely your decision — use planId to vary it, or hardcode
+  const ttl = params.planId === "pro" ? 86400 : 3600;
   return tokenIssuer.sign(
-    { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-    params.accessDurationSeconds, // token TTL in seconds
+    { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId, planId: params.planId },
+    ttl,
   );
 },
 ```
@@ -692,7 +708,7 @@ bun run start
 
 | Example | Description |
 |---|---|
-| [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing tiers |
+| [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing plans |
 | [`examples/hono-seller`](./examples/hono-seller) | Same features using Hono |
 | [`examples/standalone-service`](./examples/standalone-service) | Key0 as a separate service with Redis + gas wallet |
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
@@ -716,5 +732,8 @@ bun run build        # Compile to ./dist
 
 - [SPEC.md](./SPEC.md) — Protocol specification
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/key0`)
+- [setup-ui.md](./docs/setup-ui.md) — Setup UI: architecture, Docker integration, config flow, plan editor
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
 - [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns
+- [FLOW.md](./docs/FLOW.md) — Detailed payment flow, state machine diagrams, and health check endpoint
+

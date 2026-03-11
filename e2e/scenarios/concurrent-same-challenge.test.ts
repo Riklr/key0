@@ -27,7 +27,7 @@ describe("Concurrent Same-Challenge Proof Submission", () => {
 		// Step 1: Client A requests access — creates a single PENDING challenge
 		const requestId = crypto.randomUUID();
 		const { challengeId, paymentRequired } = await clientA.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -44,13 +44,13 @@ describe("Concurrent Same-Challenge Proof Submission", () => {
 		// Step 3: Both submit payment for the SAME requestId simultaneously
 		const [resultA, resultB] = await Promise.all([
 			clientA.submitPayment({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId,
 				auth: authA,
 				paymentRequired,
 			}),
 			clientB.submitPayment({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId,
 				auth: authB,
 				paymentRequired,

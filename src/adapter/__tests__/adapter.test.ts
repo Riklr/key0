@@ -37,7 +37,7 @@ describe("X402Adapter", () => {
 		const params: IssueChallengeParams = {
 			requestId: crypto.randomUUID(),
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			amount: "$0.10",
 			destination: `0x${"ab".repeat(20)}` as `0x${string}`,
 			expiresAt,

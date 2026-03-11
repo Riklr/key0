@@ -1,7 +1,7 @@
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { IssueTokenParams } from "../../types/index.js";
 import { Key0Error } from "../../types/index.js";
-import { createRemoteResourceVerifier, createRemoteTokenIssuer } from "../remote.js";
+import { createRemoteTokenIssuer } from "../remote.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,183 +33,26 @@ function makeParams(overrides?: Partial<IssueTokenParams>): IssueTokenParams {
 		requestId: crypto.randomUUID(),
 		challengeId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		txHash: "0xdeadbeef",
 		...overrides,
 	};
 }
 
 // ---------------------------------------------------------------------------
-// createRemoteResourceVerifier
-// ---------------------------------------------------------------------------
-
-describe("createRemoteResourceVerifier", () => {
-	test(
-		"returns true when backend returns { valid: true }",
-		withFetch(
-			mock(async () => makeJsonResponse({ valid: true })),
-			async () => {
-				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-				const result = await verifier("photo-42", "single");
-				expect(result).toBe(true);
-			},
-		),
-	);
-
-	test(
-		"returns true when backend returns bare boolean true",
-		withFetch(
-			mock(async () => makeJsonResponse(true)),
-			async () => {
-				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-				const result = await verifier("photo-42", "single");
-				expect(result).toBe(true);
-			},
-		),
-	);
-
-	test(
-		"returns false when backend returns { valid: false }",
-		withFetch(
-			mock(async () => makeJsonResponse({ valid: false })),
-			async () => {
-				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-				const result = await verifier("photo-42", "single");
-				expect(result).toBe(false);
-			},
-		),
-	);
-
-	test(
-		"returns false on non-2xx response (status 403) and calls console.warn",
-		withFetch(
-			mock(async () => makeJsonResponse("Forbidden", false, 403)),
-			async () => {
-				const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
-				try {
-					const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-					const result = await verifier("photo-42", "single");
-					expect(result).toBe(false);
-					expect(warnSpy).toHaveBeenCalledTimes(1);
-					const warnArg = warnSpy.mock.calls[0]?.[0] as string;
-					expect(warnArg).toContain("403");
-				} finally {
-					warnSpy.mockRestore();
-				}
-			},
-		),
-	);
-
-	test(
-		"throws Key0Error with code RESOURCE_VERIFY_TIMEOUT and httpStatus 504 on abort",
-		withFetch(
-			mock(async () => {
-				const err = new Error("aborted");
-				err.name = "AbortError";
-				throw err;
-			}),
-			async () => {
-				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-				const err = await verifier("photo-42", "single").catch((e) => e);
-				expect(err).toBeInstanceOf(Key0Error);
-				expect(err.code).toBe("RESOURCE_VERIFY_TIMEOUT");
-				expect(err.httpStatus).toBe(504);
-			},
-		),
-	);
-
-	test(
-		"returns false on network error (fetch throws non-AbortError) and does NOT throw",
-		withFetch(
-			mock(async () => {
-				throw new Error("ECONNREFUSED");
-			}),
-			async () => {
-				const errorSpy = spyOn(console, "error").mockImplementation(() => {});
-				try {
-					const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-					const result = await verifier("photo-42", "single");
-					expect(result).toBe(false);
-				} finally {
-					errorSpy.mockRestore();
-				}
-			},
-		),
-	);
-
-	test(
-		"sends auth headers from a sharedSecretAuth-style auth provider",
-		withFetch(
-			mock(async () => makeJsonResponse({ valid: true })),
-			async () => {
-				const auth = async () => ({ "X-Internal-Auth": "super-secret" });
-				const verifier = createRemoteResourceVerifier({
-					url: "https://example.com/verify",
-					auth,
-				});
-				await verifier("photo-42", "single");
-				const [, init] = (global.fetch as unknown as ReturnType<typeof mock>).mock.calls[0] as [
-					string,
-					RequestInit,
-				];
-				expect((init.headers as Record<string, string>)["X-Internal-Auth"]).toBe("super-secret");
-			},
-		),
-	);
-
-	test(
-		"sends POST body with { resourceId, tierId }",
-		withFetch(
-			mock(async () => makeJsonResponse({ valid: true })),
-			async () => {
-				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
-				await verifier("photo-42", "single");
-				const [, init] = (global.fetch as unknown as ReturnType<typeof mock>).mock.calls[0] as [
-					string,
-					RequestInit,
-				];
-				expect(init.method).toBe("POST");
-				const body = JSON.parse(init.body as string);
-				expect(body).toEqual({ resourceId: "photo-42", tierId: "single" });
-			},
-		),
-	);
-});
-
-// ---------------------------------------------------------------------------
 // createRemoteTokenIssuer
 // ---------------------------------------------------------------------------
 
 describe("createRemoteTokenIssuer", () => {
-	const FUTURE_DATE = new Date(Date.now() + 3600_000).toISOString();
-
 	test(
-		"returns TokenIssuanceResult when backend returns { token, expiresAt, tokenType }",
+		"returns TokenIssuanceResult when backend returns { token, tokenType }",
 		withFetch(
-			mock(async () =>
-				makeJsonResponse({ token: "tok_abc", expiresAt: FUTURE_DATE, tokenType: "Bearer" }),
-			),
+			mock(async () => makeJsonResponse({ token: "tok_abc", tokenType: "Bearer" })),
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const result = await issuer(makeParams());
 				expect(result.token).toBe("tok_abc");
 				expect(result.tokenType).toBe("Bearer");
-				expect(result.expiresAt).toBeInstanceOf(Date);
-			},
-		),
-	);
-
-	test(
-		"converts expiresAt string to Date object",
-		withFetch(
-			mock(async () =>
-				makeJsonResponse({ token: "tok_abc", expiresAt: FUTURE_DATE, tokenType: "Bearer" }),
-			),
-			async () => {
-				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
-				const result = await issuer(makeParams());
-				expect(result.expiresAt).toBeInstanceOf(Date);
-				expect(result.expiresAt.toISOString()).toBe(FUTURE_DATE);
 			},
 		),
 	);
@@ -217,7 +60,7 @@ describe("createRemoteTokenIssuer", () => {
 	test(
 		"defaults tokenType to 'Bearer' when not in response",
 		withFetch(
-			mock(async () => makeJsonResponse({ token: "tok_abc", expiresAt: FUTURE_DATE })),
+			mock(async () => makeJsonResponse({ token: "tok_abc" })),
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const result = await issuer(makeParams());
@@ -243,7 +86,7 @@ describe("createRemoteTokenIssuer", () => {
 	test(
 		"throws Key0Error with code TOKEN_ISSUE_FAILED when response missing 'token' field",
 		withFetch(
-			mock(async () => makeJsonResponse({ expiresAt: FUTURE_DATE })),
+			mock(async () => makeJsonResponse({ someField: "no-token" })),
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const err = await issuer(makeParams()).catch((e) => e);
@@ -293,9 +136,7 @@ describe("createRemoteTokenIssuer", () => {
 	test(
 		"sends auth headers when configured with auth strategy",
 		withFetch(
-			mock(async () =>
-				makeJsonResponse({ token: "tok_abc", expiresAt: FUTURE_DATE, tokenType: "Bearer" }),
-			),
+			mock(async () => makeJsonResponse({ token: "tok_abc", tokenType: "Bearer" })),
 			async () => {
 				const auth = async () => ({ "X-Internal-Auth": "token-secret" });
 				const issuer = createRemoteTokenIssuer({

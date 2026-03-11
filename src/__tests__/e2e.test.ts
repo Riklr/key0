@@ -26,27 +26,24 @@ function makeConfig(): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [
-			{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" },
-			{ tierId: "album", label: "Full Album", amount: "$1.00", resourceType: "album" },
+		plans: [
+			{ planId: "single", unitAmount: "$0.10" },
+			{ planId: "album", unitAmount: "$1.00" },
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async (resourceId: string) => {
-			return resourceId !== "nonexistent";
-		},
-		onIssueToken: async (params) => {
-			const { token, expiresAt } = await issuer.sign(
+		fetchResourceCredentials: async (params) => {
+			const { token } = await issuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				3600,
 			);
 
-			return { token, expiresAt, tokenType: "Bearer" };
+			return { token, tokenType: "Bearer" };
 		},
 		resourceEndpointTemplate: "https://api.example.com/photos/{resourceId}",
 	};
@@ -175,7 +172,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 			type: "AccessRequest",
 			requestId,
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
 
@@ -217,7 +214,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 			type: "AccessRequest",
 			requestId,
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			clientAgentId: "agent://e2e-test",
 		};
 
@@ -229,7 +226,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 		expect(c1["challengeId"]).toBe(c2["challengeId"]);
 	});
 
-	test("3. Resource not found returns failed task", async () => {
+	test("3. Default resourceId when not provided", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createKey0({
@@ -242,32 +239,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 		const events = await runTask(executor, {
 			type: "AccessRequest",
 			requestId: uuidv4(),
-			resourceId: "nonexistent",
-			tierId: "single",
-			clientAgentId: "agent://e2e-test",
-		});
-
-		expect(extractTaskState(events)).toBe("failed");
-		const task = events.find((e: any) => e.kind === "task");
-		expect(task).toBeDefined();
-		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
-		expect(textPart.text).toContain("not found");
-	});
-
-	test("4. Default resourceId when not provided", async () => {
-		const adapter = new MockPaymentAdapter();
-		const config = makeConfig();
-		const { executor } = createKey0({
-			config,
-			adapter,
-			store: new TestChallengeStore(),
-			seenTxStore: new TestSeenTxStore(),
-		});
-
-		const events = await runTask(executor, {
-			type: "AccessRequest",
-			requestId: uuidv4(),
-			tierId: "single",
+			planId: "single",
 		});
 
 		expect(extractTaskState(events)).toBe("input-required");

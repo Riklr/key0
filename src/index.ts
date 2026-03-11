@@ -15,10 +15,15 @@ export type { Key0Config } from "./factory.js";
 export { createKey0 } from "./factory.js";
 export type { AuthHeaderProvider } from "./helpers/auth.js";
 // Auth Strategies
-export { oauthClientCredentialsAuth, sharedSecretAuth, signedJwtAuth } from "./helpers/auth.js";
-export type { RemoteTokenIssuerConfig, RemoteVerifierConfig } from "./helpers/remote.js";
+export {
+	noAuth,
+	oauthClientCredentialsAuth,
+	sharedSecretAuth,
+	signedJwtAuth,
+} from "./helpers/auth.js";
+export type { RemoteTokenIssuerConfig } from "./helpers/remote.js";
 // Remote Helpers (for separate service deployments)
-export { createRemoteResourceVerifier, createRemoteTokenIssuer } from "./helpers/remote.js";
+export { createRemoteTokenIssuer } from "./helpers/remote.js";
 export type { AccessTokenPayload, ValidateAccessTokenConfig } from "./middleware.js";
 // Middleware
 export { validateToken } from "./middleware.js";

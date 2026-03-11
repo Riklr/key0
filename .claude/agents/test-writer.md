@@ -41,9 +41,7 @@ PAID → PAID                     (idempotent re-verification)
 | Code | HTTP | When |
 |------|------|------|
 | `INVALID_REQUEST` | 400 | Invalid UUID, cancel non-PENDING |
-| `RESOURCE_NOT_FOUND` | 404 | `onVerifyResource` returns false |
-| `TIER_NOT_FOUND` | 400 | tierId not in product catalog |
-| `RESOURCE_VERIFY_TIMEOUT` | 504 | `onVerifyResource` never resolves |
+| `TIER_NOT_FOUND` | 400 | planId not in plan catalog |
 | `CHALLENGE_NOT_FOUND` | 404 | Unknown challengeId |
 | `CHALLENGE_EXPIRED` | 410 | TTL elapsed before payment |
 | `CHAIN_MISMATCH` | 400 | proof.chainId ≠ challenge.chainId |
@@ -61,12 +59,12 @@ PAID → PAID                     (idempotent re-verification)
 Happy path:
 1. Request → challenge → proof → grant (full flow, ends in DELIVERED)
 2. Same `requestId` returns the same challenge (idempotency)
-3. `onIssueToken` return value becomes the `accessToken` in the grant
+3. `fetchResourceCredentials` return value becomes the `accessToken` in the grant
 
 Error paths:
 4. Expired challenge is rejected (`CHALLENGE_EXPIRED`)
 5. Unknown `challengeId` is rejected (`CHALLENGE_NOT_FOUND`)
-6. Unknown `tierId` is rejected (`TIER_NOT_FOUND`)
+6. Unknown `planId` is rejected (`TIER_NOT_FOUND`)
 7. Payment verification failure is rejected (`INVALID_PROOF`)
 8. Already-delivered proof returns cached grant (`PROOF_ALREADY_REDEEMED`)
 

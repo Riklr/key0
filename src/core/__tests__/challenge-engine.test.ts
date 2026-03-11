@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MockPaymentAdapter } from "../../test-utils";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
-import {
-	type AccessRequest,
-	Key0Error,
-	type PaymentProof,
-	type SellerConfig,
-} from "../../types";
+import { type AccessRequest, Key0Error, type PaymentProof, type SellerConfig } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
 
 // ---------------------------------------------------------------------------
@@ -23,12 +18,10 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async () => true,
-		onIssueToken: async (params) => ({
+		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
-			expiresAt: new Date(Date.now() + 3600 * 1000),
 			tokenType: "Bearer",
 		}),
 		...overrides,
@@ -62,7 +55,7 @@ function makeRequest(overrides?: Partial<AccessRequest>): AccessRequest {
 	return {
 		requestId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		clientAgentId: "agent://test-client",
 		...overrides,
 	};
@@ -87,7 +80,7 @@ describe("ChallengeEngine.requestAccess", () => {
 
 		expect(challenge.type).toBe("X402Challenge");
 		expect(challenge.requestId).toBe(req.requestId);
-		expect(challenge.tierId).toBe("single");
+		expect(challenge.planId).toBe("single");
 		expect(challenge.amount).toBe("$0.10");
 		expect(challenge.asset).toBe("USDC");
 		expect(challenge.chainId).toBe(84532);
@@ -103,23 +96,9 @@ describe("ChallengeEngine.requestAccess", () => {
 		expect(c1.challengeId).toBe(c2.challengeId);
 	});
 
-	test("resource not found: throws RESOURCE_NOT_FOUND", async () => {
-		const { engine } = makeEngine({
-			config: { onVerifyResource: async () => false },
-		});
-		const req = makeRequest();
-		try {
-			await engine.requestAccess(req);
-			expect(true).toBe(false); // should not reach
-		} catch (err) {
-			expect(err).toBeInstanceOf(Key0Error);
-			expect((err as Key0Error).code).toBe("RESOURCE_NOT_FOUND");
-		}
-	});
-
 	test("tier not found: throws TIER_NOT_FOUND", async () => {
 		const { engine } = makeEngine();
-		const req = makeRequest({ tierId: "nonexistent" });
+		const req = makeRequest({ planId: "nonexistent" });
 		try {
 			await engine.requestAccess(req);
 			expect(true).toBe(false);
@@ -540,41 +519,6 @@ describe("ChallengeEngine.getChallenge", () => {
 	test("returns null for non-existent", async () => {
 		const { engine } = makeEngine();
 		expect(await engine.getChallenge("nonexistent")).toBeNull();
-	});
-});
-
-describe("ChallengeEngine.onVerifyResource timeout", () => {
-	test("times out slow onVerifyResource with RESOURCE_VERIFY_TIMEOUT", async () => {
-		const { engine } = makeEngine({
-			config: {
-				onVerifyResource: () => new Promise(() => {}), // never resolves
-				resourceVerifyTimeoutMs: 50, // 50ms timeout for fast test
-			},
-		});
-
-		const req = makeRequest();
-		try {
-			await engine.requestAccess(req);
-			expect(true).toBe(false);
-		} catch (err) {
-			expect(err).toBeInstanceOf(Key0Error);
-			const agErr = err as Key0Error;
-			expect(agErr.code).toBe("RESOURCE_VERIFY_TIMEOUT");
-			expect(agErr.httpStatus).toBe(504);
-		}
-	});
-
-	test("does not timeout fast onVerifyResource", async () => {
-		const { engine } = makeEngine({
-			config: {
-				onVerifyResource: async () => true,
-				resourceVerifyTimeoutMs: 5000,
-			},
-		});
-
-		const req = makeRequest();
-		const challenge = await engine.requestAccess(req);
-		expect(challenge.type).toBe("X402Challenge");
 	});
 });
 

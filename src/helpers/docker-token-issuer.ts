@@ -1,31 +1,30 @@
-import type { IssueTokenParams, ProductTier, TokenIssuanceResult } from "../types/index.js";
+import type { IssueTokenParams, Plan, TokenIssuanceResult } from "../types/index.js";
 
 export type DockerTokenIssuerOptions = {
 	/** Bearer secret for ISSUE_TOKEN_API requests (optional) */
 	apiSecret?: string;
-	/** Product catalog — used to merge tier fields into request body and read accessDurationSeconds */
-	products?: readonly ProductTier[];
+	/** Product catalog — used to merge tier fields into request body */
+	plans?: readonly Plan[];
 };
 
 /**
- * Builds an `onIssueToken` callback suitable for the Docker standalone server.
+ * Builds an `fetchResourceCredentials` callback suitable for the Docker standalone server.
  *
  * Behaviour:
- * - Merges the matching ProductTier fields into the POST body sent to `issueTokenApiUrl`.
+ * - Merges the matching Plan fields into the POST body sent to `issueTokenApiUrl`.
  * - If the response has a `{ token: string }` field, passes it through directly.
  * - Otherwise (e.g. `{ apiKey, apiSecret }`) JSON-serialises the full response as the token
  *   with `tokenType: "custom"`.
- * - `expiresAt` comes from the response when present, otherwise falls back to the tier's
- *   `accessDurationSeconds` (default 3600 s).
+ * - Token expiry is the responsibility of the issuing backend, not Key0.
  */
 export function buildDockerTokenIssuer(
 	issueTokenApiUrl: string,
 	options: DockerTokenIssuerOptions = {},
 ): (params: IssueTokenParams) => Promise<TokenIssuanceResult> {
-	const { apiSecret, products = [] } = options;
+	const { apiSecret, plans = [] } = options;
 
 	return async (params: IssueTokenParams): Promise<TokenIssuanceResult> => {
-		const tier = products.find((p) => p.tierId === params.tierId);
+		const tier = plans.find((p) => p.planId === params.planId);
 
 		// Merge IssueTokenParams with the matching product tier (includes custom fields)
 		const body = { ...params, ...(tier ?? {}) };
@@ -57,22 +56,15 @@ export function buildDockerTokenIssuer(
 
 		// Passthrough: if response has a `token` string field, use it directly
 		if (typeof data["token"] === "string") {
-			const expiresAt =
-				typeof data["expiresAt"] === "string"
-					? new Date(data["expiresAt"])
-					: new Date(Date.now() + (tier?.accessDurationSeconds ?? 3600) * 1000);
 			return {
 				token: data["token"],
-				expiresAt,
 				...(typeof data["tokenType"] === "string" ? { tokenType: data["tokenType"] } : {}),
 			};
 		}
 
 		// No `token` field (e.g. { apiKey, apiSecret }) — JSON-serialize the full response
-		const accessDurationSeconds = tier?.accessDurationSeconds ?? 3600;
 		return {
 			token: JSON.stringify(data),
-			expiresAt: new Date(Date.now() + accessDurationSeconds * 1000),
 			tokenType: "custom",
 		};
 	};

@@ -1,6 +1,6 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { Hono } from "hono";
-import { type Key0Config, createKey0 } from "../factory.js";
+import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { Key0Error } from "../types/index.js";
@@ -15,7 +15,7 @@ export function key0App(opts: Key0Config): Hono {
 
 	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
 
-	const basePath = opts.config.basePath ?? "/agent";
+	const basePath = opts.config.basePath ?? "/a2a";
 	app.post(basePath, async (c) => {
 		// TODO: Use official A2A Hono handler when available
 		// For now, this is a placeholder or we need to bridge manually.

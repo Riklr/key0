@@ -27,27 +27,24 @@ function makeConfig(): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [
-			{ tierId: "basic", label: "Basic Access", amount: "$0.99", resourceType: "api-call" },
-			{ tierId: "premium", label: "Premium Access", amount: "$4.99", resourceType: "api-call" },
+		plans: [
+			{ planId: "basic", unitAmount: "$0.99" },
+			{ planId: "premium", unitAmount: "$4.99" },
 		],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async (resourceId: string) => {
-			return resourceId !== "nonexistent";
-		},
-		onIssueToken: async (params) => {
-			const { token, expiresAt } = await issuer.sign(
+		fetchResourceCredentials: async (params) => {
+			const { token } = await issuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				3600,
 			);
 
-			return { token, expiresAt, tokenType: "Bearer" };
+			return { token, tokenType: "Bearer" };
 		},
 	};
 }
@@ -133,7 +130,7 @@ describe("x402-http-middleware", () => {
 			expect(requirements.accepts[0]?.extra).toBeDefined();
 			expect(requirements.accepts[0]?.extra?.["name"]).toBe("USDC");
 			expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
-			expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
+			expect(requirements.accepts[0]?.extra?.["description"]).toBe("basic — $0.99 USDC");
 		});
 
 		test("should throw for invalid tier", () => {
@@ -142,7 +139,7 @@ describe("x402-http-middleware", () => {
 
 			expect(() =>
 				buildHttpPaymentRequirements("invalid-tier", "default", config, networkConfig),
-			).toThrow('Tier "invalid-tier" not found');
+			).toThrow('Plan "invalid-tier" not found');
 		});
 	});
 
@@ -176,7 +173,7 @@ describe("x402-http-middleware", () => {
 							parts: [
 								{
 									kind: "data",
-									data: { type: "AccessRequest", requestId: "test", tierId: "basic" },
+									data: { type: "AccessRequest", requestId: "test", planId: "basic" },
 								},
 							],
 						},
@@ -248,7 +245,7 @@ describe("x402-http-middleware", () => {
 								data: {
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "basic",
+									planId: "basic",
 									resourceId: "default",
 								},
 							},
@@ -280,35 +277,6 @@ describe("x402-http-middleware", () => {
 			expect(decodedHeader.x402Version).toBe(2);
 		});
 
-		test("should return 404 for nonexistent resource", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [
-							{
-								kind: "data",
-								data: {
-									type: "AccessRequest",
-									requestId: "req-123",
-									tierId: "basic",
-									resourceId: "nonexistent",
-								},
-							},
-						],
-					},
-				},
-			});
-
-			const next = (() => {}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(mockRes.statusCode).toBe(404);
-			expect(mockRes.jsonData.code).toBe("RESOURCE_NOT_FOUND");
-		});
-
 		test("should return 400 for invalid tier", async () => {
 			const req = createMockRequest({
 				method: "message/send",
@@ -320,7 +288,7 @@ describe("x402-http-middleware", () => {
 								data: {
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "invalid-tier",
+									planId: "invalid-tier",
 									resourceId: "default",
 								},
 							},
@@ -349,7 +317,7 @@ describe("x402-http-middleware", () => {
 								text: JSON.stringify({
 									type: "AccessRequest",
 									requestId: "req-123",
-									tierId: "basic",
+									planId: "basic",
 									resourceId: "default",
 								}),
 							},
@@ -601,7 +569,7 @@ describe("x402-http-middleware", () => {
 			expect(record).toBeDefined();
 			expect(record!.state).toBe("PENDING");
 			expect(record!.requestId).toBe("req-1");
-			expect(record!.tierId).toBe("basic");
+			expect(record!.planId).toBe("basic");
 			expect(record!.clientAgentId).toBe("x402-http");
 		});
 
@@ -614,13 +582,7 @@ describe("x402-http-middleware", () => {
 
 		test("should reject invalid tier", async () => {
 			await expect(engine.requestHttpAccess("req-1", "invalid-tier", "default")).rejects.toThrow(
-				'Tier "invalid-tier" not found',
-			);
-		});
-
-		test("should reject nonexistent resource", async () => {
-			await expect(engine.requestHttpAccess("req-1", "basic", "nonexistent")).rejects.toThrow(
-				'Resource "nonexistent" not found',
+				'Plan "invalid-tier" not found',
 			);
 		});
 	});
@@ -650,7 +612,7 @@ describe("x402-http-middleware", () => {
 			const grant = await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
 			expect(grant.type).toBe("AccessGrant");
-			expect(grant.tierId).toBe("basic");
+			expect(grant.planId).toBe("basic");
 			expect(grant.resourceId).toBe("default");
 			expect(grant.txHash).toBe(txHash);
 			expect(grant.accessToken).toBeDefined();
@@ -695,10 +657,10 @@ describe("x402-http-middleware", () => {
 			expect(record!.requestId).toBe("req-skip");
 		});
 
-		test("should leave record as PAID when onIssueToken throws", async () => {
+		test("should leave record as PAID when fetchResourceCredentials throws", async () => {
 			const failConfig: SellerConfig = {
 				...config,
-				onIssueToken: async () => {
+				fetchResourceCredentials: async () => {
 					throw new Error("Token issuance failed");
 				},
 			};
@@ -732,13 +694,7 @@ describe("x402-http-middleware", () => {
 
 			await expect(
 				engine.processHttpPayment("req-1", "invalid-tier", "default", txHash),
-			).rejects.toThrow('Tier "invalid-tier" not found');
-		});
-
-		test("should reject nonexistent resource via verifyResource (pre-settlement check)", async () => {
-			await expect(engine.verifyResource("nonexistent", "basic")).rejects.toThrow(
-				'Resource "nonexistent" not found',
-			);
+			).rejects.toThrow('Plan "invalid-tier" not found');
 		});
 
 		test("should reject double-spend (same txHash twice)", async () => {

@@ -10,7 +10,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { KEY0_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+
+import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
+
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeState } from "../helpers/storage-client.ts";
 
@@ -21,7 +23,7 @@ describe("Already Redeemed", () => {
 
 		// Complete a full purchase
 		const { challengeId, grant: originalGrant } = await client.purchaseAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -33,7 +35,7 @@ describe("Already Redeemed", () => {
 		// The pre-settlement check should find DELIVERED and return the cached grant
 		// WITHOUT settling on-chain (no USDC burned)
 		const { paymentRequired } = await client.requestAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId: crypto.randomUUID(), // need a fresh requestId for requestAccess
 		});
 		const requirements = paymentRequired.accepts[0]!;
@@ -43,7 +45,7 @@ describe("Already Redeemed", () => {
 		});
 
 		const result = await client.submitPayment({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId, // original requestId → already DELIVERED
 			auth,
 			paymentRequired,
@@ -67,7 +69,7 @@ describe("Already Redeemed", () => {
 
 		// Complete a full purchase
 		const { challengeId, grant: originalGrant } = await client.purchaseAccess({
-			tierId: DEFAULT_TIER_ID,
+			planId: DEFAULT_TIER_ID,
 			requestId,
 		});
 
@@ -77,7 +79,7 @@ describe("Already Redeemed", () => {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				requestId,
 				resourceId: "default",
 			}),

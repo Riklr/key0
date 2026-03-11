@@ -17,7 +17,7 @@ describe("Challenge Timeout", () => {
 		const requestId = crypto.randomUUID();
 
 		// Step 1: Get first challenge
-		const first = await client.requestAccess({ tierId: DEFAULT_TIER_ID, requestId });
+		const first = await client.requestAccess({ planId: DEFAULT_TIER_ID, requestId });
 		const challengeId1 = first.challengeId;
 		expect(typeof challengeId1).toBe("string");
 		expect(challengeId1.length).toBeGreaterThan(0);
@@ -29,7 +29,7 @@ describe("Challenge Timeout", () => {
 		expect(expired).toBe(true);
 
 		// Step 2: Same requestId → should create a NEW challenge (index expired)
-		const second = await client.requestAccess({ tierId: DEFAULT_TIER_ID, requestId });
+		const second = await client.requestAccess({ planId: DEFAULT_TIER_ID, requestId });
 		const challengeId2 = second.challengeId;
 		expect(typeof challengeId2).toBe("string");
 		expect(challengeId2).not.toBe(challengeId1);

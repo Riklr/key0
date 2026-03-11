@@ -7,7 +7,7 @@ describe("MockPaymentAdapter", () => {
 		const result = await adapter.issueChallenge({
 			requestId: "req-1",
 			resourceId: "photo-42",
-			tierId: "single",
+			planId: "single",
 			amount: "$0.10",
 			destination: `0x${"ab".repeat(20)}` as `0x${string}`,
 			expiresAt: new Date(Date.now() + 900_000),

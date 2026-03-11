@@ -42,10 +42,9 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
+		plans: [{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" }],
 		challengeTTLSeconds: 900,
-		onVerifyResource: async () => true,
-		onIssueToken: async (params) => ({
+		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
 			expiresAt: new Date(Date.now() + 3600 * 1000),
 			tokenType: "Bearer",
@@ -79,7 +78,7 @@ function makeRequest(overrides?: Partial<AccessRequest>): AccessRequest {
 	return {
 		requestId: crypto.randomUUID(),
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		clientAgentId: "agent://test-client",
 		...overrides,
 	};
@@ -132,7 +131,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		requestId: crypto.randomUUID(),
 		clientAgentId: "agent://test",
 		resourceId: "photo-42",
-		tierId: "single",
+		planId: "single",
 		amount: "$0.10",
 		amountRaw: 100000n,
 		asset: "USDC",

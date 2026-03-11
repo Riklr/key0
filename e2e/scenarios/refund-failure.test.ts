@@ -19,7 +19,9 @@ import {
 	REFUND_FAIL_REDIS_URL,
 	REFUND_POLL_TIMEOUT_MS,
 } from "../fixtures/constants.ts";
-import { key0WalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
+
+import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
+
 import {
 	printLogs,
 	type StackConfig,
@@ -98,7 +100,7 @@ describe("Refund Failure", () => {
 				requestId: crypto.randomUUID(),
 				clientAgentId: `agent://${clientAddr}`,
 				resourceId: "refund-fail-resource",
-				tierId: DEFAULT_TIER_ID,
+				planId: DEFAULT_TIER_ID,
 				amount: "$0.10",
 				amountRaw: 100_000n,
 				destination: key0Addr,
@@ -129,9 +131,7 @@ describe("Refund Failure", () => {
 			const finalState = await waitForChallengeState(
 				async () => {
 					if (usePostgres) {
-						const res = await fetch(
-							`${REFUND_FAIL_KEY0_URL}/test/challenge/${challengeId}`,
-						);
+						const res = await fetch(`${REFUND_FAIL_KEY0_URL}/test/challenge/${challengeId}`);
 						if (res.status === 404) return null;
 						if (!res.ok) return null;
 						const data = (await res.json()) as { state?: string };

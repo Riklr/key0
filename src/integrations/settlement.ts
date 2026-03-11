@@ -6,7 +6,7 @@ import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
-	ProductTier,
+	Plan,
 	SellerConfig,
 	X402PaymentPayload,
 	X402PaymentRequiredResponse,
@@ -96,7 +96,7 @@ export function decodePaymentSignature(paymentSignature: string): X402PaymentPay
  * Shared between the HTTP middleware and the A2A executor.
  */
 export function buildHttpPaymentRequirements(
-	tierId: string,
+	planId: string,
 	resourceId: string,
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
@@ -106,16 +106,16 @@ export function buildHttpPaymentRequirements(
 		description?: string;
 	},
 ): X402PaymentRequiredResponse {
-	const tier = config.products.find((t: ProductTier) => t.tierId === tierId);
+	const tier = config.plans.find((t: Plan) => t.planId === planId);
 	if (!tier) {
-		throw new Key0Error("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
+		throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
 	}
 
 	const basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}${basePath}/jsonrpc`;
 
-	const amountRaw = parseDollarToUsdcMicro(tier.amount);
+	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
 	const network = `eip155:${networkConfig.chainId}`;
 
 	const extensions =
@@ -148,7 +148,7 @@ export function buildHttpPaymentRequirements(
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
-					description: `${tier.label} — ${tier.amount} USDC`,
+					description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
 				},
 			},
 		],
@@ -158,7 +158,7 @@ export function buildHttpPaymentRequirements(
 
 /**
  * Build a discovery 402 response covering all product tiers.
- * Used when a bare request is made without specifying a tierId.
+ * Used when a bare request is made without specifying a planId.
  * Does not create any PENDING records — pure discovery.
  */
 export function buildDiscoveryResponse(
@@ -172,8 +172,8 @@ export function buildDiscoveryResponse(
 	const network = `eip155:${networkConfig.chainId}`;
 
 	// Build accepts array with one entry per tier
-	const accepts = config.products.map((tier: ProductTier) => {
-		const amountRaw = parseDollarToUsdcMicro(tier.amount);
+	const accepts = config.plans.map((tier: Plan) => {
+		const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
 		return {
 			scheme: "exact" as const,
 			network,
@@ -184,9 +184,8 @@ export function buildDiscoveryResponse(
 			extra: {
 				name: networkConfig.usdcDomain.name,
 				version: networkConfig.usdcDomain.version,
-				tierId: tier.tierId,
-				label: tier.label,
-				description: `${tier.label} — ${tier.amount} USDC`,
+				planId: tier.planId,
+				description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
 			},
 		};
 	});
@@ -196,7 +195,7 @@ export function buildDiscoveryResponse(
 		resource: {
 			url: resourceUrl,
 			method: "POST",
-			description: `${config.agentName} — Pay-per-use access with USDC. POST with { tierId } to start a payment flow, or POST with { tierId, requestId } + PAYMENT-SIGNATURE header to complete payment.`,
+			description: `${config.agentName} — Pay-per-use access with USDC. POST with { planId } to start a payment flow, or POST with { planId, requestId } + PAYMENT-SIGNATURE header to complete payment.`,
 			mimeType: "application/json",
 		},
 		accepts,
@@ -205,9 +204,9 @@ export function buildDiscoveryResponse(
 				inputSchema: {
 					type: "object",
 					properties: {
-						tierId: {
+						planId: {
 							type: "string",
-							description: `Tier to purchase. Available tiers: ${config.products.map((t) => t.tierId).join(", ")}`,
+							description: `Tier to purchase. Available tiers: ${config.plans.map((t) => t.planId).join(", ")}`,
 						},
 						requestId: {
 							type: "string",
@@ -218,14 +217,13 @@ export function buildDiscoveryResponse(
 							description: "Optional: Specific resource identifier (defaults to 'default')",
 						},
 					},
-					required: ["tierId"],
+					required: ["planId"],
 				},
 				outputSchema: {
 					type: "object",
 					properties: {
 						accessToken: { type: "string", description: "JWT token for API access" },
 						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-						expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 						resourceEndpoint: {
 							type: "string",
 							description: "URL to access the protected resource",
@@ -320,18 +318,10 @@ export async function settleViaFacilitator(
 
 			const res = (await settleRes.json()) as X402SettleResponse;
 			if (!res.success) {
-				throw new Key0Error(
-					"PAYMENT_FAILED",
-					res.errorReason || "Payment settlement failed",
-					402,
-				);
+				throw new Key0Error("PAYMENT_FAILED", res.errorReason || "Payment settlement failed", 402);
 			}
 			if (!res.transaction) {
-				throw new Key0Error(
-					"PAYMENT_FAILED",
-					"Facilitator did not return transaction hash",
-					500,
-				);
+				throw new Key0Error("PAYMENT_FAILED", "Facilitator did not return transaction hash", 500);
 			}
 			return res;
 		},
@@ -361,11 +351,7 @@ export async function settleViaGasWallet(
 	let payer: string | undefined = paymentPayload.payload?.authorization?.from ?? undefined;
 	const requirement = paymentPayload.accepted;
 	if (!requirement) {
-		throw new Key0Error(
-			"INVALID_REQUEST",
-			"Payment payload missing 'accepted' requirement",
-			400,
-		);
+		throw new Key0Error("INVALID_REQUEST", "Payment payload missing 'accepted' requirement", 400);
 	}
 
 	const gasAccount = privateKeyToAccount(privateKey);
