@@ -17,15 +17,37 @@ const AgentScene = dynamic(() => import("@/components/AgentScene"), {
   ),
 });
 
-const SNAP_POINTS = [0, 700, 1400];
-const COOLDOWN_MS = 650;
+const SNAP_POINTS = [0, 700, 1400, 2100, 2800];
 const HERO_ZONE_END = SNAP_POINTS[SNAP_POINTS.length - 1];
+const PHASE_MAP = [0, 1, 2, 3, 0];
 
 export default function Hero() {
   const animating = useRef(false);
+  const targetSnap = useRef<number | null>(null);
   const [scenePhase, setScenePhase] = useState(0);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+
+    function waitForSettle(target: number) {
+      let settled = 0;
+      let raf: number;
+      const check = () => {
+        if (Math.abs(window.scrollY - target) < 2) {
+          settled++;
+          if (settled >= 3) {
+            setTimeout(() => { animating.current = false; targetSnap.current = null; }, 100);
+            return;
+          }
+        } else {
+          settled = 0;
+        }
+        raf = requestAnimationFrame(check);
+      };
+      raf = requestAnimationFrame(check);
+      setTimeout(() => { cancelAnimationFrame(raf); animating.current = false; targetSnap.current = null; }, 1500);
+    }
+
     const handleWheel = (e: WheelEvent) => {
       const y = window.scrollY;
       if (y > HERO_ZONE_END + 60) return;
@@ -41,17 +63,25 @@ export default function Hero() {
 
       e.preventDefault();
       animating.current = true;
-      setScenePhase(next === 1 ? 1 : 0);
+      targetSnap.current = SNAP_POINTS[next];
+      setScenePhase(PHASE_MAP[next]);
       window.scrollTo({ top: SNAP_POINTS[next], behavior: "smooth" });
-      setTimeout(() => { animating.current = false; }, COOLDOWN_MS);
+      waitForSettle(SNAP_POINTS[next]);
     };
 
     window.addEventListener("wheel", handleWheel, { passive: false });
     return () => window.removeEventListener("wheel", handleWheel);
   }, []);
 
+  const bp1Scale = scenePhase === 1;
+  const bp2Scale = scenePhase === 2;
+  const bp3Scale = scenePhase === 3;
+  const bp1Dim = scenePhase === 2 || scenePhase === 3;
+  const bp2Dim = scenePhase === 1 || scenePhase === 3;
+  const bp3Dim = scenePhase === 1 || scenePhase === 2;
+
   return (
-    <section className="relative" style={{ height: "calc(100vh + 1400px)" }}>
+    <section className="relative" style={{ height: "calc(100vh + 2800px)" }}>
       <div className="sticky top-0 h-screen w-full overflow-hidden">
 
         {/* Canvas */}
@@ -96,12 +126,12 @@ export default function Hero() {
               </div>
 
               <div className="flex flex-col text-left">
-                <ul className="text-lg text-muted leading-relaxed font-normal [font-family:var(--font-inter),sans-serif] space-y-5 list-none pl-0">
+                <ul className="text-lg text-muted leading-relaxed font-normal [font-family:var(--font-inter),sans-serif] space-y-6 list-none pl-0">
                   <li
                     className="flex items-center gap-6 origin-left transition-all duration-500 ease-out"
                     style={{
-                      transform: scenePhase === 1 ? "scale(1.2)" : "scale(1)",
-                      opacity: 1,
+                      transform: bp1Scale ? "scale(1.2)" : bp1Dim ? "scale(0.8)" : "scale(1)",
+                      opacity: bp1Dim ? 0.4 : 1,
                     }}
                   >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
@@ -113,8 +143,11 @@ export default function Hero() {
                     </div>
                   </li>
                   <li
-                    className="flex items-center gap-6 transition-opacity duration-500 ease-out"
-                    style={{ opacity: scenePhase === 1 ? 0.4 : 1 }}
+                    className="flex items-center gap-6 origin-left transition-all duration-500 ease-out"
+                    style={{
+                      transform: bp2Scale ? "scale(1.2)" : bp2Dim ? "scale(0.8)" : "scale(1)",
+                      opacity: bp2Dim ? 0.4 : 1,
+                    }}
                   >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
                       <img src="/opensource.svg" alt="Open source icon" className="h-9 w-9" />
@@ -125,8 +158,11 @@ export default function Hero() {
                     </div>
                   </li>
                   <li
-                    className="flex items-center gap-6 transition-opacity duration-500 ease-out"
-                    style={{ opacity: scenePhase === 1 ? 0.4 : 1 }}
+                    className="flex items-center gap-6 origin-left transition-all duration-500 ease-out"
+                    style={{
+                      transform: bp3Scale ? "scale(1.2)" : bp3Dim ? "scale(0.8)" : "scale(1)",
+                      opacity: bp3Dim ? 0.4 : 1,
+                    }}
                   >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
                       <img src="/payment.svg" alt="Payment icon" className="h-9 w-9" />

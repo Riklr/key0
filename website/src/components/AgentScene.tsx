@@ -129,7 +129,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       group.add(cage);
       mats.push(wireMat);
 
-      const label = makeLabel("Server");
+      const label = makeLabel("Your API Server");
       label.position.set(0, 1.96, 0);
       group.add(label);
 
@@ -137,7 +137,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       group.position.set(10.32, -2.5, 0);
       scene.add(group);
 
-      return { group, mats, label, labelMat: label.material };
+      return { group, mats, label, labelMat: label.material, cage };
     }
 
     function makeLogoGroup() {
@@ -933,8 +933,130 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       });
     }
 
+    // ── Scene 3 ──────────────────────────────────────────────────────
+    const S3_LOGO_X = -1.75;
+    const S3_SERVER_X = 1.75;
+    const S3_CUBOID_CENTER_X = 0;
+
+    const s3CuboidMat = new THREE.MeshBasicMaterial({
+      color: 0x3a3a3a, wireframe: true, transparent: true, opacity: 0,
+    });
+    const s3Cuboid = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 5, 4),
+      s3CuboidMat
+    );
+    s3Cuboid.position.set(S3_CUBOID_CENTER_X, 0, 0);
+    s3Cuboid.visible = false;
+    scene.add(s3Cuboid);
+
+    const S3_LABEL_POSITIONS = [
+      new THREE.Vector3(-8, 3.5, 0),
+      new THREE.Vector3(8, 3.5, 0),
+      new THREE.Vector3(-8, -4.5, 0),
+      new THREE.Vector3(8, -4.5, 0),
+    ];
+    const S3_LABEL_TEXTS = ["Open Source", "Self-Hostable", "Auto Refunds", "No Proxies"];
+    const s3Labels = S3_LABEL_POSITIONS.map((pos, i) => {
+      const lbl = makeConnLabel(S3_LABEL_TEXTS[i]);
+      lbl.sprite.position.copy(pos);
+      return lbl;
+    });
+
+    let s3WasActive = false;
+    const s3State = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "entering" | "serverPopIn" | "cuboidForm" | "fadeWires" | "labelIn" | "active" | "exiting",
+      enterDur: 0.5,
+      serverPopInDur: 0.55,
+      cuboidFormDur: 0.5,
+      fadeWiresDur: 0.4,
+      labelInDur: 0.7,
+      labelStagger: 0.15,
+      labelFadeDur: 0.25,
+      exitDur: 0.5,
+    };
+    const S3_LABEL_ORDER = [0, 1, 3, 2];
+
+    function resetS3Objects() {
+      s3Cuboid.visible = false;
+      s3CuboidMat.opacity = 0;
+      s3Cuboid.scale.setScalar(0);
+      s3Labels.forEach(l => {
+        l.sprite.visible = false;
+        l.mat.opacity = 0;
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────
+
+    // ── Scene 4 ──────────────────────────────────────────────────────
+    const S4_SHIFT_X = -5;
+    const S4_SVG_X = 5;
+    const S4_SVG_H = 6.25;
+    const S4_SVG_W = S4_SVG_H * (420 / 444);
+    const S4_COMBINED_SCALE = 0.8;
+    const S4_COIN_DUR = 1.4;
+    const S4_COIN_JUMP = 1.4;
+    const S4_COIN_SPINS = 2;
+    const S4_COIN_PAUSE = 0.3;
+    const S4_COIN_BASE_Y = 2.5 * S4_COMBINED_SCALE + 0.8;
+
+    const s4SvgMat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false });
+    const s4SvgSprite = new THREE.Sprite(s4SvgMat);
+    s4SvgSprite.scale.set(S4_SVG_W, S4_SVG_H, 1);
+    s4SvgSprite.position.set(S4_SVG_X, 0, 0);
+    s4SvgSprite.visible = false;
+    scene.add(s4SvgSprite);
+
+    {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        s4SvgMat.map = new THREE.CanvasTexture(c);
+        s4SvgMat.needsUpdate = true;
+      };
+      img.src = "/paymentsoon.svg";
+    }
+
+    let s4WasActive = false;
+    let s4CoinTimer = 0;
+    const s4State = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "entering" | "svgPopIn" | "active" | "exiting",
+      enterDur: 0.5,
+      svgPopInDur: 0.55,
+      exitDur: 0.5,
+    };
+
+    function s4ScaledPositions(centerX: number, scaleP: number) {
+      const logoOffX = (S3_LOGO_X - S3_CUBOID_CENTER_X) * scaleP;
+      const srvOffX = (S3_SERVER_X - S3_CUBOID_CENTER_X) * scaleP;
+      return {
+        logoX: centerX + logoOffX,
+        srvX: centerX + srvOffX,
+        cuboidX: centerX,
+      };
+    }
+
+    function resetS4Objects() {
+      s4SvgSprite.visible = false;
+      s4SvgMat.opacity = 0;
+      s4SvgSprite.scale.set(S4_SVG_W, S4_SVG_H, 1);
+      coin.group.visible = false;
+      coin.group.scale.setScalar(0);
+      coin.sideMat.opacity = 1;
+      coin.faceMat.opacity = 1;
+    }
+    // ─────────────────────────────────────────────────────────────────
+
     function resetScene1ToNodesVisible() {
       agent.group.visible = true;
+      agent.group.position.set(-10.32, 0, 0);
       agent.group.scale.setScalar(1);
       agent.wireMat.opacity = 0.85;
       agent.coreMat.opacity = 1;
@@ -942,11 +1064,18 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       nodes[0].done = true;
 
       server.group.visible = true;
+      server.group.position.set(10.32, 0, 0);
       server.group.scale.setScalar(1);
       const allSrvMats = server.mats;
       const srvWire = allSrvMats[allSrvMats.length - 1];
       allSrvMats.forEach((m) => { m.opacity = m === srvWire ? 0.45 : 1; });
       server.labelMat.opacity = 1;
+      server.cage.visible = true;
+      logo.wireBox.visible = true;
+      (logo.wireBox.material as THREE.MeshBasicMaterial).transparent = true;
+      (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 0.2;
+      logo.group.position.x = 0;
+      logo.group.scale.setScalar(1);
       nodes[1].done = true;
       nodes[2].done = true;
 
@@ -996,6 +1125,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       fullResetState.active = false; fullResetState.timer = 0; fullResetState.phase = "idle";
       agent2.group.visible = false;
       agent3.group.visible = false;
+      resetS4Objects();
+      s4State.active = false; s4State.phase = "idle"; s4State.timer = 0;
     }
     // ─────────────────────────────────────────────────────────────────
 
@@ -1203,6 +1334,10 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
             agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
             agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
             ripples.forEach((r) => { r.sprite.visible = false; });
+            logo.wireBox.visible = true;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).transparent = true;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 0.2;
+            logo.group.position.x = 0;
             s2Agents.forEach(a => {
               a.group.visible = true; a.group.scale.setScalar(1);
               a.wireMat.opacity = 0.85; a.coreMat.opacity = 1; a.labelMat.opacity = 1;
@@ -1394,6 +1529,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
             });
             agent.group.visible = true;
             server.group.visible = true;
+            agent.group.position.set(-10.32, 0, 0);
+            server.group.position.set(10.32, 0, 0);
             setNodeOpacity(nodes[0], p);
             setNodeOpacity(nodes[1], p);
             agent.group.scale.setScalar(1);
@@ -1408,10 +1545,315 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
           }
         }
       }
+      // ── Scene 3 phase handler ──────────────────────────────────────
+      {
+        const wantPhase = phaseRef.current;
+
+        if (wantPhase === 2 && s2State.active && s2State.phase === "active") {
+          s2State.active = false;
+          s2State.phase = "idle";
+          s3State.active = true;
+          s3State.timer = 0;
+
+          if (s3WasActive) {
+            resetS2Objects();
+            resetS4Objects();
+            s4State.active = false;
+            s4State.phase = "idle";
+            s4State.timer = 0;
+            logo.group.position.x = S3_LOGO_X;
+            logo.group.scale.setScalar(1);
+            logo.wireBox.visible = false;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 0;
+            server.group.visible = true;
+            server.group.position.set(S3_SERVER_X, server.group.position.y, 0);
+            server.group.scale.setScalar(1);
+            const srvWire = server.mats[server.mats.length - 1];
+            server.mats.forEach(m => { m.opacity = m === srvWire ? 0 : 1; });
+            server.labelMat.opacity = 0;
+            server.cage.visible = false;
+            s3Cuboid.visible = true;
+            s3Cuboid.position.x = S3_CUBOID_CENTER_X;
+            s3CuboidMat.opacity = 0.2;
+            s3Cuboid.scale.setScalar(1);
+            s3Labels.forEach(l => { l.sprite.visible = true; l.mat.opacity = 1; });
+            s3State.phase = "active";
+          } else {
+            s3State.phase = "entering";
+          }
+        }
+
+        if (wantPhase === 1 && s3State.active && s3State.phase === "active" && !s4State.active) {
+          s3State.phase = "exiting";
+          s3State.timer = 0;
+        }
+
+        if (s3State.active) {
+          s3State.timer += dt;
+
+          if (s3State.phase === "entering") {
+            const p = Math.min(s3State.timer / s3State.enterDur, 1);
+            const inv = 1 - p;
+            s2Agents.forEach(a => {
+              a.wireMat.opacity = inv * 0.85;
+              a.coreMat.opacity = inv;
+              a.labelMat.opacity = inv;
+            });
+            s2Lines.forEach(l => { l.mat.opacity = inv * 0.7; });
+            s2HttpLabels.forEach(l => { l.mat.opacity = inv; });
+            s2PingBalls.forEach(b => {
+              (b.material as THREE.MeshBasicMaterial).opacity = inv * 0.4;
+            });
+            if (p >= 1) {
+              resetS2Objects();
+              server.group.visible = true;
+              server.group.position.set(S3_SERVER_X, 0, 0);
+              server.group.scale.setScalar(0);
+              server.mats.forEach(m => { m.opacity = 0; });
+              server.labelMat.opacity = 0;
+              server.cage.visible = false;
+              s3State.phase = "serverPopIn";
+              s3State.timer = 0;
+            }
+          } else if (s3State.phase === "serverPopIn") {
+            const p = Math.min(s3State.timer / s3State.serverPopInDur, 1);
+            const sc = easeOutBack(p);
+            const op = Math.min(s3State.timer / (s3State.serverPopInDur * 0.4), 1);
+            const ep = easeInOut(p);
+            logo.group.position.x = 0 + (S3_LOGO_X - 0) * ep;
+            server.group.scale.setScalar(sc);
+            const srvWire = server.mats[server.mats.length - 1];
+            server.mats.forEach(m => {
+              m.opacity = m === srvWire ? op * 0.45 : op;
+            });
+            server.labelMat.opacity = 0;
+            server.cage.visible = false;
+            server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
+            if (p >= 1) {
+              logo.group.position.x = S3_LOGO_X;
+              server.group.scale.setScalar(1);
+              s3Cuboid.visible = true;
+              s3Cuboid.scale.setScalar(0);
+              s3State.phase = "cuboidForm";
+              s3State.timer = 0;
+            }
+          } else if (s3State.phase === "cuboidForm") {
+            const p = Math.min(s3State.timer / s3State.cuboidFormDur, 1);
+            s3Cuboid.scale.setScalar(easeOutBack(p));
+            s3CuboidMat.opacity = p * 0.2;
+            server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
+            if (p >= 1) {
+              s3Cuboid.scale.setScalar(1);
+              s3CuboidMat.opacity = 0.2;
+              s3State.phase = "fadeWires";
+              s3State.timer = 0;
+            }
+          } else if (s3State.phase === "fadeWires") {
+            const p = Math.min(s3State.timer / s3State.fadeWiresDur, 1);
+            (logo.wireBox.material as THREE.MeshBasicMaterial).transparent = true;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 1 - p;
+            server.mats[server.mats.length - 1].opacity = 0.45 * (1 - p);
+            server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
+            if (p >= 1) {
+              logo.wireBox.visible = false;
+              (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 0;
+              server.cage.visible = false;
+              server.mats[server.mats.length - 1].opacity = 0;
+              s3State.phase = "labelIn";
+              s3State.timer = 0;
+            }
+          } else if (s3State.phase === "labelIn") {
+            const t = s3State.timer;
+            S3_LABEL_ORDER.forEach((idx, order) => {
+              const start = order * s3State.labelStagger;
+              const elapsed = t - start;
+              if (elapsed <= 0) return;
+              s3Labels[idx].sprite.visible = true;
+              s3Labels[idx].mat.opacity = Math.min(elapsed / s3State.labelFadeDur, 1);
+            });
+            server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
+            if (t >= s3State.labelInDur) {
+              s3Labels.forEach(l => { l.mat.opacity = 1; });
+              s3State.phase = "active";
+              s3State.timer = 0;
+              s3WasActive = true;
+            }
+          } else if (s3State.phase === "active") {
+            server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
+          } else if (s3State.phase === "exiting") {
+            const p = Math.min(s3State.timer / s3State.exitDur, 1);
+            const inv = 1 - p;
+            const ep = easeInOut(p);
+            logo.group.position.x = S3_LOGO_X + (0 - S3_LOGO_X) * ep;
+            const srvWire = server.mats[server.mats.length - 1];
+            server.mats.forEach(m => {
+              m.opacity = m === srvWire ? 0 : inv;
+            });
+            server.labelMat.opacity = 0;
+            s3CuboidMat.opacity = 0.2 * inv;
+            s3Labels.forEach(l => { l.mat.opacity = inv; });
+            logo.wireBox.visible = true;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).transparent = true;
+            (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = p * 0.2;
+            if (p >= 1) {
+              resetS3Objects();
+              logo.group.position.x = 0;
+              logo.group.scale.setScalar(1);
+              server.group.visible = false;
+              server.group.scale.setScalar(0);
+              server.mats.forEach(m => { m.opacity = 0; });
+              server.labelMat.opacity = 0;
+              server.cage.visible = true;
+              (logo.wireBox.material as THREE.MeshBasicMaterial).transparent = true;
+              (logo.wireBox.material as THREE.MeshBasicMaterial).opacity = 0.2;
+              s3State.active = false;
+              s3State.phase = "idle";
+              s3State.timer = 0;
+            }
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────
+
+      // ── Scene 4 phase handler ──────────────────────────────────────
+      {
+        const wantPhase = phaseRef.current;
+
+        if (wantPhase === 3 && s3State.active && s3State.phase === "active" && !s4State.active) {
+          s4State.active = true;
+          s4State.timer = 0;
+
+          if (s4WasActive) {
+            s3Labels.forEach(l => { l.sprite.visible = false; l.mat.opacity = 0; });
+            const final = s4ScaledPositions(S3_CUBOID_CENTER_X + S4_SHIFT_X, S4_COMBINED_SCALE);
+            logo.group.position.x = final.logoX;
+            server.group.position.x = final.srvX;
+            s3Cuboid.position.x = final.cuboidX;
+            s3Cuboid.scale.setScalar(S4_COMBINED_SCALE);
+            logo.group.scale.setScalar(S4_COMBINED_SCALE);
+            server.group.scale.setScalar(S4_COMBINED_SCALE);
+            s4SvgSprite.visible = true;
+            s4SvgMat.opacity = 1;
+            s4SvgSprite.scale.set(S4_SVG_W, S4_SVG_H, 1);
+            coin.group.visible = true;
+            s4CoinTimer = 0;
+            s4State.phase = "active";
+          } else {
+            s4State.phase = "entering";
+          }
+        }
+
+        if (wantPhase === 2 && s4State.active && s4State.phase === "active") {
+          s4State.phase = "exiting";
+          s4State.timer = 0;
+        }
+
+        if (s4State.active) {
+          s4State.timer += dt;
+
+          if (s4State.phase === "entering") {
+            const p = Math.min(s4State.timer / s4State.enterDur, 1);
+            const ep = easeInOut(p);
+            const scaleP = 1 - (1 - S4_COMBINED_SCALE) * ep;
+            const centerX = S3_CUBOID_CENTER_X + S4_SHIFT_X * ep;
+            const pos = s4ScaledPositions(centerX, scaleP);
+            s3Labels.forEach(l => { l.mat.opacity = 1 - p; });
+            logo.group.position.x = pos.logoX;
+            server.group.position.x = pos.srvX;
+            s3Cuboid.position.x = pos.cuboidX;
+            s3Cuboid.scale.setScalar(scaleP);
+            logo.group.scale.setScalar(scaleP);
+            server.group.scale.setScalar(scaleP);
+            if (p >= 1) {
+              s3Labels.forEach(l => { l.sprite.visible = false; l.mat.opacity = 0; });
+              const final = s4ScaledPositions(S3_CUBOID_CENTER_X + S4_SHIFT_X, S4_COMBINED_SCALE);
+              logo.group.position.x = final.logoX;
+              server.group.position.x = final.srvX;
+              s3Cuboid.position.x = final.cuboidX;
+              s3Cuboid.scale.setScalar(S4_COMBINED_SCALE);
+              logo.group.scale.setScalar(S4_COMBINED_SCALE);
+              server.group.scale.setScalar(S4_COMBINED_SCALE);
+              s4SvgSprite.visible = true;
+              s4SvgSprite.scale.setScalar(0);
+              s4SvgMat.opacity = 0;
+              s4State.phase = "svgPopIn";
+              s4State.timer = 0;
+            }
+          } else if (s4State.phase === "svgPopIn") {
+            const p = Math.min(s4State.timer / s4State.svgPopInDur, 1);
+            const sc = easeOutBack(p);
+            s4SvgSprite.scale.set(S4_SVG_W * sc, S4_SVG_H * sc, 1);
+            s4SvgMat.opacity = Math.min(s4State.timer / (s4State.svgPopInDur * 0.4), 1);
+            if (p >= 1) {
+              s4SvgSprite.scale.set(S4_SVG_W, S4_SVG_H, 1);
+              s4SvgMat.opacity = 1;
+              coin.group.visible = true;
+              coin.group.scale.setScalar(0);
+              s4CoinTimer = 0;
+              s4State.phase = "active";
+              s4State.timer = 0;
+              s4WasActive = true;
+            }
+          } else if (s4State.phase === "active") {
+            s4CoinTimer += dt;
+            const loopDur = S4_COIN_DUR + S4_COIN_PAUSE;
+            const inLoop = s4CoinTimer % loopDur;
+            const centerX = S3_CUBOID_CENTER_X + S4_SHIFT_X;
+            if (inLoop < S4_COIN_DUR) {
+              const t = inLoop / S4_COIN_DUR;
+              const arcY = -4 * (t - 0.5) * (t - 0.5) + 1;
+              const coinY = S4_COIN_BASE_Y + arcY * S4_COIN_JUMP;
+              coin.group.position.set(centerX, coinY, 0.5);
+              const popScale = t < 0.1 ? easeOutBack(t / 0.1) : 1;
+              coin.group.scale.setScalar(popScale * S4_COMBINED_SCALE);
+              coin.inner.rotation.y = t * S4_COIN_SPINS * Math.PI * 2;
+              coin.sideMat.transparent = true;
+              const coinOp = 0.5 + arcY * 0.5;
+              coin.sideMat.opacity = coinOp;
+              coin.faceMat.opacity = coinOp;
+              coin.group.visible = true;
+            } else {
+              coin.group.visible = false;
+              coin.group.scale.setScalar(0);
+            }
+          } else if (s4State.phase === "exiting") {
+            const p = Math.min(s4State.timer / s4State.exitDur, 1);
+            const inv = 1 - p;
+            const ep = easeInOut(p);
+            coin.group.visible = false;
+            coin.group.scale.setScalar(0);
+            s4SvgMat.opacity = inv;
+            s4SvgSprite.scale.set(S4_SVG_W * Math.max(inv, 0.01), S4_SVG_H * Math.max(inv, 0.01), 1);
+            const scaleP = S4_COMBINED_SCALE + (1 - S4_COMBINED_SCALE) * ep;
+            const centerX = S3_CUBOID_CENTER_X + S4_SHIFT_X * (1 - ep);
+            const pos = s4ScaledPositions(centerX, scaleP);
+            logo.group.position.x = pos.logoX;
+            server.group.position.x = pos.srvX;
+            s3Cuboid.position.x = pos.cuboidX;
+            s3Cuboid.scale.setScalar(scaleP);
+            logo.group.scale.setScalar(scaleP);
+            server.group.scale.setScalar(scaleP);
+            s3Labels.forEach(l => { l.sprite.visible = true; l.mat.opacity = p; });
+            if (p >= 1) {
+              resetS4Objects();
+              logo.group.position.x = S3_LOGO_X;
+              server.group.position.x = S3_SERVER_X;
+              s3Cuboid.position.x = S3_CUBOID_CENTER_X;
+              s3Cuboid.scale.setScalar(1);
+              logo.group.scale.setScalar(1);
+              server.group.scale.setScalar(1);
+              s3Labels.forEach(l => { l.mat.opacity = 1; });
+              s4State.active = false;
+              s4State.phase = "idle";
+              s4State.timer = 0;
+            }
+          }
+        }
+      }
       // ────────────────────────────────────────────────────────────────
 
       nodes.forEach((node) => {
-        if (s2State.active && node.type !== "logo") return;
+        if ((s2State.active || s3State.active) && node.type !== "logo") return;
         if (node.done) return;
         if (node.type === "logo" && !logo.loaded()) return;
         node.t += dt;
@@ -1434,6 +1876,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
       nodes.forEach((node, i) => {
         if (s2State.active && node.type !== "logo") return;
+        if (s3State.active && node.type === "agent") return;
         if (node.t < node.delay) return;
         if (node.type === "agent" && postKeyState.phase !== "idle") return;
         const f = floats[i];
@@ -1450,7 +1893,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         logo.wireBox.rotation.y = angle;
       }
 
-      if (!s2State.active) {
+      if (!s2State.active && !s3State.active) {
       server.group.rotation.y = Math.sin(clock * 0.4) * 0.18;
 
       if (agent.wire) {
@@ -1619,7 +2062,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         const serverX = server.group.position.x;
         const serverY = server.group.position.y;
         const startY = serverY - 1.0;
-        const endY = serverY - 2.25 - 0.25;
+        const endY = serverY - 2.25 - 0.35;
         const curY = startY + (endY - startY) * t;
         agent2transSprite.sprite.position.set(serverX, curY, 0.3);
         agent2transSprite.mat.opacity = t;
@@ -1658,7 +2101,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
         const s = 1 - ep * 0.15;
         agent2transSprite.sprite.scale.set(AGENT2TRANS_FULL_W * s, AGENT2TRANS_FULL_H * s, 1);
         const serverY = server.group.position.y;
-        const baseY = serverY - 2.25 - 0.25;
+        const baseY = serverY - 2.25 - 0.35;
         const moveUp = ep * 0.0625;
         agent2transSprite.sprite.position.y = baseY + moveUp;
         if (t >= 1) agent2transScaleState.done = true;
