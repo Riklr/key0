@@ -64,9 +64,19 @@ There are two ways to configure Standalone mode:
 Just start the container with no environment variables — Key0 boots into **Setup Mode** and serves a browser-based configuration wizard:
 
 ```bash
-docker compose -f docker/docker-compose.yml up
+docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → redirects to /setup
+# Managed infra (Redis, Postgres) is auto-detected at startup — no extra env vars needed.
 ```
+
+Docker Compose profiles control which infrastructure services are bundled:
+
+| Profile | What starts |
+|---|---|
+| *(none)* | Key0 only — bring your own Redis + Postgres via env vars |
+| `--profile redis` | Key0 + managed Redis |
+| `--profile postgres` | Key0 + managed Postgres (still needs Redis externally) |
+| `--profile full` | Key0 + managed Redis + managed Postgres (batteries included) |
 
 The Setup UI lets you configure everything visually: wallet address, network, pricing plans, token issuance API, settlement, and refund settings. When you submit, the server writes the config and restarts automatically.
 
@@ -96,7 +106,7 @@ docker run \
 ```bash
 cp docker/.env.example docker/.env
 # Edit docker/.env: set KEY0_WALLET_ADDRESS and ISSUE_TOKEN_API
-docker compose -f docker/docker-compose.yml up
+docker compose -f docker/docker-compose.yml --profile redis up
 ```
 
 > Even with env vars pre-configured, the Setup UI is always available at `/setup` for reconfiguration.
@@ -132,7 +142,10 @@ Build from source: `docker build -t key0ai/key0 .`
 | `BACKEND_AUTH_STRATEGY` | | `none` | How Key0 authenticates with `ISSUE_TOKEN_API` — `none`, `shared-secret`, or `jwt` |
 | `ISSUE_TOKEN_API_SECRET` | | — | Secret for `ISSUE_TOKEN_API` auth — Bearer token (shared-secret) or JWT signing key (jwt). Only used when `BACKEND_AUTH_STRATEGY` is not `none` |
 | `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover_plans` and `request_access` tools |
-| `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
+| `STORAGE_BACKEND` | | `redis` | Storage backend — `redis` or `postgres` |
+| `DATABASE_URL` | | — | PostgreSQL connection URL — required when `STORAGE_BACKEND=postgres` |
+| `REDIS_URL` | ✅ | — | Redis connection URL — required for challenge state (or BullMQ refund cron when using Postgres) |
+| `KEY0_MANAGED_INFRA` | | — | Optional comma-separated list of compose-managed infra (e.g. `redis,postgres`). Auto-detected at startup via DNS; only needed as an explicit override |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
 | `KEY0_WALLET_PRIVATE_KEY` | | — | Private key of `KEY0_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
 | `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `KEY0_WALLET_PRIVATE_KEY` is set |
