@@ -7,13 +7,16 @@
 #   --profile full        key0 + managed Redis + managed Postgres (batteries included)
 #
 # Quick start (batteries included):
-#   KEY0_MANAGED_INFRA=redis,postgres docker compose --profile full up
+#   docker compose --profile full up
 #
 # Managed Redis, external Postgres:
-#   KEY0_MANAGED_INFRA=redis DATABASE_URL=postgresql://... docker compose --profile redis up
+#   docker compose --profile redis up   # set DATABASE_URL in .env
 #
 # All external (e.g. docker run or your own infra):
 #   docker run -p 3000:3000 -e REDIS_URL=... -e DATABASE_URL=... key0ai/key0:latest
+#
+# Note: Managed infra is auto-detected at startup via DNS resolution.
+# KEY0_MANAGED_INFRA is optional — only needed as an explicit override.
 
 services:
   key0:
@@ -22,8 +25,7 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - PORT=${PORT:-3000}
-      # Set by the profile launch commands above so the Setup UI knows which
-      # services are managed (comma-separated: redis,postgres)
+      # Optional explicit override — managed infra is auto-detected via DNS at startup
       - KEY0_MANAGED_INFRA=${KEY0_MANAGED_INFRA:-}
       # Default URLs point to the compose service names; overridden by .env for external infra
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}

@@ -8,6 +8,7 @@
  * See docker/.env.example for the full list of env vars.
  */
 
+import { lookup } from "node:dns/promises";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -18,32 +19,48 @@ const WALLET_ADDRESS = process.env.KEY0_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 const REDIS_URL = process.env.REDIS_URL;
 
-// Parse which infra services are managed by Docker Compose profiles
-// e.g. KEY0_MANAGED_INFRA=redis,postgres when using --profile full
-const MANAGED_INFRA = (process.env.KEY0_MANAGED_INFRA ?? "")
+// Optional explicit hint from the user (e.g. KEY0_MANAGED_INFRA=redis,postgres).
+// No longer required — managed infra is auto-detected via DNS at startup.
+const MANAGED_INFRA_EXPLICIT = (process.env.KEY0_MANAGED_INFRA ?? "")
 	.split(",")
 	.map((s) => s.trim().toLowerCase())
 	.filter(Boolean);
 
-// A URL is "usable" only when it's a real user-supplied external URL,
-// OR the matching compose service is actually running (listed in MANAGED_INFRA).
-// Compose-default internal hostnames (redis://redis:*, *@postgres:*) are treated
-// as placeholder — they'll cause ENOTFOUND if the profile service isn't running.
-const redisUsable = Boolean(
-	REDIS_URL && (MANAGED_INFRA.includes("redis") || !REDIS_URL.startsWith("redis://redis:")),
-);
-const postgresUrlUsable = Boolean(
-	process.env.DATABASE_URL &&
-		(MANAGED_INFRA.includes("postgres") ||
-			!/postgresql:\/\/[^@]+@postgres:/.test(process.env.DATABASE_URL)),
-);
+// ─── Auto-detect infrastructure availability via DNS ─────────────────────
+//
+// Instead of relying on a user-supplied env var to know whether compose-internal
+// services (redis, postgres) are running, we do a quick DNS lookup at startup.
+//   - hostname resolves  → service is reachable → URL is usable
+//   - hostname fails     → service not running  → enter setup mode
+//
+// This works transparently for all deployment scenarios:
+//   docker compose --profile full up   → redis/postgres resolve inside compose network
+//   docker compose up (no profile)     → hostnames don't resolve → setup mode
+//   docker run -e REDIS_URL=redis://external:6379  → external hostname resolves
+
+async function isHostReachable(url: string | undefined, timeoutMs = 3000): Promise<boolean> {
+	if (!url) return false;
+	try {
+		const hostname = new URL(url).hostname;
+		await Promise.race([
+			lookup(hostname),
+			new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
+		]);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+const redisUsable = await isHostReachable(REDIS_URL);
+const postgresUrlUsable = await isHostReachable(process.env.DATABASE_URL);
 const STORAGE_BACKEND_EARLY = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 
 const isConfigured = Boolean(
 	WALLET_ADDRESS &&
 		ISSUE_TOKEN_API &&
 		(STORAGE_BACKEND_EARLY === "postgres"
-			? postgresUrlUsable && (redisUsable || MANAGED_INFRA.includes("redis"))
+			? postgresUrlUsable && redisUsable
 			: redisUsable),
 );
 
@@ -83,12 +100,22 @@ app.get("/api/setup/status", (_req, res) => {
 		// ignore — UI will fall back to its default
 	}
 
-	// Parse which infra services are managed by Docker Compose (comma-separated)
-	// e.g. KEY0_MANAGED_INFRA=redis,postgres when using --profile full
-	const managedInfra = (process.env.KEY0_MANAGED_INFRA ?? "")
-		.split(",")
-		.map((s) => s.trim().toLowerCase())
-		.filter(Boolean);
+	// Auto-detect which infra is managed by Docker Compose:
+	// A service is "managed" if its URL points to a compose-internal hostname
+	// (e.g. redis, postgres) AND that hostname actually resolved at startup.
+	const autoManaged: string[] = [];
+	if (redisUsable && REDIS_URL && /^redis:\/\/redis[^.]*:/.test(REDIS_URL)) {
+		autoManaged.push("redis");
+	}
+	if (
+		postgresUrlUsable &&
+		process.env.DATABASE_URL &&
+		/postgresql?:\/\/[^@]+@postgres[^.]*:/.test(process.env.DATABASE_URL)
+	) {
+		autoManaged.push("postgres");
+	}
+	// Merge explicit KEY0_MANAGED_INFRA (if set) with auto-detected
+	const managedInfra = [...new Set([...MANAGED_INFRA_EXPLICIT, ...autoManaged])];
 
 	res.json({
 		configured: isConfigured,

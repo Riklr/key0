@@ -66,6 +66,7 @@ Just start the container with no environment variables — Key0 boots into **Set
 ```bash
 docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → redirects to /setup
+# Managed infra (Redis, Postgres) is auto-detected at startup — no extra env vars needed.
 ```
 
 Docker Compose profiles control which infrastructure services are bundled:
@@ -144,7 +145,7 @@ Build from source: `docker build -t key0ai/key0 .`
 | `STORAGE_BACKEND` | | `redis` | Storage backend — `redis` or `postgres` |
 | `DATABASE_URL` | | — | PostgreSQL connection URL — required when `STORAGE_BACKEND=postgres` |
 | `REDIS_URL` | ✅ | — | Redis connection URL — required for challenge state (or BullMQ refund cron when using Postgres) |
-| `KEY0_MANAGED_INFRA` | | — | Comma-separated list of infra managed by Docker Compose profiles (e.g. `redis,postgres`) — set automatically by profile launch commands |
+| `KEY0_MANAGED_INFRA` | | — | Optional comma-separated list of compose-managed infra (e.g. `redis,postgres`). Auto-detected at startup via DNS; only needed as an explicit override |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
 | `KEY0_WALLET_PRIVATE_KEY` | | — | Private key of `KEY0_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
 | `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `KEY0_WALLET_PRIVATE_KEY` is set |
