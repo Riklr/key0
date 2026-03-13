@@ -19,7 +19,7 @@ const adapter = new X402Adapter({
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
 
-// Mount Key0 — serves agent card + A2A endpoint
+// Mount Key0 — serves agent card + /x402/access endpoint
 const gate = key0App({
 	config: {
 		agentName: "Photo Gallery Agent",
@@ -97,6 +97,6 @@ export default {
 
 console.log(`\nPhoto Gallery Agent (Hono) running on http://localhost:${PORT}`);
 console.log(`  Agent card: http://localhost:${PORT}/.well-known/agent.json`);
-console.log(`  A2A endpoint: http://localhost:${PORT}/a2a/jsonrpc`);
+console.log(`  x402 endpoint: http://localhost:${PORT}/x402/access`);
 console.log(`  Network: ${NETWORK}`);
 console.log(`  Wallet: ${WALLET}\n`);
