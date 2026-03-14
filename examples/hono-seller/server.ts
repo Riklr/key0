@@ -30,41 +30,36 @@ const gate = key0App({
 		walletAddress: WALLET,
 		network: NETWORK,
 		challengeTTLSeconds: 900,
-		products: [
+		plans: [
 			{
-				tierId: "single-photo",
-				label: "Single Photo",
-				amount: "$0.10",
-				resourceType: "photo",
-				accessDurationSeconds: 3600,
+				planId: "single-photo",
+				unitAmount: "$0.10",
+				description: "Single photo — 1 hour access",
 			},
 			{
-				tierId: "full-album",
-				label: "Full Album Access",
-				amount: "$1.00",
-				resourceType: "album",
-				accessDurationSeconds: 86400,
+				planId: "full-album",
+				unitAmount: "$1.00",
+				description: "Full album — 24 hour access",
 			},
 		],
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
-			const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+			const ttl = params.planId === "single-photo" ? 3600 : 86400;
 			return tokenIssuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				ttl,
 			);
 		},
 		onPaymentReceived: async (grant) => {
-			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
+			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
 			console.log(`  TX: ${grant.explorerUrl}`);
 		},
-		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,
 	},
 	adapter,
 });

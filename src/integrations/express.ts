@@ -199,6 +199,7 @@ export function key0Router(opts: Key0Config): Router {
 					return res.status(402).json({
 						...requirements,
 						challengeId,
+						requestId,
 						error: "Payment required",
 					});
 				}

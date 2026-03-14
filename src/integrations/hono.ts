@@ -124,7 +124,7 @@ export function key0App(opts: Key0Config): Hono {
 					`Payment realm="${opts.config.agentUrl}", accept="exact", challenge="${challengeId}"`,
 				);
 
-				return c.json({ ...requirements, challengeId, error: "Payment required" }, 402);
+				return c.json({ ...requirements, challengeId, requestId, error: "Payment required" }, 402);
 			}
 
 			// CASE 3: planId + PAYMENT-SIGNATURE → Settle

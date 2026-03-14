@@ -125,7 +125,9 @@ export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Pr
 					`Payment realm="${opts.config.agentUrl}", accept="exact", challenge="${challengeId}"`,
 				);
 
-				return reply.code(402).send({ ...requirements, challengeId, error: "Payment required" });
+				return reply
+					.code(402)
+					.send({ ...requirements, challengeId, requestId, error: "Payment required" });
 			}
 
 			// CASE 3: planId + PAYMENT-SIGNATURE → Settle
