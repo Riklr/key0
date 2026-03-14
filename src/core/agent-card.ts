@@ -14,8 +14,8 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	// Additional per-request skills are appended below for each gated route.
 	const skills: AgentSkill[] = [
 		{
-			id: "discover",
-			name: "Discover",
+			id: "discover-plans",
+			name: "Discover plans",
 			description: [
 				`Browse available plans and pricing for ${config.agentName}.`,
 				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
@@ -243,7 +243,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 
 	return {
 		name: config.agentName,
-		description: config.agentDescription,
+		description: `${config.agentDescription} To discover plans, you must call the discovery endpoint: GET ${baseUrl}/discovery`,
 		url: `${baseUrl}/x402/access`,
 		version: config.version ?? "1.0.0",
 		protocolVersion: "0.3.0",

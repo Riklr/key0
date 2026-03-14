@@ -16,11 +16,8 @@ export type AgentSkill = {
 	readonly inputModes?: readonly string[];
 	readonly outputModes?: readonly string[];
 	readonly security?: Record<string, string[]>;
-	/** @key0 Direct endpoint URL and HTTP method for this skill. */
 	readonly endpoint?: { readonly url: string; readonly method: "GET" | "POST" };
-	/** @key0 JSON Schema for the skill's input parameters. */
 	readonly inputSchema?: Record<string, unknown>;
-	/** @key0 Step-by-step workflow instructions for automated clients. */
 	readonly workflow?: readonly string[];
 };
 
