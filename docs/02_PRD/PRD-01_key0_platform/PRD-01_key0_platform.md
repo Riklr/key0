@@ -24,9 +24,9 @@ development_status: draft
 | Field | Value |
 |---|---|
 | Status | Draft |
-| Version | 0.3 |
+| Version | 0.5 |
 | Date Created | 2026-03-14 |
-| Last Updated | 2026-03-14 |
+| Last Updated | 2026-03-15 |
 | Author | Srijan |
 | Reviewer | Pending |
 | Approver | Pending |
@@ -43,30 +43,50 @@ development_status: draft
 | 0.1 | 2026-03-14 | Srijan | Initial draft — commerce lifecycle, personas, Part 1 Agent-Ready |
 | 0.2 | 2026-03-14 | Srijan | Added Part 2 Network (registry, reputation, buyer SDK, platform integrations) |
 | 0.3 | 2026-03-14 | Srijan | Restructured to standard 17-section MVP template; added all required metadata |
+| 0.4 | 2026-03-15 | Srijan | Added seller onboarding journeys (Journey A: Shopify, Journey B: API); Discovery & Distribution requirements (PRD.01.01.58–63); onboarding KPIs (PRD.01.08.11–13); acceptance criteria (PRD.01.06.25–32); glossary additions |
+| 0.5 | 2026-03-15 | Srijan | Major strategy revision based on market research critique: founding layer positioning; two-door persona model (Agent Builder + API Developer); removed Shopify journey (obsoleted by Shopify Agentic Plan); removed Moltbook (acquired by Meta, wrong category); added Smithery/MCP Registry distribution; escrow deferred with two implementation paths; fiat rails added; competitive table updated; phase order flipped |
 
 ---
 
 ## 2. Executive Summary
 
-Key0 is a **SaaS platform** that makes any seller agent-ready. Sellers connect their existing business — an API, a digital storefront, a task service, a Shopify store — and Key0 provides everything needed to transact with AI agents: hosted infrastructure, agent card, payment processing, order lifecycle management, and dispute handling. No servers to run, no Redis to configure, no SDK to integrate for most sellers. Sign up, configure, go live.
+**Key0 is the commercial foundation for AI agents.**
 
-For developers and enterprises who want full control, an open-source self-hosted SDK remains available. But the primary product surface is the managed platform.
+Start with Key0 and your agent is a business from day one — discoverable on every agent registry, payable by any AI system, and building a reputation with every transaction. Don't build payment infrastructure. Don't worry about discovery. Don't negotiate contracts. Write the part that matters: what your agent does.
+
+The agent economy is already here. x402 processed 75M transactions and $24M in volume in the last 30 days alone (x402.org, March 2026). ChatGPT has live checkout. Shopify reports AI-driven orders up 15x year-over-year. Harvey AI has $100M ARR from AI-powered legal work. The bottleneck is no longer agent capability or buyer intent — it is that most APIs and agent services are not commercially accessible to other agents.
+
+Key0 solves this in two ways:
+
+**For agent builders** — `npx create-key0-agent` scaffolds a new agent project with the entire commercial layer pre-built: agent card, pricing plans, payment gate, registry listing, and reputation tracking. You build the logic; Key0 handles the business.
+
+**For API developers** — three lines of configuration make any existing REST API instantly agent-payable. No changes to existing code, no impact on human customers, no new infrastructure to run.
+
+The open-source SDK (`@key0ai/key0`) is the primary product surface for developers who want full control. The managed platform removes the need to operate storage backends for those who don't. Both use identical APIs.
+
+**Revenue model:** Key0 charges a transaction fee (~2%) on payments processed through the platform. *(Note: exact fee collection mechanism for wallet-to-wallet transactions is an open question — see §6 Open Questions — and must be resolved before KPI targets in §5 are finalized.)*
 
 The platform has two capability areas:
 
-**Part 1 — Agent-Ready** describes what any seller needs to transact with AI agents that already have intent and a wallet. An agent knows what it wants to buy and can pay; the seller just needs to be ready to receive it.
+**Part 1 — Agent-Ready** describes what any seller needs to transact with AI agents: payment gating, agent card and discovery, and the full commerce lifecycle (quotes, async fulfillment, delivery verification, disputes, bilateral reputation).
 
-**Part 2 — The Network** describes the marketplace and platform layer: how agents find sellers they don't already know, how trust is established at scale, and how agent platforms can embed Key0 as their native commerce layer.
+**Part 2 — The Network** describes `registry.key0.ai` — a payment-enabled, programmatically-queryable agent service directory that fills a gap the A2A protocol specification explicitly acknowledges (GitHub Discussion #741) but has not yet defined.
 
 ---
 
 ## 3. Problem Statement
 
-Every seller of goods and services has built their commerce infrastructure for human users: browser signups, OAuth flows, credit-card checkouts, and human-readable UIs. AI agents cannot navigate these flows. They can't click "agree to terms," verify an email, or complete a Stripe checkout.
+The agent economy is not approaching — it has arrived.
 
-This is not a future problem. Agent platforms are already provisioning agents with verified identity, on-chain wallets, and payment credentials. An agent running a task today can discover a data provider, pay for access, retrieve the result, and continue — without a human in the loop. The bottleneck is not agent capability. It is seller infrastructure.
+x402 processed **75 million transactions** and **$24M in volume** in the 30 days ending March 2026, across 94,000 buyers and 22,000 sellers (x402.org). ChatGPT launched live checkout in September 2025. Shopify reports AI-driven orders grew **15x** from January 2025 to January 2026. Harvey AI — an autonomous legal agent — has $100M ARR and is buying LexisNexis data feeds programmatically. AgentMail raised $6M in March 2026 specifically because hundreds of thousands of agents need identities to pay for services autonomously.
 
-**Key0 solves the seller side.** Any seller — an API team, a digital goods vendor, a task shop, a physical service provider, or a Shopify store owner — can connect to Key0 and immediately accept orders from any AI agent with a wallet. Sellers connect their existing fulfillment logic via webhooks. Key0 hosts and runs all the agent-facing infrastructure. No changes to existing business logic. No human-facing flows removed. Agents get a structured, machine-readable interface; existing human customers are unaffected.
+The gap is not agent capability. Agents exist, they have wallets, they have tasks to complete. **The gap is that the services they need to buy are not commercially accessible to them.**
+
+Every API and agent service was built for human users: browser signups, OAuth consent screens, Stripe checkout flows. An agent running a task today hits these walls and either bounces (losing the seller revenue) or requires a human in the loop (breaking the autonomous workflow entirely).
+
+**Key0 solves the seller side.** Any developer — whether they have an existing API or are building a new agent from scratch — can use Key0 to become commercially accessible to any AI agent with a wallet. Sellers define what they offer and at what price; Key0 handles everything else: the agent card, the payment gate, the registry listing, the order lifecycle, and the reputation system.
+
+No changes to existing APIs. No impact on human customers. Agents get a structured, machine-readable commercial interface; existing users are unaffected.
 
 ### What "Agent-Ready" Means
 
@@ -93,84 +113,73 @@ The gap between what sellers expose and what agents can consume is an active rev
 
 ### Competitive Gap
 
-| Capability | Key0 | Stripe / Processors | OpenAI Actions | Shopify |
-|---|---|---|---|---|
-| Agent-native payment (no human card flow) | Yes (x402/USDC) | No | No | No |
-| A2A and MCP protocol support | Yes | No | MCP only | No |
-| Async fulfillment lifecycle | Planned | No | No | Yes (human-facing) |
-| On-chain payment verification | Yes | No | No | No |
-| Negotiation / quoting | Planned | No | No | No |
-| Agent-facing dispute resolution | Planned | Partial (human) | No | No |
+The relevant competitive set is agent-payment infrastructure, not traditional payment processors:
+
+| Capability | Key0 | Nevermined | Fewsats | Kobaru / Foldset | Stripe Agent Toolkit |
+|---|---|---|---|---|---|
+| Payment gating (crypto) | Yes — x402/USDC | Yes | Yes | Yes | No |
+| Payment gating (fiat) | Planned | Yes | Yes | Yes | Yes |
+| A2A + MCP protocol support | Yes | Yes | MCP only | Partial | No |
+| Quote / negotiation | Planned | No | No | No | No |
+| Async fulfillment lifecycle | Planned | No | No | No | No |
+| Delivery verification | Planned | No | No | No | No |
+| Agent-facing dispute resolution | Planned | No | No | No | No |
+| Bilateral reputation system | Planned | No | No | No | No |
+| Payment-enabled discovery registry | Planned | No | No | No | No |
+| `create-key0-agent` CLI scaffold | Planned | No | No | No | No |
+
+Key0's moat is not the payment rail — competitors match or exceed on that. Key0's moat is the **full commerce lifecycle** (quotes → async fulfillment → delivery verification → disputes) combined with a **payment-enabled discovery registry** that fills the gap the A2A spec explicitly acknowledges.
 
 ---
 
 ## 4. Target Audience & User Personas
 
-### API Operator
-
-A developer or small team that owns a REST API — stock data feeds, weather APIs, AI inference endpoints. They gate access today via API keys issued after human signup.
-
-**Pain**: Agent traffic hits their signup wall and bounces. There is no way to issue API keys programmatically to agents that cannot click through a signup flow. Revenue from agent platforms is zero.
-
-**Success**: Three lines of configuration. Within days of deployment, they receive USDC payments from agent buyers with no human intervention. Their existing API key issuance logic is called from a callback, unchanged.
+Key0 serves sellers — developers and teams who want to make their API or agent commercially accessible to other AI agents. There is no separate "buyer" persona: buyers are AI agents on the internet that interact with Key0-protected endpoints via standard x402 and A2A/MCP protocols. Key0 does not need to acquire buyers; it makes sellers findable and payable by the buyers that already exist.
 
 ---
 
-### Digital Goods Vendor
+### §4.1 For Agent Builders *(Primary — founding layer path)*
 
-Sells research reports, datasets, AI model weights, or code packages. Orders are fulfilled asynchronously — a research report takes hours to produce.
+**Who:** A developer building a new AI agent that does something valuable — candidate screening, legal document review, competitive intelligence, market research, code testing, data enrichment. They want it to be a commercial product from day one, earning revenue from other AI systems that call it.
 
-**Pain**: No structured way to tell an agent "I received your payment, I'm working on it, here is the result." Agents cannot poll an email inbox. There is no proof-of-receipt mechanism.
+**Pain:** The agent logic is the interesting part. Everything around it — payment infrastructure, agent card spec, registry listing, delivery state machine, reputation — is undifferentiated work that takes weeks and still produces something worse than a purpose-built solution. Without it, the agent can't charge; it runs forever as a cost center.
 
-**Success**: They declare their service as async, implement a fulfillment callback, and Key0 handles the order lifecycle. The agent polls for status or receives a webhook when the item is ready.
+**Success:** `npx create-key0-agent` scaffolds a project where the commercial identity is pre-built. The developer writes the function that does the work. Key0 handles the pricing, payment gate, agent card, registry listing, and reputation. The agent earns its first payment within a day of the first commit. Revenue grows with every agent that discovers it via `registry.key0.ai` and Smithery.
 
----
+**Entry point:** `npx create-key0-agent` CLI
 
-### Task Seller
-
-Deep research shops, code generation services, competitive intelligence agencies. Each job requires inputs before a price can be quoted. Pricing is variable.
-
-**Pain**: No way to accept a job description, quote a price, wait for acceptance, collect payment, and return output — all without human involvement. The negotiation step does not exist in current agent-commerce primitives.
-
-**Success**: They implement a quote callback. The agent receives a binding quote with a TTL, accepts it, pays, and the fulfillment flow proceeds automatically.
+**Time to first earning agent:** < 1 day on a new project.
 
 ---
 
-### Physical / IRL Service Provider
+### §4.2 For API Developers *(Primary — retrofit path)*
 
-Concierge services, drone delivery, print-on-demand, shipping brokers. Fulfillment involves real-world coordination and status transitions over hours or days.
+**Who:** A developer or small team running a REST API — financial data feeds, domain intelligence, AI inference endpoints, proprietary datasets, niche analytics. They issue API keys today after human signup. They've seen traffic from something that looks like an agent hit their signup wall and drop off.
 
-**Pain**: No escrow mechanism. No structured order tracking for agents. No agent-facing dispute channel.
+**Pain:** Agents can't complete signup forms, OAuth consent screens, or Stripe checkouts. The developer is either giving free access (hoping for conversion) or blocking the traffic entirely. Either way, revenue from agent traffic is zero regardless of volume.
 
-**Success**: Payment is held in escrow until they confirm delivery. The agent receives a tracking identifier. If delivery fails, the agent files a dispute and receives a resolution timeline.
+**Success:** Three lines of configuration. Existing API untouched. Human customer flows unchanged. Agents can now discover the API on Smithery, pay per call, and receive credentials automatically — no human in the loop. Agent revenue starts immediately.
 
----
+**Entry point:** `npm install @key0ai/key0` — mid-project integration
 
-### Non-Technical Seller
-
-Shopify store owners, WhatsApp Business accounts, website owners. They want to accept agent orders the same way they accept human orders today — without running infrastructure or writing code.
-
-**Pain**: Completely excluded from agent commerce. No managed service exists to expose their catalog and order flow to agents.
-
-**Success**: Key0's managed platform is the answer. They sign up, connect their fulfillment backend via a Shopify app or a webhook URL, and go live. No infrastructure to manage, no code to write.
+**Time to first agent payment:** < 1 hour on an existing API.
 
 ---
 
-### Agent Buyer
+### §4.3 Non-Technical Service Sellers *(Tertiary — later, demand-signal driven)*
 
-Any AI agent executing a task that requires purchasing goods or services. The agent has a verifiable identity, an on-chain wallet funded with USDC, and must operate without falling back to human oversight.
+Small operators with a service to sell but no API or coding ability. Webhook adapter path via the managed dashboard. Not a launch priority — requires the seller ecosystem to mature and agent buyers to actively search for their service category first.
 
-**Pain**: Even when a structured agent interface exists, agents can only purchase instant-delivery items. They cannot request a quote for variable-priced work, track async fulfillment, confirm or reject delivery, or file a dispute. Any of these gaps forces human intervention and breaks the autonomous workflow.
+---
 
-**What agents need**:
-- A machine-readable description of what's for sale, at what price, and with what delivery characteristics.
-- A single flow to pay and initiate an order.
-- Structured order status they can poll or receive via webhook.
-- The ability to confirm or reject delivery.
-- A dispute path when something goes wrong.
-- For variable-priced work: the ability to request a quote and accept it before paying.
+### Who Key0 Does Not Target
 
-All of this must be available through standard A2A skills and MCP tools.
+| Segment | Reason | Alternative |
+|---|---|---|
+| **Shopify sellers** | Shopify's own Agentic Plan ($0/month) connects their catalog to ChatGPT, Gemini, Copilot, and Perplexity with card checkout and normal bank payouts — a better deal on every dimension | Shopify Agentic Plan |
+| **Large enterprise API providers** | Enterprise sales teams and procurement cycles; will not replace billing infrastructure with per-transaction x402; pull motion only if agent demand is proven | Existing enterprise contracts |
+| **Consumer app developers** | Building for humans using AI chat; need Google UCP + OpenAI ACP + Shopify; traditional card payments | Google UCP, OpenAI ACP |
+| **Physical goods sellers** | Agents primarily buy digital goods today; autonomous physical fulfillment is a 2028+ problem; escrow and fulfillment features required are deferred | Human commerce channels |
 
 ### Agent Identity Model (Tiered)
 
@@ -196,8 +205,11 @@ The wallet address and OAuth sub together form a compound identity sufficient fo
 | `PRD.01.08.06` | Protocol coverage | All capabilities available as both A2A skills and MCP tools |
 | `PRD.01.08.07` | Registry search latency | Results returned within 200ms p99 |
 | `PRD.01.08.08` | Reputation propagation | Seller/buyer scores updated within 60 minutes of order finalization |
-| `PRD.01.08.09` | Escrow release | Funds released within 60 seconds of `confirm-delivery` or auto-confirm |
+| `PRD.01.08.09` | Escrow release | Funds released within 60 seconds of `confirm-delivery` or auto-confirm *(deferred — applies post-escrow-launch only)* |
 | `PRD.01.08.10` | Dispute acknowledgment | `file-dispute` returns dispute record within 500ms |
+| `PRD.01.08.11` | Agent builder time-to-first-payment | < 24 hours from `npx create-key0-agent` to first agent payment received |
+| `PRD.01.08.12` | API developer time-to-first-payment | < 1 hour from `npm install` to first agent payment received |
+| `PRD.01.08.13` | Registry distribution | Seller listed on Smithery and official MCP Registry within 60 seconds of Key0 registration |
 
 ---
 
@@ -232,11 +244,10 @@ See Section 11 (Constraints & Assumptions) for the full non-goals list.
 
 | Role | Description |
 |---|---|
-| Task Seller | Provides variable-priced services requiring a negotiation step |
-| Digital Goods Vendor | Sells asynchronously-fulfilled digital products |
-| Physical Service Provider | Delivers real-world goods/services with escrow and tracking |
-| Shopify Seller | Non-technical seller using platform connector |
-| Agent Buyer | AI agent purchasing goods or services autonomously |
+| Agent Builder | Developer building a new AI agent intended to earn revenue from other agents |
+| API Developer | Developer with an existing REST API wanting to accept agent payments |
+| Task Seller | Agent builder / API developer providing variable-priced services requiring negotiation |
+| Digital Goods Vendor | Agent builder / API developer selling asynchronously-fulfilled digital deliverables |
 | Platform Operator | Agent platform integrating Key0 as native commerce layer |
 
 ### User Stories
@@ -245,15 +256,107 @@ See Section 11 (Constraints & Assumptions) for the full non-goals list.
 
 **`PRD.01.09.02`** As a **Digital Goods Vendor**, I want to accept payment for a research report and fulfill it asynchronously, so that agents can purchase long-running deliverables.
 
-**`PRD.01.09.03`** As a **Physical Service Provider**, I want payment held in escrow until I confirm delivery, so that agents trust my service knowing their funds are protected.
+**`PRD.01.09.03`** As an **Agent Builder**, I want to run a single CLI command that scaffolds a new agent project with payment gating, an agent card, and registry listing already configured, so that my agent is commercially accessible from the first deployment.
 
-**`PRD.01.09.04`** As an **Agent Buyer**, I want to dispute a non-delivery so that my funds are returned if the seller does not fulfill.
+**`PRD.01.09.04`** As an **API Developer**, I want to add three lines of configuration to my existing API so that AI agents can discover, pay, and receive credentials — without any changes to my existing code or human-customer flows.
 
-**`PRD.01.09.05`** As a **Shopify store owner**, I want to install a Key0 plugin that reads my catalog and exposes an agent-facing storefront, so I can accept agent orders without writing code.
+**`PRD.01.09.05`** As a **Task Seller**, I want to dispute a non-delivery so that my reputation score is not penalized when an agent files a false dispute.
 
-**`PRD.01.09.06`** As an **Agent Buyer**, I want all seller-facing capabilities available as both A2A skills and MCP tools with identical typed schemas, so that I can interact with any Key0 seller regardless of my platform.
+**`PRD.01.09.06`** As an **Agent Builder**, I want all my capabilities available as both A2A skills and MCP tools with identical typed schemas, so that any agent on any platform can call me regardless of their framework.
 
 **`PRD.01.09.07`** As a **Platform Operator**, I want to integrate Key0 using my existing OAuth infrastructure and wallet layer, so that every agent on my platform gains commerce capabilities without per-agent configuration.
+
+### Seller Onboarding Journeys
+
+The following narratives describe the step-by-step experience for the two primary seller archetypes. These are product walkthroughs, not requirement lists — the measurable criteria are in §8 and §14.
+
+---
+
+#### Journey A: The Agent Builder (e.g. a solo developer building a research agent)
+
+**Who:** A developer building a new AI agent that performs valuable work — market research, candidate scoring, legal document review, competitive intelligence. They want it to earn revenue from other AI agents from day one.
+
+**Entry point:** `npx create-key0-agent` — one command starts the project.
+
+**Steps:**
+
+1. **Scaffold** — The CLI prompts for: agent name, what it does (description), framework (Express/Hono/Fastify/MCP), plans (name + price), wallet address, network (mainnet/testnet). Generates a fully configured project in under 60 seconds.
+
+2. **Write the logic** — The scaffolded project has one function stub: `fetchResourceCredentials`. This is where the developer writes what their agent actually does — process an input, run inference, fetch data, return a result. Everything else is pre-built.
+
+3. **Deploy** — Standard deployment to any Node/Bun host. On first run, Key0 automatically registers the agent card on `registry.key0.ai` and pushes the listing to Smithery and the official MCP Registry.
+
+4. **When an agent calls:**
+   - Calling agent receives an HTTP 402 with payment instructions.
+   - Pays via x402 (USDC on Base) or other supported payment instrument.
+   - Key0 verifies payment, calls `fetchResourceCredentials`, returns the result.
+   - For async work: order enters `PROCESSING` state; agent polls or receives webhook on completion.
+   - Payment lands in the developer's wallet automatically.
+
+**What the agent builder has at the end:**
+- An autonomous agent that earns money from every successful call.
+- A live listing on `registry.key0.ai`, Smithery, and the official MCP Registry — discoverable by any agent developer searching for the capability.
+- A reputation score that builds with every completed transaction.
+- Zero payment infrastructure to maintain.
+
+**Time from `npx create-key0-agent` to first earning agent: < 1 day.**
+
+---
+
+#### Journey B: The API Developer (e.g. nyne.ai, tinyfish.ai)
+
+**Who:** A technical team or solo developer running a REST API. Currently issues API keys to humans after a signup flow. Wants to accept payment from AI agents that cannot complete that flow.
+
+**Entry point:** `key0.ai/sellers` or `npm install @key0ai/key0` — either the dashboard or the SDK.
+
+**Path 1 — Managed SaaS (no code, dashboard-only):**
+
+1. **Sign up** — Email + password, or OAuth with GitHub/Google. (No Shopify dependency — this is a separate auth path.)
+
+2. **Create a Plan** — In the dashboard, define what they sell:
+   - Plan name (e.g. "API Access — 1,000 requests")
+   - Price in USD (Key0 shows USDC equivalent)
+   - Description of what the buyer gets
+
+3. **Configure the Credential Callback** — Paste a webhook URL that Key0 will POST to after payment, expecting back a credential (API key, JWT, etc.). Key0 provides a test harness to verify the webhook before going live.
+
+4. **Set wallet address** — Same as Journey A.
+
+5. **Go Live** — Key0 generates the agent card and registers it on the discovery registry. Optionally submit to external agent networks.
+
+**Path 2 — Self-hosted SDK (three lines of code):**
+
+```typescript
+import { createKey0 } from "@key0ai/key0";
+import { createExpressIntegration } from "@key0ai/key0/express";
+
+const { requestHandler, agentCard } = createKey0({
+  walletAddress: "0x...",
+  network: "mainnet",
+  plans: [{ planId: "standard", unitAmount: "$0.05" }],
+  fetchResourceCredentials: async () => ({ apiKey: issueApiKey() }),
+});
+```
+
+Mount on their existing Express/Hono/Fastify app. Deploy as they normally would. Done.
+
+6. **Register on the network (optional but recommended):**
+   - Run `key0 register` CLI command (or one-click in dashboard) to push the self-hosted agent card to `registry.key0.ai`.
+   - Key0 validates the endpoint is reachable, then lists it.
+
+7. **Discovery distribution** — After registration, Key0 automatically propagates the listing to:
+   - `registry.key0.ai` (Key0's own directory)
+   - External agent networks that have an open API (Moltbook and equivalents)
+   - The `.well-known/agent-card.json` endpoint on their own domain (Key0 provides DNS guidance)
+
+**What the API seller has at the end:**
+- Any AI agent on any A2A- or MCP-compatible platform can discover their API, pay, and receive credentials — fully autonomous, no human in the loop.
+- USDC lands directly in their wallet per transaction — no invoicing, no NET-30, no Stripe disputes.
+- A reputation score on the Key0 registry that builds over time, making their listing rank higher.
+- Presence on all opted-in agent discovery networks without any additional integration work.
+- Zero changes to their existing API or human-facing product.
+
+**Time from starting sign-up to first agent-payable endpoint: < 30 minutes (dashboard path) or < 10 minutes (SDK path with existing API).**
 
 ---
 
@@ -276,8 +379,8 @@ See Section 11 (Constraints & Assumptions) for the full non-goals list.
 |---|---|---|
 | `PRD.01.01.07` | Existing x402 challenge-proof flow unchanged | All existing seller contracts, challenges, and access grants work without modification |
 | `PRD.01.01.08` | `submit-order` creates the order and issues a payment challenge in a single response | Order is not in a payable state until the challenge is returned; no separate prior `request-access` call needed |
-| `PRD.01.01.09` | Escrow mode holds funds until delivery confirmation | Funds are not moved to the seller wallet until `confirm-delivery` or auto-confirm timeout |
-| `PRD.01.01.10` | Payment rail abstraction supports fiat as well as crypto | A Stripe fiat adapter can be substituted for plans that declare a fiat payment rail |
+| `PRD.01.01.09` | Escrow mode holds funds until delivery confirmation *(deferred post-launch — implementation via audited smart contract or licensed money transmitter partner only; Key0 does not hold funds directly)* | Funds are not moved to the seller wallet until `confirm-delivery` or auto-confirm timeout |
+| `PRD.01.01.10` | Payment rail abstraction supports fiat as well as crypto *(planned — USDC/x402 ships first; Stripe/fiat adapter follows; MSB/FinCEN legal review required before any fiat adapter ships)* | A Stripe fiat adapter can be substituted for plans that declare a fiat payment rail |
 | `PRD.01.01.11` | All payment events logged to the audit store | Every state transition has an immutable audit entry |
 
 ### Fulfillment
@@ -324,14 +427,14 @@ Every completed order generates a structured, cryptographically-signed receipt �
 | `PRD.01.01.27` | Resolution triggers escrow release to winning party | Refund to buyer or release to seller within 60 seconds |
 | `PRD.01.01.28` | Arbitration mechanism is pluggable | Interface defined; specific backend is configurable |
 
-### No-Code Seller Onboarding
+### CLI Scaffold & Developer Onboarding
 
 | ID | Requirement | Measurable Criterion |
 |---|---|---|
-| `PRD.01.01.29` | Shopify app reads catalog and exposes agent-facing storefront | Setup wizard results in a live agent card within 15 minutes |
-| `PRD.01.01.30` | Catalog sync | Agent card reflects active catalog and updates within 5 minutes of a catalog change in Shopify admin |
-| `PRD.01.01.31` | Order routing | An agent order creates an equivalent order in Shopify admin within 30 seconds |
-| `PRD.01.01.32` | No theme impact | No changes required to the seller's storefront or theme |
+| `PRD.01.01.29` | `npx create-key0-agent` CLI scaffolds a new agent project | Running the CLI produces a deployable project in < 60 seconds; project includes agent card config, payment gate, and registry registration wired at startup |
+| `PRD.01.01.30` | CLI prompts for all required config | Prompts cover: agent name, description, framework (Express/Hono/Fastify/MCP), plans (planId + price), wallet address, network; no manual file editing required |
+| `PRD.01.01.31` | Scaffolded project registers on first run | On `npm run start`, agent card is live at `registry.key0.ai` and listed on Smithery within 60 seconds |
+| `PRD.01.01.32` | One-click migration from self-hosted SDK to managed platform | Existing `createKey0()` config can be migrated to managed platform by adding a Key0 API key — no code changes required |
 
 ### Discovery Registry
 
@@ -382,6 +485,16 @@ Every completed order generates a structured, cryptographically-signed receipt �
 |---|---|---|
 | `PRD.01.01.56` | Dashboard is itself an agent | Seller dashboard exposes a seller-facing MCP server and A2A agent for account management |
 | `PRD.01.01.57` | Observability event stream | Every significant event surfaced in dashboard and exportable to external stacks (Datadog, Grafana, CloudWatch) |
+
+### Discovery & Distribution
+
+| ID | Requirement | Measurable Criterion |
+|---|---|---|
+| `PRD.01.01.58` | Auto-register on Key0 registry on first deployment | Agent card live at `registry.key0.ai` within 60 seconds of first server start |
+| `PRD.01.01.59` | Auto-list on Smithery and official MCP Registry | Key0 pushes agent card to Smithery (`registry.smithery.ai`) and official MCP Registry (`registry.modelcontextprotocol.io`) within 60 seconds of Key0 registration; seller sees per-registry confirmation in dashboard |
+| `PRD.01.01.60` | Agent card hosted at a stable public URL | `key0.ai/s/{seller-id}/agent-card.json` always serves the latest agent card; URL never changes after registration |
+| `PRD.01.01.61` | `.well-known/agent-card.json` guidance for self-hosted sellers | Key0 dashboard generates a ready-to-deploy nginx/Caddy snippet for hosting `/.well-known/agent-card.json` on a custom domain |
+| `PRD.01.01.62` | Registry distribution status visible in dashboard | Seller can see per-registry status: pending / live / failed for `registry.key0.ai`, Smithery, and official MCP Registry |
 
 ---
 
@@ -484,14 +597,15 @@ Every completed order generates a structured, cryptographically-signed receipt �
 
 1. **No subscription / recurring billing** — Key0 is per-transaction. No subscription management, billing cycles, or seat licensing.
 2. **No proprietary agent identity infrastructure** — No agent identity registry, credential issuance, or DID method. Key0 integrates with ecosystem standards.
-3. **No fiat off-ramp** — Key0 receives USDC. Converting to fiat bank deposits is out of scope.
-4. **No agent hosting or execution** — Key0 is infrastructure that agents call into. It does not run agents.
-5. **No multi-party payment splitting** — Payments go to a single seller wallet per order.
-6. **No content moderation of seller listings** — Key0 does not review seller product descriptions beyond schema validation.
-7. **No order fulfillment execution** — Key0 provides the state machine and callbacks, not the actual fulfillment logic.
-8. **No buyer wallet custody** — Key0 does not hold or manage buyer wallets.
-9. **No cross-chain payments** — Only Base mainnet (chainId 8453) and Base Sepolia (chainId 84532) are supported.
-10. **No KYC / real-world identity verification** — Reputation is computed from on-chain and in-system behavior only.
+3. **No agent hosting or execution** — Key0 is infrastructure that agents call into. It does not run agents.
+4. **No multi-party payment splitting** — Payments go to a single seller wallet per order.
+5. **No content moderation of seller listings** — Key0 does not review seller product descriptions beyond schema validation.
+6. **No order fulfillment execution** — Key0 provides the state machine and callbacks, not the actual fulfillment logic.
+7. **No buyer wallet custody** — Key0 does not hold or manage buyer wallets.
+8. **No cross-chain payments at launch** — Only Base mainnet (chainId 8453) and Base Sepolia (chainId 84532) are supported at launch. Multi-chain support is a later phase.
+9. **No KYC / real-world identity verification** — Reputation is computed from on-chain and in-system behavior only.
+10. **Escrow deferred post-launch** — Escrow requires either an audited on-chain smart contract or a licensed money transmitter partnership (Stripe, Coinbase). Key0 does not hold funds directly under any scenario. Legal counsel engagement required before escrow ships.
+11. **Fiat payment adapters require legal review** — Adding any fiat payment rail (e.g. Stripe adapter) requires MSB/FinCEN legal analysis before shipping. USDC/x402 ships at launch; fiat adapters are planned but gated on legal clearance.
 
 ### Assumptions
 
@@ -535,50 +649,73 @@ Every completed order generates a structured, cryptographically-signed receipt �
 
 > **Status**: Stub — engineering input required to complete this section.
 
-### Phase 1 — Core Order Lifecycle (Part 1, Baseline)
+> **Phase ordering is customer-driven.** The sequence below reflects the beachhead strategy — converting existing `@key0ai/key0` SDK users — but phases 2+ should be re-ordered based on what the first paying customer cohort actually needs.
 
-Extend the existing `@key0ai/key0` SDK and managed platform to support the full commerce lifecycle:
+### Phase 1 — Managed Platform, CLI, and Registry *(beachhead)*
+
+Convert existing SDK users to the managed platform and make every seller immediately discoverable:
+
+- `npx create-key0-agent` CLI: prompts, scaffolds, deploys a new agent project with commercial identity pre-built
+- Managed platform: hosted storage (Redis/Postgres) so sellers don't run infrastructure
+- One-click migration: `createKey0()` config → managed platform via API key, no code changes
+- Auto-registration: agent card live at `registry.key0.ai` on first deployment
+- Auto-listing: push to Smithery (`registry.smithery.ai`) and official MCP Registry within 60 seconds of registration
+- Dashboard: per-registry distribution status, order history, revenue, reputation score
+
+Builds on: existing `challenge-engine.ts`, `storage/`, `access-token.ts`, `agent-card.ts`, x402 adapter.
+
+### Phase 2 — Core Order Lifecycle *(when first async-service customer requires it)*
 
 - Order state machine (`PENDING → PROCESSING → READY → DELIVERED / DELIVERY_REJECTED / OVERDUE / CANCELLED`)
 - `submit-order` returning `{ order, challenge }` in a single response
 - Webhook delivery with exponential backoff retry
 - SLA enforcement timer (auto-`OVERDUE` transition)
 - `confirm-delivery` / `reject-delivery` + auto-confirm timeout
-- Internal ledger escrow (opt-in)
 - Signed commerce receipts
 
-Builds on: existing `challenge-engine.ts`, `storage/`, `access-token.ts`, x402 adapter.
-
-### Phase 2 — Negotiation
+### Phase 3 — Negotiation *(when first variable-priced service customer requires it)*
 
 - Quote engine: `request-quote`, `accept-quote`, quote TTL enforcement, single-use constraint, rate limiting per buyer identity
 - Quote state machine integrated with existing challenge lifecycle
 
-### Phase 3 — Dispute
+### Phase 4 — Dispute *(when dispute volume justifies it)*
 
 - Dispute filing, status, seller response deadline
 - Auto-escalation on seller non-response
-- Pluggable arbitration interface (initial implementation: Key0-hosted manual review)
+- Pluggable arbitration interface (initial implementation: Key0-hosted manual review; neutral third-party on escalation)
 
-### Phase 4 — No-Code Onboarding
+### Phase 5 — Network Maturation
 
-- Shopify app (native, for digital goods vertical): catalog sync, order routing, agent card generation
-- Generic webhook adapter as DIY path
-
-### Phase 5 — Network (Part 2)
-
-- Registry (`registry.key0.ai`): registration, search, quote comparison brokering
-- Bilateral reputation engine: per-seller and per-buyer scores, deterministic formula, 60-minute propagation
+- Bilateral reputation engine: per-seller scores, deterministic formula, 60-minute propagation
 - Buyer SDK (`@key0ai/client`): composable typed client wrapping full lifecycle
+- `registry.key0.ai` search: capability keyword search, reputation sorting, quote comparison brokering
 - Platform integration: OAuth passthrough, wallet compatibility docs, registry delegation
+
+### Phase 6 — Fiat Payment Adapters *(post legal review)*
+
+- Stripe adapter for fiat-denominated plans
+- MSB/FinCEN legal clearance required before shipping
+- Gated on legal counsel sign-off
+
+### Phase 7 — Escrow *(post legal review, deferred)*
+
+- Implementation via audited on-chain smart contract (Path A) or licensed money transmitter partnership (Path B)
+- Key0 does not hold funds directly under any scenario
+- Legal trigger: engage counsel when escrow demand is validated by customer requests
+
+### Phase 8 — Non-Technical Seller Onboarding *(demand-signal driven)*
+
+- Generic webhook adapter for sellers without an API
+- No Shopify-specific connector at launch (Shopify Agentic Plan serves that segment)
+- WooCommerce/WhatsApp connectors: deferred by demand signal
 
 ### Open Questions (Engineering)
 
-1. **OQ-1: Escrow Custody** — on-chain smart contract vs. internal ledger hold. Current thinking: ledger hold first, smart contract adapter after audit.
-2. **OQ-2: Registry Governance** — open listing with USDC staking deposit. Auto-flag zero-order listings after 30 days.
-3. **OQ-3: Dispute Arbitration Provider** — pluggable interface; initial: Key0-hosted manual. Neutral third-party (e.g., Kleros) on escalation based on volume.
-4. **OQ-4: Buyer SDK Packaging** — separate `@key0ai/client`; shared types in `@key0ai/types`.
-5. **OQ-5: No-Code Onboarding Architecture** — native Shopify app for digital goods; generic webhook adapter as DIY; WooCommerce/WhatsApp deferred by demand signal.
+1. **OQ-1: Fee Collection Mechanism** *(blocker for business model)* — How does Key0 collect its ~2% transaction fee on wallet-to-wallet USDC transactions? Options: route through a Key0 fee address; collect via facilitator layer; bill separately. Must be resolved before §5 KPIs are finalized.
+2. **OQ-2: Registry Governance** — Open listing with USDC staking deposit to prevent spam. Auto-flag zero-order listings after 30 days.
+3. **OQ-3: Dispute Arbitration Provider** — Pluggable interface; initial: Key0-hosted manual. Neutral third-party (e.g., Kleros) on escalation based on volume.
+4. **OQ-4: Buyer SDK Packaging** — Separate `@key0ai/client`; shared types in `@key0ai/types`. Consider whether `@key0ai/client` should itself be an MCP server for maximum orchestrator compatibility.
+5. **OQ-5: Smithery Integration Mechanism** — Manual submission to Smithery registry or programmatic push via Smithery's registry API (`registry.smithery.ai`).
 
 ---
 
@@ -616,9 +753,9 @@ Builds on: existing `challenge-engine.ts`, `storage/`, `access-token.ts`, x402 a
 
 | ID | Criterion |
 |---|---|
-| `PRD.01.06.14` | Escrow holds on payment; releases to seller on `confirm-delivery` within 60 seconds. |
-| `PRD.01.06.15` | `reject-delivery` within the buyer rejection window initiates a refund. |
-| `PRD.01.06.16` | Auto-confirm releases escrow if no response within the configured window (default 72 hours). |
+| `PRD.01.06.14` | *(Deferred — escrow post-launch)* Escrow holds on payment; releases to seller on `confirm-delivery` within 60 seconds. |
+| `PRD.01.06.15` | *(Deferred — escrow post-launch)* `reject-delivery` within the buyer rejection window initiates a refund. |
+| `PRD.01.06.16` | *(Deferred — escrow post-launch)* Auto-confirm releases escrow if no response within the configured window (default 72 hours). |
 | `PRD.01.06.17` | Physical orders surface a tracking identifier and carrier in order status. |
 
 ### Dispute Acceptance Criteria
@@ -629,14 +766,27 @@ Builds on: existing `challenge-engine.ts`, `storage/`, `access-token.ts`, x402 a
 | `PRD.01.06.19` | Non-response by the seller deadline auto-escalates the dispute. |
 | `PRD.01.06.20` | Resolution triggers escrow release within 60 seconds. |
 
-### No-Code Onboarding Acceptance Criteria
+### CLI & Developer Onboarding Acceptance Criteria
 
 | ID | Criterion |
 |---|---|
-| `PRD.01.06.21` | Setup wizard results in a live agent card within 15 minutes of starting Shopify app install. |
-| `PRD.01.06.22` | Agent card reflects active catalog and updates within 5 minutes of a catalog change in Shopify admin. |
-| `PRD.01.06.23` | An agent order creates an equivalent order in Shopify admin within 30 seconds. |
-| `PRD.01.06.24` | No changes required to the seller's storefront or theme. |
+| `PRD.01.06.21` | `npx create-key0-agent` scaffolds a deployable project in < 60 seconds with no manual file editing required. |
+| `PRD.01.06.22` | Scaffolded project registers on `registry.key0.ai` and lists on Smithery within 60 seconds of first `npm run start`. |
+| `PRD.01.06.23` | Agent builder has a live, payable agent endpoint within 1 day of running `npx create-key0-agent`. |
+| `PRD.01.06.24` | API developer has a live, payable endpoint within 1 hour of running `npm install @key0ai/key0`. |
+
+### Seller Onboarding Journey Acceptance Criteria
+
+| ID | Criterion |
+|---|---|
+| `PRD.01.06.25` | One-click migration from self-hosted SDK to managed platform completes without code changes — only an API key is required. |
+| `PRD.01.06.26` | Migrated self-hosted seller has registry listing on `registry.key0.ai` and Smithery within 60 seconds of migration. |
+| `PRD.01.06.27` | Agent card is registered on `registry.key0.ai` within 60 seconds of first deployment or wizard completion. |
+| `PRD.01.06.28` | Smithery and official MCP Registry listings are confirmed within 60 seconds of `registry.key0.ai` registration. |
+| `PRD.01.06.29` | API seller using the managed dashboard path has a payable endpoint within 30 minutes of sign-up. |
+| `PRD.01.06.30` | API seller using the SDK path has a payable endpoint within 10 minutes of running `npm install`. |
+| `PRD.01.06.31` | Dashboard shows per-registry distribution status (pending / live / failed) for `registry.key0.ai`, Smithery, and official MCP Registry. |
+| `PRD.01.06.32` | Seller dashboard shows agent discovery impressions (views of their agent card on the registry) and conversion (orders / impressions). |
 
 ---
 
@@ -685,6 +835,11 @@ Builds on: existing `challenge-engine.ts`, `storage/`, `access-token.ts`, x402 a
 | **Tier A/B/C identity** | Key0's three-tier agent identity model: A = unverified self-asserted, B = OAuth-verified, C = DID-verified. See §4. |
 | **`@key0ai/key0`** | The open-source self-hosted Key0 SDK (npm package). Identical in capability to the managed SaaS platform. |
 | **`@key0ai/client`** | The buyer-side SDK for agent developers. Wraps the full commerce lifecycle. |
+| **Smithery** | The largest actively-curated MCP server registry (`smithery.ai`). Provides a REST API and CLI for discovering and installing MCP servers. Key0 auto-lists seller agent cards on Smithery at registration. Source: smithery.ai |
+| **Official MCP Registry** | The Anthropic-maintained canonical MCP server registry (`registry.modelcontextprotocol.io`). Open-source, community-driven, in preview since September 2025. Key0 auto-lists seller agent cards here at registration. |
+| **Agent discovery network** | A directory or index where agent developers search for available services and tools. Key0 treats Smithery and the official MCP Registry as the primary distribution channels — where agent developers look when searching for capabilities to integrate. |
+| **Founding layer** | Key0's positioning: the commercial infrastructure you start with when building an agent, not an add-on you bolt on later. Analogous to how Stripe is the payment layer startups architect around from day one. |
+| **`create-key0-agent`** | The Key0 CLI scaffold tool. `npx create-key0-agent` generates a new agent project with the entire commercial layer pre-built: agent card, pricing plans, payment gate, and registry registration wired at startup. |
 
 ---
 
