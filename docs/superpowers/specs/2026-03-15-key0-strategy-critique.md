@@ -317,4 +317,123 @@ Generic webhook adapter. No Shopify-specific integration at launch.
 
 ---
 
+---
+
+## 7. Product Positioning & Persona Deep-Dive
+
+### 7.1 Core Positioning Decision: Founding Layer, Not Add-On
+
+Key0's positioning must be **founding layer**, not payment add-on. This is the single most important strategic decision from this session.
+
+**Add-on positioning (rejected):**
+> "Add Key0 to your existing API for agent payments."
+
+Key0 is step 10 in an agent's development. It's a plugin. It's optional. Developers add it when they need it, skip it when they don't. This is the Kobaru/Foldset/Nevermined positioning — they all live here.
+
+**Founding layer positioning (chosen):**
+> "Key0 is the commercial foundation for AI agents."
+
+Key0 is step 1. The commercial identity — agent card, pricing, payment gate, registry listing, reputation — exists from the first line of code. Developers architect their agent around Key0, not onto it. This is the Stripe model: Stripe's best customers start with Stripe before their first user.
+
+**Why this is defensible:** No other tool in the agent ecosystem owns the commercial-layer narrative. LangChain helps agents do things. CrewAI helps agents work together. Key0 helps agents earn money. These are complementary, not competing. Key0 slots in as the commercial layer on top of whatever orchestration framework the developer chooses.
+
+---
+
+### 7.2 Positioning Statement
+
+> **Key0 is the commercial foundation for AI agents.**
+>
+> Start with Key0 and your agent is a business from day one — discoverable on every agent registry, payable by any AI system, and building a reputation with every transaction.
+>
+> Don't build payment infrastructure. Don't worry about discovery. Don't negotiate contracts. Write the part that matters: what your agent does.
+
+---
+
+### 7.3 Two Doors Into the Same Product
+
+The same product serves two customer types with different entry points and emotional hooks. These are two sections of the website and docs, not two products.
+
+#### Door 1: For Agent Builders
+**Headline:** *"Build agents that earn money"*
+
+**Who:** Developer building a new AI agent — a candidate screener, legal doc summarizer, market research agent, competitive intelligence tool — who wants it to be a commercial product from day one.
+
+**Emotional hook:** Passive income from code you write once. Your agent earns while you sleep.
+
+**Their current alternative:** Build the agent logic with LangChain/CrewAI/custom, then figure out monetization separately — website, pricing page, Stripe integration, contract negotiation, custom auth. Weeks of work before the first dollar.
+
+**Key0's answer:** `npx create-key0-agent` scaffolds a project where the commercial identity is pre-built. You open the project and your agent already has a name, a price, an agent card, and a registry listing. You write what it does. Key0 handles everything else.
+
+**Entry point:** `npx create-key0-agent` CLI ← **this needs to be built as a first-class product**
+
+**Time to first earning agent:** < 1 day on a new project.
+
+#### Door 2: For API Developers
+**Headline:** *"Make your API agent-payable"*
+
+**Who:** Developer with an existing REST API who sees agent traffic hitting their signup wall. They have human customers, API keys, maybe a Stripe subscription. They don't want to rebuild anything — they want to capture revenue from agents that are already trying to reach them.
+
+**Emotional hook:** Stop leaving agent revenue on the table. Your API already does the work — now make it pay.
+
+**Their current alternative:** Nothing. Agents bounce off their signup wall. Revenue is $0 from agent traffic regardless of volume.
+
+**Key0's answer:** `npm install @key0ai/key0`, 3 lines of config, existing API untouched. Agents can now discover and pay. Human customers unaffected.
+
+**Entry point:** `npm install @key0ai/key0` mid-project
+
+**Time to first agent payment:** < 1 hour on an existing API.
+
+---
+
+### 7.4 Who We Are NOT Targeting (and Why)
+
+| Segment | Why Not | What They Use Instead |
+|---|---|---|
+| **Shopify sellers** | Shopify's own Agentic Plan ($0/month) connects their catalog to ChatGPT/Gemini/Copilot with card checkout and normal bank payouts. Key0 asking them to accept USDC is a worse deal on every dimension. | Shopify Agentic Plan |
+| **Large enterprise API providers** (LexisNexis, Bloomberg, Salesforce) | Enterprise sales teams, annual contracts, procurement processes. Will not replace billing infrastructure with per-transaction x402. May eventually expose a Key0 adapter if agent buyer demand is proven — but that's a pull motion, not a push one. | Existing enterprise contracts |
+| **Consumer app developers** (building human-facing AI products) | Their customers are humans using ChatGPT or Gemini. They need Shopify Agentic Plan + Google UCP + OpenAI Checkout. Traditional card payments, not agent-native protocols. | Google UCP, OpenAI ACP, Shopify |
+| **AI platform builders** (OpenAI, Anthropic, Google, LangChain) | They build agents, not sell to agents. They are potential distribution partners — getting Key0 listed as an MCP server in Claude Desktop or Cursor — not sales targets. | N/A — partnership opportunity |
+| **Physical goods sellers** (for now) | Agents primarily buy digital goods today. Autonomous physical fulfillment (drone delivery, print-on-demand) is a 2028+ problem. Escrow and physical fulfillment features required are explicitly deferred. | Human commerce channels |
+
+---
+
+### 7.5 Product Implication: The CLI Is a First-Class Deliverable
+
+The "founding layer" positioning requires a `create-key0-agent` CLI that does not currently exist in the PRD or codebase. This is not a nice-to-have — it is the primary on-ramp for the Agent Builder persona.
+
+**What it scaffolds:**
+```bash
+npx create-key0-agent my-research-agent
+# → Prompts: framework (Express/Hono/Fastify/MCP), network (mainnet/testnet),
+#            plans (name + price), wallet address
+# → Generates: fully configured project with agent card, payment gate,
+#              registry registration on first run, Smithery listing
+```
+
+**Analogues:** `create-react-app`, `create-next-app`, `create-t3-app` — the founding tools that defined their ecosystems by making the right architecture the easy architecture.
+
+**PRD impact:** Add `create-key0-agent` CLI as a Phase 1 deliverable in §13. Add corresponding acceptance criterion in §14.
+
+---
+
+### 7.6 Revised §4 Structure for PRD
+
+Replace the current 6-persona flat list with a "two doors" structure:
+
+**§4.1 — For Agent Builders** (primary, founding layer path)
+Full persona narrative: who they are, their current pain, why Key0, entry point, success metric.
+
+**§4.2 — For API Developers** (primary, retrofit path)
+Full persona narrative: existing API, agent traffic bouncing, 3-line integration, zero disruption to existing setup.
+
+**§4.3 — For Non-Technical Service Sellers** (tertiary, later)
+Brief note: webhook adapter path, demand-signal driven, no launch priority.
+
+**Remove entirely:**
+- Shopify Seller persona (Shopify Agentic Plan makes this obsolete)
+- Physical Service Provider persona (move to Appendix / Future Roadmap)
+- "Agent Buyer" as a persona (buyers are not Key0 customers; they interact via standard x402 protocol)
+
+---
+
 *End of strategy critique document.*
