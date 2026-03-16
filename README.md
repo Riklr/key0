@@ -32,7 +32,7 @@ anything fails.
 
 ---
 
-## Two Ways to Run
+## Quick Start
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
@@ -40,6 +40,36 @@ anything fails.
 | **Config** | Setup UI or environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `fetchResourceCredentials` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
+
+### Standalone — 30 seconds
+
+```bash
+docker compose -f docker/docker-compose.yml --profile full up
+# Open http://localhost:3000 → configure via browser
+```
+
+### Embedded — Express
+
+```bash
+bun add @key0ai/key0
+```
+
+```typescript
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+
+app.use(key0Router({
+  config: {
+    walletAddress: "0xYour...",
+    network: "testnet",
+    plans: [{ planId: "basic", unitAmount: "$0.10" }],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+}));
+app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
+```
+
+`adapter`, `store`, and `seenTxStore` are constructed in the [Embedded Mode](#embedded-mode) section.
 
 ---
 
