@@ -41,13 +41,13 @@ export function parseCli(args: string[]): ParsedArgs {
 
 			if (flag === "--plan") {
 				plan = value;
-				i++;
+				if (value !== undefined) i++;
 			} else if (flag === "--resource") {
 				resource = value;
-				i++;
+				if (value !== undefined) i++;
 			} else if (flag === "--payment-signature") {
 				paymentSignature = value;
-				i++;
+				if (value !== undefined) i++;
 			}
 		}
 

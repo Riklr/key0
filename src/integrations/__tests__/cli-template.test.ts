@@ -52,7 +52,7 @@ describe("parseCli", () => {
 		expect(result).toEqual({ command: "error", message: "Missing required flag: --plan" });
 	});
 
-	test("returns error for no arguments", () => {
+	test("returns help for no arguments", () => {
 		const result = parseCli([]);
 		expect(result).toEqual({ command: "help" });
 	});
