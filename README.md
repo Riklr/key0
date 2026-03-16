@@ -22,6 +22,16 @@ pay for, and access your APIs autonomously — no human in the loop.
 
 ---
 
+## What is Key0
+
+Key0 is an open-source commerce layer for API sellers and agent builders.
+Sellers add Key0 to any existing API — via Docker or SDK — to make it
+discoverable and purchasable by AI agents. Agents pay with USDC on Base;
+Key0 handles verification, credential issuance, and automatic refunds if
+anything fails.
+
+---
+
 ## Two Ways to Run
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
