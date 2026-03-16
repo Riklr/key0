@@ -26,9 +26,5 @@ export function generateCliSource(name: string, url: string): string {
 		`export const CLI_URL = ${JSON.stringify(cleanUrl)};`,
 	);
 
-	// Replace sentinel used in IS_MAIN guard after constants have been substituted
-	source = source.replace(/"__CLI_NAME__"/g, JSON.stringify(name));
-	source = source.replace(/"__CLI_URL__"/g, JSON.stringify(cleanUrl));
-
 	return source;
 }

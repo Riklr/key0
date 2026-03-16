@@ -6,8 +6,11 @@ describe("generateCliSource", () => {
 		const source = generateCliSource("mycli", "https://api.example.com");
 		expect(source).toContain('"mycli"');
 		expect(source).toContain('"https://api.example.com"');
-		expect(source).not.toContain("__CLI_NAME__");
-		expect(source).not.toContain("__CLI_URL__");
+		// The constant declaration must be replaced
+		expect(source).not.toContain('export const CLI_NAME = "__CLI_NAME__"');
+		// The IS_MAIN sentinel must survive
+		expect(source).toContain('CLI_NAME !== "__CLI_NAME__"');
+		expect(source).not.toContain('export const CLI_URL = "__CLI_URL__"');
 	});
 
 	test("preserves all other code unchanged", () => {
