@@ -13,7 +13,8 @@
 		"./express": "./src/integrations/express.ts",
 		"./hono": "./src/integrations/hono.ts",
 		"./fastify": "./src/integrations/fastify.ts",
-		"./mcp": "./src/integrations/mcp.ts"
+		"./mcp": "./src/integrations/mcp.ts",
+		"./cli": "./src/integrations/cli.ts"
 	},
 	"packageManager": "bun@1.3.1",
 	"scripts": {
