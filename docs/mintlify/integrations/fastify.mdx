@@ -1,16 +1,16 @@
 ---
 title: "Fastify"
-description: "Register Key0 as a Fastify plugin for agent discovery and access token validation."
+description: "Register Key0 as a Fastify plugin for agent discovery, x402 payments, and access token validation."
 ---
 
 ## Overview
 
 The `@key0ai/key0/fastify` subpath exports two pieces:
 
-| Export                        | Type              | Purpose                                                   |
-| ----------------------------- | ----------------- | --------------------------------------------------------- |
-| `key0Plugin`                  | Fastify plugin    | Registers agent-card and A2A routes on your Fastify server |
-| `fastifyValidateAccessToken`  | `onRequest` hook  | Validates Bearer JWTs and attaches the decoded token       |
+| Export                        | Type              | Purpose                                                      |
+| ----------------------------- | ----------------- | ------------------------------------------------------------ |
+| `key0Plugin`                  | Fastify plugin    | Registers agent-card and x402 payment routes on your Fastify server |
+| `fastifyValidateAccessToken`  | `onRequest` hook  | Validates Bearer JWTs and attaches the decoded token         |
 
 ## Installation
 
@@ -22,14 +22,11 @@ npm install @key0ai/key0 fastify
 
 When you register `key0Plugin`, the following routes are added to your Fastify instance:
 
-| Method | Path                       | Description                              |
-| ------ | -------------------------- | ---------------------------------------- |
-| GET    | `/.well-known/agent.json`  | Returns the auto-generated A2A agent card |
-| POST   | `{basePath}` (default `/a2a`) | A2A JSON-RPC endpoint                 |
-
-<Warning>
-The A2A JSON-RPC endpoint currently returns `501 Not Implemented`. Full A2A support is pending an upstream A2A SDK update for Fastify.
-</Warning>
+| Method | Path                      | Description                              |
+| ------ | ------------------------- | ---------------------------------------- |
+| GET    | `/.well-known/agent.json` | Returns the auto-generated A2A agent card |
+| GET    | `/discovery`              | Plan catalog (all plans and pricing)     |
+| POST   | `/x402/access`            | Unified x402 HTTP payment endpoint       |
 
 ## Setup
 
@@ -164,7 +161,7 @@ const sellerConfig: SellerConfig = {
 
 const fastify = Fastify({ logger: true });
 
-// Register Key0 plugin (agent card + A2A route)
+// Register Key0 plugin (agent card + x402 payment endpoint)
 await fastify.register(key0Plugin, {
   config: sellerConfig,
   adapter: new X402Adapter({ network: "mainnet" }),
@@ -200,6 +197,19 @@ const token = (request as typeof request & { key0Token?: unknown }).key0Token;
 
 The payload includes `sub` (request ID), `jti` (challenge ID), `resourceId`, `planId`, and `txHash`.
 
-<Note>
-The x402 HTTP payment endpoints (challenge and proof exchange) are not yet available in the Fastify integration. Use the [Express integration](/integrations/express) for the complete payment flow today. The Fastify plugin currently provides agent discovery and JWT-protected route support.
-</Note>
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
+    Complete reference for every configuration option.
+  </Card>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    How clients discover, pay, and call your protected endpoints.
+  </Card>
+  <Card title="Hono Integration" icon="bolt" href="/integrations/hono">
+    Key0 as a Hono sub-app.
+  </Card>
+  <Card title="x402 HTTP Flow" icon="globe" href="/protocol/x402-http-flow">
+    Full protocol reference for the payment flow.
+  </Card>
+</CardGroup>

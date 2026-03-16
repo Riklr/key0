@@ -50,7 +50,7 @@ There are two branches from `PAID`:
 | `PENDING` | `EXPIRED` | Expiry check on access | -- |
 | `PENDING` | `CANCELLED` | `cancelChallenge()` | -- |
 | `PAID` | `PAID` | Grant persisted (outbox) | `accessGrant` (full JSON) |
-| `PAID` | `DELIVERED` | Token issued successfully | `accessGrant` (full JSON), `deliveredAt` |
+| `PAID` | `DELIVERED` | Token issued successfully | `deliveredAt` |
 | `PAID` | `PENDING` | `markUsed()` race rollback (extremely rare) | -- |
 | `PAID` | `REFUND_PENDING` | Refund cron claims record | -- |
 | `REFUND_PENDING` | `REFUNDED` | Refund tx confirmed | `refundTxHash`, `refundedAt` |
@@ -134,7 +134,7 @@ Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
 | `txHash` | string (0x) | PENDING to PAID | `"0x1234..."` |
 | `paidAt` | ISO-8601 string | PENDING to PAID | `"2025-03-05T12:16:00.000Z"` |
 | `fromAddress` | string (0x) | PENDING to PAID | `"0xBuyer..."` (payer wallet) |
-| `accessGrant` | JSON string | PAID to DELIVERED | Full `AccessGrant` object |
+| `accessGrant` | JSON string | PAID to PAID (outbox) | Full `AccessGrant` object |
 | `deliveredAt` | ISO-8601 string | PAID to DELIVERED | `"2025-03-05T12:16:05.000Z"` |
 | `refundTxHash` | string (0x) | REFUND_PENDING to REFUNDED | `"0xRefund..."` |
 | `refundedAt` | ISO-8601 string | REFUND_PENDING to REFUNDED | `"2025-03-05T12:21:00.000Z"` |

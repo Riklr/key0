@@ -3,8 +3,6 @@ title: "MCP"
 description: "Expose Key0 payment-gated plans as MCP tools. Agents discover plans and purchase access tokens through the x402 protocol over Streamable HTTP."
 ---
 
-# MCP Integration
-
 The MCP integration turns your Key0 seller into an MCP server. Agents connect over [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http), discover your plans, and pay for access tokens using the x402 protocol -- all without leaving the tool-call flow.
 
 ## Enable MCP
@@ -107,6 +105,7 @@ There are two paths to complete a payment, depending on the client's capabilitie
     {
       "isError": true,
       "structuredContent": {
+        "x402Version": 2,
         "error": "Payment required to access this resource",
         "resource": {
           "url": "https://my-service.example.com/x402/access",
@@ -116,18 +115,26 @@ There are two paths to complete a payment, depending on the client's capabilitie
         "accepts": [
           {
             "scheme": "exact",
-            "network": "base-mainnet",
-            "maxAmountRequired": "1000000",
-            "resource": "https://my-service.example.com/x402/access",
-            "description": "Basic plan",
-            "mimeType": "application/json",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "1000000",
             "payTo": "0x...",
+            "maxTimeoutSeconds": 900,
             "extra": {
+              "name": "USDC",
+              "version": "2",
               "planId": "basic",
-              "resourceId": "default"
+              "description": "Basic plan"
             }
           }
-        ]
+        ],
+        "extensions": {
+          "key0": {
+            "inputSchema": { "...": "..." },
+            "outputSchema": { "...": "..." },
+            "description": "..."
+          }
+        }
       },
       "content": [
         {
@@ -161,14 +168,15 @@ There are two paths to complete a payment, depending on the client's capabilitie
       "content": [
         {
           "type": "text",
-          "text": "{\"status\": \"access_granted\", \"token\": \"eyJ...\", \"expiresAt\": \"...\"}"
+          "text": "{\"status\": \"access_granted\", \"type\": \"AccessGrant\", \"challengeId\": \"mcp-...\", \"requestId\": \"mcp-...\", \"accessToken\": \"eyJ...\", \"tokenType\": \"Bearer\", \"resourceEndpoint\": \"https://my-service.example.com/api/resource\", \"resourceId\": \"default\", \"planId\": \"basic\", \"txHash\": \"0x...\", \"explorerUrl\": \"https://basescan.org/tx/0x...\"}"
         }
       ],
       "_meta": {
         "x402/payment-response": {
           "success": true,
-          "txHash": "0x...",
-          "network": "base-mainnet"
+          "transaction": "0x...",
+          "network": "eip155:8453",
+          "payer": "0xBuyer..."
         }
       }
     }
