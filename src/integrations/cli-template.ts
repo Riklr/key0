@@ -37,6 +37,10 @@ export async function runDiscover(baseUrl: string): Promise<CliResult> {
 		};
 	}
 
+	if (!response.ok) {
+		return { exitCode: 1, output: body as Record<string, unknown> };
+	}
+
 	return { exitCode: 0, output: body as Record<string, unknown> };
 }
 

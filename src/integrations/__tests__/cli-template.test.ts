@@ -95,6 +95,17 @@ describe("runDiscover", () => {
 		expect(result.exitCode).toBe(1);
 		expect(result.output["code"]).toBe("INVALID_RESPONSE");
 	});
+
+	test("returns exit 1 on non-2xx HTTP status", async () => {
+		const mockError = { type: "Error", code: "INTERNAL_ERROR", message: "Server error" };
+		globalThis.fetch = mock(() =>
+			Promise.resolve(new Response(JSON.stringify(mockError), { status: 500 })),
+		) as unknown as typeof fetch;
+
+		const result = await runDiscover("https://api.example.com");
+		expect(result.exitCode).toBe(1);
+		expect(result.output).toEqual(mockError);
+	});
 });
 
 describe("runRequest", () => {
