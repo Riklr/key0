@@ -147,7 +147,7 @@ Run Key0 as a Docker container alongside your existing backend. No code changes 
 │              │     │  verify on-chain      │     │                  │
 │              │     │  POST /issue-token ───│────▶│  issue-token     │
 │              │◀────│  AccessGrant          │◀────│  {token, ...}    │
-└──────────────┘     └───────────────────────┘     └──────────────────┘
+└──────────────┘     └──────────────────────┘     └──────────────────┘
 ```
 
 ### Setup
