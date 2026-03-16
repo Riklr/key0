@@ -68,7 +68,7 @@ export async function buildCli(opts: BuildCliOptions): Promise<BuildCliResult> {
 			const outPath = join(outputDir, opts.name);
 			const args = ["build", "--compile", tmpFile, "--outfile", outPath];
 			const proc = Bun.spawn(["bun", ...args], {
-				stdout: "pipe",
+				stdout: "ignore",
 				stderr: "pipe",
 			});
 			await proc.exited;
@@ -84,7 +84,7 @@ export async function buildCli(opts: BuildCliOptions): Promise<BuildCliResult> {
 				const outPath = join(outputDir, `${opts.name}-${suffix}`);
 				const args = ["build", "--compile", `--target=${target}`, tmpFile, "--outfile", outPath];
 				const proc = Bun.spawn(["bun", ...args], {
-					stdout: "pipe",
+					stdout: "ignore",
 					stderr: "pipe",
 				});
 				await proc.exited;
