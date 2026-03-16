@@ -25,6 +25,9 @@ agent builders are primary audiences.
 
 ## Structure
 
+Sections are listed in order. "Kept as-is" means content only — position follows
+this numbered list, not the current README order.
+
 ```
 1. Hero
 2. What is Key0
@@ -42,6 +45,13 @@ agent builders are primary audiences.
 14. Development
 15. Documentation
 ```
+
+Rationale for ordering How It Works (4) before Standalone/Embedded (5/6): Quick
+Start gets readers running in 30 seconds; How It Works explains the protocol before
+the detailed deployment sections. The Key Principles note ("Topology vs protocol
+diagrams separated") means deployment sections carry topology diagrams and How It
+Works carries protocol flow diagrams — not that topology comes before protocol in
+the document.
 
 ---
 
@@ -65,7 +75,7 @@ pay for, and access your APIs autonomously — no human in the loop.
 - **Open-source & self-hostable** — every part of the commerce flow is auditable
 - **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it
 
-**Agent environments:** Claude Code, Cursor, OpenClaw, and more
+**Agent environments:** Claude Code, OpenClaw, Cursor, and more
 **Protocols:** HTTP x402, MCP, A2A
 **Payments:** Base (USDC) · Visa, Mastercard, UPI coming soon
 ```
@@ -88,7 +98,8 @@ One paragraph, 3 sentences:
 
 ### 3. Quick Start
 
-Comparison table (Standalone vs Embedded) kept as-is, then:
+The section heading is "Quick Start" (replacing the current "Two Ways to Run"
+heading). It opens with the comparison table (content kept as-is), then:
 
 **Standalone — 30 seconds:**
 ```bash
@@ -96,7 +107,8 @@ docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → configure via browser
 ```
 
-**Embedded — Express (trimmed to pattern, not full boilerplate):**
+**Embedded — Express (pattern snippet — `adapter`, `store`, `seenTxStore` shown as
+already-constructed variables; full instantiation is in the Embedded Mode section):**
 ```bash
 bun add @key0ai/key0
 ```
@@ -192,7 +204,7 @@ Then:
 
 ### 6. Embedded Mode
 
-Intro (1 sentence):
+Intro (2 sentences):
 > Install the SDK and mount Key0 as middleware inside your existing application.
 > You keep full control over token issuance, routing, and resource verification.
 
