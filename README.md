@@ -1,18 +1,24 @@
 <img src="docs/logo.png" alt="Key0" width="260" />
 
-Sell anything to AI agents — APIs, data, goods or services — with built-in payments, zero proxying, and no architectural changes to your existing stack.
+[![npm version](https://img.shields.io/npm/v/@key0ai/key0)](https://www.npmjs.com/package/@key0ai/key0)
+[![Docker](https://img.shields.io/docker/v/key0ai/key0?label=docker)](https://hub.docker.com/r/key0ai/key0)
+[![License](https://img.shields.io/github/license/key0ai/key0)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-key0.ai-blue)](https://docs.key0.ai/introduction/overview)
 
-Key0 orchestrates the payment handshake and credential exchange between your server and the agent, then gets completely out of the way.
+Commerce infrastructure for the agentic web. Let AI agents discover,
+pay for, and access your APIs autonomously — no human in the loop.
 
-- **Zero proxying** — all requests go directly to your server with no latency overhead
-- **Open-source & self-hostable** — every part of the payment flow is auditable and customizable
-- **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it; neither you nor your client is left holding a bad transaction
+[Docs](https://docs.key0.ai/introduction/overview) · [Quick Start](#quick-start) · [Book a Demo](https://key0.ai/book-a-demo)
 
-**Agent environments:** Claude Code, OpenClaw, Cursor, and more.
+---
 
-**Negotiation & transaction:** HTTP, MCP, and A2A protocols supported.
+- **Zero proxying** — requests go directly to your server, no latency overhead
+- **Open-source & self-hostable** — every part of the commerce flow is auditable
+- **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it
 
-**Payments:** Base (x402 / USDC) today · Visa, Mastercard, and UPI coming soon.
+**Agent environments:** Claude Code, OpenClaw, Cursor, and more
+**Protocols:** HTTP x402, MCP, A2A
+**Payments:** Base (USDC) · Visa, Mastercard, UPI coming soon
 
 ---
 
