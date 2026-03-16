@@ -145,13 +145,17 @@ Once the container is running, verify the setup:
 curl http://localhost:3000/.well-known/agent.json
 ```
 
-```bash Request access to a plan
+```bash Browse available plans
+curl http://localhost:3000/discovery
+```
+
+```bash Request access to a plan (returns 402 challenge)
 curl -X POST http://localhost:3000/x402/access \
   -H "Content-Type: application/json" \
   -d '{"planId": "basic"}'
 ```
 
-The access request returns an x402 challenge containing the payment amount and destination wallet. An agent completes the flow by paying on-chain and submitting proof.
+The discovery call returns all available plans and pricing — start here to find a valid `planId`. The access request returns an x402 challenge containing the payment amount and destination wallet. An agent completes the flow by paying on-chain and submitting proof.
 
 ## Docker image tags
 

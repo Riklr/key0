@@ -5,12 +5,12 @@ description: "Complete reference for the SellerConfig object — identity, payme
 
 # SellerConfig
 
-The central configuration object for Key0. Pass it to any framework integration to stand up payment-gated endpoints:
+The central configuration object for Key0. Pass it wrapped in a `Key0Config` object to any framework integration to stand up payment-gated endpoints:
 
-- **Express** — `key0Router(config)`
-- **Hono** — `key0App(config)`
-- **Fastify** — `key0Plugin(config)`
-- **Factory** — `createKey0(config)`
+- **Express** — `key0Router({ config, adapter, store, seenTxStore })`
+- **Hono** — `key0App({ config, adapter, store, seenTxStore })`
+- **Fastify** — `fastify.register(key0Plugin, { config, adapter, store, seenTxStore })`
+- **Factory** — `createKey0({ config, adapter, store, seenTxStore })`
 
 ```ts
 import type { SellerConfig } from "@key0ai/key0";
@@ -158,6 +158,10 @@ A working configuration with only the required fields:
 
 ```typescript
 import { key0Router } from "@key0ai/key0/express";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL!);
 
 const config = {
   agentName: "Photo API",
@@ -179,7 +183,14 @@ const config = {
   },
 };
 
-app.use(key0Router(config));
+app.use(
+  key0Router({
+    config,
+    adapter: new X402Adapter({ network: "mainnet" }),
+    store: new RedisChallengeStore({ redis }),
+    seenTxStore: new RedisSeenTxStore({ redis }),
+  }),
+);
 ```
 
 ## Full Example
@@ -243,7 +254,14 @@ const config = {
   redis,
 };
 
-app.use(key0Router(config));
+app.use(
+  key0Router({
+    config,
+    adapter: new X402Adapter({ network: "mainnet" }),
+    store: new RedisChallengeStore({ redis }),
+    seenTxStore: new RedisSeenTxStore({ redis }),
+  }),
+);
 ```
 
 ## Related

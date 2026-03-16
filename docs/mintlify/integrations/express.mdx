@@ -117,12 +117,14 @@ The router mounts the following routes on your Express app:
 | `GET` | `/discovery` | Plan catalog (all plans and pricing). |
 | `POST` | `/x402/access` | Unified x402 HTTP endpoint. Handles x402 HTTP flow by default; routes to A2A JSON-RPC handler when `X-A2A-Extensions` header is present. |
 
-When `mcp: true` is set in `config`, two additional routes are mounted:
+When `mcp: true` is set in `config`, four additional routes are mounted:
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/.well-known/mcp.json` | MCP discovery document. |
 | `POST` | `/mcp` | MCP Streamable HTTP endpoint. |
+| `GET` | `/mcp` | Returns 405 (SSE not supported in stateless mode). |
+| `DELETE` | `/mcp` | Returns 405 (session management not supported in stateless mode). |
 
 ## The `/x402/access` endpoint
 

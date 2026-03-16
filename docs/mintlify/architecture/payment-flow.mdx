@@ -153,11 +153,61 @@ The `validateAccessToken` middleware verifies the JWT and attaches decoded claim
 
 <Tab title="x402 HTTP (/x402/access)">
 
-A plain REST endpoint mounted at `POST /x402/access` by the Express integration. The request shape determines which of three cases applies.
+The Express integration mounts both `GET /discovery` and `POST /x402/access`. The request determines which of four cases applies.
 
-### Case 1: Discovery (no planId)
+### Case 1a: Discovery (GET /discovery)
 
-The client sends an empty or planId-less body. No PENDING record is created -- the server returns all available pricing plans.
+Call `GET /discovery` to browse all available plans. No PENDING record is created — this is a pure pricing query.
+
+**Request:**
+
+```http
+GET /discovery
+```
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+```json
+{
+  "discoveryResponse": {
+    "x402Version": 2,
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "100000",
+        "payTo": "0xSellerWallet...",
+        "maxTimeoutSeconds": 900,
+        "extra": {
+          "name": "USDC",
+          "version": "2",
+          "planId": "basic",
+          "description": "Basic plan - $0.10 USDC"
+        }
+      }
+    ],
+    "extensions": {
+      "key0": {
+        "inputSchema": { "..." : "..." },
+        "outputSchema": { "..." : "..." },
+        "description": "..."
+      }
+    }
+  }
+}
+```
+
+The `accepts` array contains one entry per plan configured in `SellerConfig.plans`. Use the `planId` from `extra.planId` in your subsequent `POST /x402/access` request.
+
+### Case 1b: POST /x402/access without planId (HTTP 400)
+
+`POST /x402/access` with an empty body or no `planId` now returns an HTTP **400** error pointing to `GET /discovery`. This is not the discovery endpoint — it is an error response.
 
 **Request:**
 
@@ -171,31 +221,13 @@ Content-Type: application/json
 **Response:**
 
 ```http
-HTTP/1.1 402 Payment Required
-payment-required: eyJ4NDAyVm... (base64)
-www-authenticate: Payment realm="https://api.example.com", accept="exact"
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
 ```
 
 ```json
 {
-  "x402Version": 2,
-  "resource": { "url": "...", "method": "POST" },
-  "accepts": [
-    {
-      "scheme": "exact",
-      "network": "eip155:84532",
-      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      "amount": "100000",
-      "payTo": "0xSellerWallet...",
-      "maxTimeoutSeconds": 900,
-      "extra": {
-        "name": "USDC",
-        "version": "2",
-        "description": "Basic plan - $0.10 USDC"
-      }
-    }
-  ],
-  "error": "Payment required"
+  "error": "Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery"
 }
 ```
 
@@ -273,7 +305,6 @@ payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
   "challengeId": "http-a1b2c3d4-...",
   "accessToken": "eyJhbGciOiJIUzI1NiIs...",
   "tokenType": "Bearer",
-  "expiresAt": "2025-03-05T13:15:00.000Z",
   "resourceEndpoint": "https://api.example.com/photos/photo-123",
   "resourceId": "photo-123",
   "planId": "basic",
@@ -421,7 +452,6 @@ Returned after successful settlement and token issuance. The `accessToken` is us
   "requestId": "550e8400-...",
   "accessToken": "eyJhbGciOiJIUzI1NiIs...",
   "tokenType": "Bearer",
-  "expiresAt": "2025-03-05T13:15:00.000Z",
   "resourceEndpoint": "https://api.example.com/photos/photo-123",
   "resourceId": "photo-123",
   "planId": "basic",

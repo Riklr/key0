@@ -18,7 +18,9 @@ A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a 
 Agent                          Hono Seller
   |                                |
   |-- GET /.well-known/agent.json -|  (discover capabilities)
-  |-- POST /x402/access ---------->|  (request access)
+  |-- GET /discovery ------------->|  (browse plans and pricing)
+  |<-------- plan catalog ---------|  (planIds, amounts, wallet)
+  |-- POST /x402/access ---------->|  (request access, planId)
   |<-------- X402Challenge --------|  (amount, destination, chainId)
   |                                |
   |  ... pays USDC on-chain ...    |
@@ -35,9 +37,9 @@ Agent                          Hono Seller
 - [Bun](https://bun.sh) v1.0+
 - A wallet address to receive USDC payments
 
-<Note>
-  This example uses in-memory storage by default, so no Redis or Postgres is required. For production use, swap in `RedisChallengeStore` and `RedisSeenTxStore`.
-</Note>
+<Warning>
+  This example omits `store` and `seenTxStore` from the `key0App` options for brevity. In practice, `createKey0()` (used internally) throws if these are missing — `RedisChallengeStore` and `RedisSeenTxStore` (or their Postgres equivalents) are required for the server to start. See the [Storage guide](/sdk-reference/storage) for setup instructions.
+</Warning>
 
 ## Key Files
 

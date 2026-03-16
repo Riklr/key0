@@ -90,6 +90,25 @@ No authentication is required.
         "Receive 402 with payment challenge",
         "Pay USDC on-chain, retry same request with PAYMENT-SIGNATURE header",
         "Receive 200 with access token"
+      ],
+      "endpoint": {
+        "url": "https://api.acme.com/x402/access",
+        "method": "POST"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "planId": { "type": "string", "description": "Plan ID from discover-plans" },
+          "requestId": { "type": "string", "description": "Client-generated UUID for idempotency" },
+          "resourceId": { "type": "string", "description": "Resource to access (defaults to 'default')" }
+        },
+        "required": ["planId"]
+      },
+      "workflow": [
+        "1. Call GET /discovery to browse available plans and note the planId",
+        "2. POST /x402/access { planId, requestId } — receive 402 with payment challenge",
+        "3. Sign EIP-3009 authorization off-chain (no gas required)",
+        "4. Retry POST /x402/access with PAYMENT-SIGNATURE header — receive AccessGrant"
       ]
     }
   ],
@@ -116,6 +135,12 @@ The payment-gated skill. Clients call this to initiate a purchase flow:
 2. Sign an EIP-3009 authorization off-chain.
 3. Retry the same request with a `PAYMENT-SIGNATURE` header.
 4. Receive a 200 response with an `AccessGrant` containing the bearer token.
+
+This skill includes machine-readable metadata for automated clients:
+
+- **`endpoint`** — the direct `POST /x402/access` URL and method, so clients don't need to parse the description.
+- **`inputSchema`** — a JSON Schema for the request body (`planId`, `requestId`, `resourceId`).
+- **`workflow`** — a step-by-step array of instructions for completing the payment flow programmatically.
 
 ## x402 Extension
 

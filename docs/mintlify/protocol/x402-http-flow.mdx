@@ -78,7 +78,31 @@ sequenceDiagram
               "description": "Basic plan - $0.10 USDC"
             }
           }
-        ]
+        ],
+        "extensions": {
+          "key0": {
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "planId": { "type": "string" },
+                "requestId": { "type": "string" },
+                "resourceId": { "type": "string" }
+              },
+              "required": ["planId"]
+            },
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["AccessGrant"] },
+                "accessToken": { "type": "string" },
+                "tokenType": { "type": "string" },
+                "resourceEndpoint": { "type": "string" },
+                "txHash": { "type": "string" }
+              }
+            },
+            "description": "Basic plan - $0.10 USDC"
+          }
+        }
       }
     }
     ```
@@ -179,7 +203,6 @@ sequenceDiagram
       "challengeId": "http-a1b2c3d4-...",
       "accessToken": "eyJhbGciOiJIUzI1NiIs...",
       "tokenType": "Bearer",
-      "expiresAt": "2025-03-05T13:15:00.000Z",
       "resourceEndpoint": "https://api.example.com/photos/photo-123",
       "resourceId": "photo-123",
       "planId": "basic",

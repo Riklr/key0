@@ -121,10 +121,14 @@ Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server cre
           "outputSchema": {
             "type": "object",
             "properties": {
+              "type": { "type": "string", "enum": ["AccessGrant"] },
+              "challengeId": { "type": "string", "description": "Challenge ID that was fulfilled" },
+              "requestId": { "type": "string", "description": "Original request ID" },
               "accessToken": { "type": "string", "description": "JWT token for API access" },
               "tokenType": { "type": "string", "description": "Token type (usually 'Bearer')" },
-              "expiresAt": { "type": "string", "description": "ISO 8601 expiration timestamp" },
               "resourceEndpoint": { "type": "string", "description": "URL to access the protected resource" },
+              "resourceId": { "type": "string", "description": "Resource that was purchased" },
+              "planId": { "type": "string", "description": "Plan that was purchased" },
               "txHash": { "type": "string", "description": "On-chain transaction hash" },
               "explorerUrl": { "type": "string", "description": "Blockchain explorer URL" }
             }
