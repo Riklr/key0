@@ -5,8 +5,7 @@
 [![License](https://img.shields.io/github/license/key0ai/key0)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-key0.ai-blue)](https://docs.key0.ai/introduction/overview)
 
-Commerce infrastructure for the agentic web. Let AI agents discover,
-pay for, and access your APIs autonomously — no human in the loop.
+Key0 is the commercial gateway for your AI agents and APIs.
 
 [Docs](https://docs.key0.ai/introduction/overview) · [Quick Start](#quick-start) · [Book a Demo](https://key0.ai/book-a-demo)
 
