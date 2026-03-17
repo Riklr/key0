@@ -3,6 +3,13 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCli, generateCliSource } from "../cli.js";
+import { parseCli } from "../cli-template.js";
+
+describe("parseCli", () => {
+	test("--install returns install command", () => {
+		expect(parseCli(["--install"])).toEqual({ command: "install" });
+	});
+});
 
 describe("generateCliSource", () => {
 	test("replaces __CLI_NAME__ and __CLI_URL__ placeholders", () => {

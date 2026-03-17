@@ -8,6 +8,7 @@ export type ParsedArgs =
 	| { command: "request"; plan: string; resource?: string; paymentSignature?: string }
 	| { command: "help" }
 	| { command: "version" }
+	| { command: "install" }
 	| { command: "error"; message: string };
 
 export interface CliResult {
@@ -21,6 +22,7 @@ export async function runDiscover(baseUrl: string): Promise<CliResult> {
 		response = await fetch(`${baseUrl}/discovery`, {
 			method: "GET",
 			headers: { Accept: "application/json" },
+			signal: AbortSignal.timeout(10_000),
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -66,6 +68,7 @@ export async function runRequest(
 			method: "POST",
 			headers,
 			body: JSON.stringify(bodyObj),
+			signal: AbortSignal.timeout(10_000),
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -91,6 +94,13 @@ export async function runRequest(
 	}
 
 	return { exitCode: 1, output: body as Record<string, unknown> };
+}
+
+export async function runInstall(
+	_binaryName: string,
+	_opts?: Record<string, unknown>,
+): Promise<CliResult> {
+	return { exitCode: 1, output: { error: "not implemented", code: "NOT_IMPLEMENTED" } };
 }
 
 export async function runMain(args: string[], name: string, url: string): Promise<CliResult> {
@@ -132,6 +142,9 @@ export async function runMain(args: string[], name: string, url: string): Promis
 
 		case "request":
 			return runRequest(url, parsed.plan, parsed.resource, parsed.paymentSignature);
+
+		case "install":
+			return runInstall(name);
 	}
 }
 
@@ -161,6 +174,10 @@ export function parseCli(args: string[]): ParsedArgs {
 
 	if (first === "--version" || first === "-v") {
 		return { command: "version" };
+	}
+
+	if (first === "--install") {
+		return { command: "install" };
 	}
 
 	if (first === "discover") {
