@@ -481,6 +481,7 @@ fastify.listen({ port: 3000 });
 | `gasWalletPrivateKey` | `0x${string}` | | - | Private key for self-contained settlement |
 | `redis` | `IRedisLockClient` | | - | Redis client for distributed gas wallet settlement locking across replicas |
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
+| `rpcUrl` | `string` | | public RPC | Override the RPC endpoint for on-chain operations — use Alchemy or other private RPC in production |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
@@ -552,6 +553,7 @@ await queue.add("process", {}, { repeat: { every: 60_000 } });
 
 > The `walletPrivateKey` must correspond to `walletAddress` - the wallet that received the USDC payments.
 > Without Redis, a plain `setInterval` works for single-instance deployments (the atomic `PAID → REFUND_PENDING` CAS transition prevents double-refunds even with multiple overlapping ticks).
+> Pass `rpcUrl` to use a private RPC (e.g. Alchemy) instead of the default public endpoint — recommended for production to avoid stale-nonce errors when processing multiple sequential refunds.
 
 **Retrying failed refunds:**
 
@@ -788,6 +790,7 @@ bun run typecheck    # Type-check
 bun run lint         # Lint with Biome v2
 bun test src/        # Run unit tests
                      # E2E tests require Docker + funded wallets - see e2e/README.md
+                     # CI runs e2e/preflight.ts first — auto-funds wallets via CDP faucet if low
 bun run build        # Compile to ./dist
 ```
 
