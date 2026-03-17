@@ -17,5 +17,5 @@
 			"@key0ai/key0/*": ["../../src/integrations/*.ts"]
 		}
 	},
-	"include": ["server.ts"]
+	"include": ["server.ts", "build-cli.ts"]
 }
