@@ -6,12 +6,12 @@
  * then polls until the balance is confirmed on-chain.
  * Fails fast if funding fails or balances remain insufficient.
  *
- *   CLIENT wallet — needs ≥ $1.00 USDC for test purchases.
- *   KEY0 wallet   — needs ≥ $0.10 USDC for refund tests (cron sends USDC
- *                   FROM KEY0 back to the payer).
- *   GAS wallet    — needs ≥ 0.002 ETH (gas for on-chain txs) AND
- *                   ≥ $0.20 USDC (concurrent-purchases uses GAS wallet as a
- *                   second buyer via makeGasE2eClient).
+ *   CLIENT wallet — needs ≥ $1.00 USDC. Uses EIP-3009 gasless signatures;
+ *                   GAS wallet pays on-chain gas, so no ETH needed here.
+ *   KEY0 wallet   — needs ≥ $0.10 USDC for refund tests (GAS wallet submits
+ *                   refund txs on KEY0's behalf, so no ETH needed here).
+ *   GAS wallet    — needs ≥ 0.002 ETH (submits all on-chain txs) AND
+ *                   ≥ $0.20 USDC (second buyer in concurrent-purchases).
  *
  * Circle faucet (BASE-SEPOLIA):
  *   POST https://api.circle.com/v1/faucet/drips
@@ -38,8 +38,8 @@ const KEY0_MIN_USDC = parseUnits("0.10", 6);
 /** Minimum USDC for the GAS wallet (second buyer in concurrent-purchases). */
 const GAS_MIN_USDC = parseUnits("0.20", 6);
 
-/** Minimum ETH for each wallet to cover gas fees. */
-const MIN_ETH_WEI = parseUnits("0.002", 18);
+/** Minimum ETH for the GAS wallet (it submits all on-chain transactions). */
+const GAS_MIN_ETH = parseUnits("0.002", 18);
 
 // ─── Circle faucet ────────────────────────────────────────────────────────────
 
@@ -108,9 +108,8 @@ async function getEth(address: `0x${string}`): Promise<bigint> {
 
 /**
  * Call the Circle faucet for the given wallet.
- * @param address  Wallet address to drip to
- * @param usdc     Whether to drip USDC
- * @param native   Whether to drip native ETH
+ * @param usdc    Whether to drip USDC
+ * @param native  Whether to drip native ETH
  */
 async function callCircleFaucet(
 	walletName: string,
@@ -127,20 +126,13 @@ async function callCircleFaucet(
 	const what = [usdc && "USDC", native && "ETH"].filter(Boolean).join(" + ");
 	console.log(`   Calling Circle faucet for ${walletName} (${what})…`);
 
-	const body = JSON.stringify({
-		blockchain: CIRCLE_BLOCKCHAIN,
-		address,
-		usdc,
-		native,
-	});
-
 	const response = await fetch(CIRCLE_FAUCET_URL, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${circleApiKey}`,
 		},
-		body,
+		body: JSON.stringify({ blockchain: CIRCLE_BLOCKCHAIN, address, usdc, native }),
 	});
 
 	if (!response.ok) {
@@ -174,17 +166,15 @@ async function pollUntil(
 
 console.log("─── Pre-flight wallet check ───────────────────────────────");
 
-let [clientUsdc, clientEth, key0Usdc, key0Eth, gasUsdc, gasEth] = await Promise.all([
+let [clientUsdc, key0Usdc, gasUsdc, gasEth] = await Promise.all([
 	getUsdc(clientAddress),
-	getEth(clientAddress),
 	getUsdc(key0Address),
-	getEth(key0Address),
 	getUsdc(gasWalletAddress),
 	getEth(gasWalletAddress),
 ]);
 
-console.log(`CLIENT  ${clientAddress}  USDC: ${fmtUsdc(clientUsdc)}  ETH: ${fmtEth(clientEth)}`);
-console.log(`KEY0    ${key0Address}  USDC: ${fmtUsdc(key0Usdc)}  ETH: ${fmtEth(key0Eth)}`);
+console.log(`CLIENT  ${clientAddress}  USDC: ${fmtUsdc(clientUsdc)}`);
+console.log(`KEY0    ${key0Address}  USDC: ${fmtUsdc(key0Usdc)}`);
 console.log(`GAS     ${gasWalletAddress}  USDC: ${fmtUsdc(gasUsdc)}  ETH: ${fmtEth(gasEth)}`);
 console.log("───────────────────────────────────────────────────────────");
 
@@ -193,33 +183,19 @@ console.log("──────────────────────�
 const fundingTasks: Array<Promise<void>> = [];
 
 const clientNeedsUsdc = clientUsdc < CLIENT_MIN_USDC;
-const clientNeedsEth = clientEth < MIN_ETH_WEI;
-if (clientNeedsUsdc || clientNeedsEth) {
-	const what = [
-		clientNeedsUsdc && `USDC low (${fmtUsdc(clientUsdc)})`,
-		clientNeedsEth && `ETH low (${fmtEth(clientEth)})`,
-	]
-		.filter(Boolean)
-		.join(", ");
-	console.log(`⚡ CLIENT ${what} — requesting faucet drip…`);
-	fundingTasks.push(callCircleFaucet("CLIENT", clientAddress, clientNeedsUsdc, clientNeedsEth));
+if (clientNeedsUsdc) {
+	console.log(`⚡ CLIENT USDC low (${fmtUsdc(clientUsdc)}) — requesting faucet drip…`);
+	fundingTasks.push(callCircleFaucet("CLIENT", clientAddress, true, false));
 }
 
 const key0NeedsUsdc = key0Usdc < KEY0_MIN_USDC;
-const key0NeedsEth = key0Eth < MIN_ETH_WEI;
-if (key0NeedsUsdc || key0NeedsEth) {
-	const what = [
-		key0NeedsUsdc && `USDC low (${fmtUsdc(key0Usdc)})`,
-		key0NeedsEth && `ETH low (${fmtEth(key0Eth)})`,
-	]
-		.filter(Boolean)
-		.join(", ");
-	console.log(`⚡ KEY0 ${what} — requesting faucet drip…`);
-	fundingTasks.push(callCircleFaucet("KEY0", key0Address, key0NeedsUsdc, key0NeedsEth));
+if (key0NeedsUsdc) {
+	console.log(`⚡ KEY0 USDC low (${fmtUsdc(key0Usdc)}) — requesting faucet drip…`);
+	fundingTasks.push(callCircleFaucet("KEY0", key0Address, true, false));
 }
 
 const gasNeedsUsdc = gasUsdc < GAS_MIN_USDC;
-const gasNeedsEth = gasEth < MIN_ETH_WEI;
+const gasNeedsEth = gasEth < GAS_MIN_ETH;
 if (gasNeedsUsdc || gasNeedsEth) {
 	const what = [
 		gasNeedsUsdc && `USDC low (${fmtUsdc(gasUsdc)})`,
@@ -249,29 +225,11 @@ if (fundingTasks.length > 0) {
 		);
 	}
 
-	if (clientNeedsEth) {
-		polls.push(
-			pollUntil("CLIENT ETH", async () => {
-				clientEth = await getEth(clientAddress);
-				return clientEth >= MIN_ETH_WEI;
-			}),
-		);
-	}
-
 	if (key0NeedsUsdc) {
 		polls.push(
 			pollUntil("KEY0 USDC", async () => {
 				key0Usdc = await getUsdc(key0Address);
 				return key0Usdc >= KEY0_MIN_USDC;
-			}),
-		);
-	}
-
-	if (key0NeedsEth) {
-		polls.push(
-			pollUntil("KEY0 ETH", async () => {
-				key0Eth = await getEth(key0Address);
-				return key0Eth >= MIN_ETH_WEI;
 			}),
 		);
 	}
@@ -289,7 +247,7 @@ if (fundingTasks.length > 0) {
 		polls.push(
 			pollUntil("GAS ETH", async () => {
 				gasEth = await getEth(gasWalletAddress);
-				return gasEth >= MIN_ETH_WEI;
+				return gasEth >= GAS_MIN_ETH;
 			}),
 		);
 	}
@@ -299,15 +257,13 @@ if (fundingTasks.length > 0) {
 
 	// Re-read balances that weren't polled so post-funding display is accurate
 	if (!clientNeedsUsdc) clientUsdc = await getUsdc(clientAddress);
-	if (!clientNeedsEth) clientEth = await getEth(clientAddress);
 	if (!key0NeedsUsdc) key0Usdc = await getUsdc(key0Address);
-	if (!key0NeedsEth) key0Eth = await getEth(key0Address);
 	if (!gasNeedsUsdc) gasUsdc = await getUsdc(gasWalletAddress);
 	if (!gasNeedsEth) gasEth = await getEth(gasWalletAddress);
 
 	console.log("─── Post-funding balances ─────────────────────────────────");
-	console.log(`CLIENT  ${clientAddress}  USDC: ${fmtUsdc(clientUsdc)}  ETH: ${fmtEth(clientEth)}`);
-	console.log(`KEY0    ${key0Address}  USDC: ${fmtUsdc(key0Usdc)}  ETH: ${fmtEth(key0Eth)}`);
+	console.log(`CLIENT  ${clientAddress}  USDC: ${fmtUsdc(clientUsdc)}`);
+	console.log(`KEY0    ${key0Address}  USDC: ${fmtUsdc(key0Usdc)}`);
 	console.log(`GAS     ${gasWalletAddress}  USDC: ${fmtUsdc(gasUsdc)}  ETH: ${fmtEth(gasEth)}`);
 	console.log("───────────────────────────────────────────────────────────");
 
@@ -344,17 +300,11 @@ if (gasUsdc < GAS_MIN_USDC) {
 	console.log(`✓  GAS USDC OK (${fmtUsdc(gasUsdc)})`);
 }
 
-for (const [name, bal] of [
-	["CLIENT", clientEth],
-	["KEY0", key0Eth],
-	["GAS", gasEth],
-] as const) {
-	if (bal < MIN_ETH_WEI) {
-		console.error(`✗  ${name} ETH too low (${fmtEth(bal)}, need ${fmtEth(MIN_ETH_WEI)})`);
-		failed = true;
-	} else {
-		console.log(`✓  ${name} ETH OK (${fmtEth(bal)})`);
-	}
+if (gasEth < GAS_MIN_ETH) {
+	console.error(`✗  GAS ETH too low (${fmtEth(gasEth)}, need ${fmtEth(GAS_MIN_ETH)})`);
+	failed = true;
+} else {
+	console.log(`✓  GAS ETH OK (${fmtEth(gasEth)})`);
 }
 
 console.log("───────────────────────────────────────────────────────────");
