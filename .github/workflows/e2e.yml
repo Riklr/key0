@@ -43,6 +43,7 @@ jobs:
           KEY0_WALLET_ADDRESS: ${{ secrets.KEY0_WALLET_ADDRESS }}
           GAS_WALLET_ADDRESS: ${{ secrets.GAS_WALLET_ADDRESS }}
           ALCHEMY_BASE_SEPOLIA_RPC_URL: ${{ secrets.ALCHEMY_BASE_SEPOLIA_RPC_URL }}
+          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
 
       - name: Run e2e tests
         working-directory: e2e
@@ -103,6 +104,7 @@ jobs:
           KEY0_WALLET_ADDRESS: ${{ secrets.KEY0_WALLET_ADDRESS }}
           GAS_WALLET_ADDRESS: ${{ secrets.GAS_WALLET_ADDRESS }}
           ALCHEMY_BASE_SEPOLIA_RPC_URL: ${{ secrets.ALCHEMY_BASE_SEPOLIA_RPC_URL }}
+          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
 
       - name: Run e2e tests (Postgres)
         working-directory: e2e
