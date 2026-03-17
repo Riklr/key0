@@ -192,14 +192,30 @@ console.log("──────────────────────�
 
 const fundingTasks: Array<Promise<void>> = [];
 
-if (clientUsdc < CLIENT_MIN_USDC) {
-	console.log(`⚡ CLIENT USDC low (${fmtUsdc(clientUsdc)}) — requesting faucet drip…`);
-	fundingTasks.push(callCircleFaucet("CLIENT", clientAddress, true, false));
+const clientNeedsUsdc = clientUsdc < CLIENT_MIN_USDC;
+const clientNeedsEth = clientEth < MIN_ETH_WEI;
+if (clientNeedsUsdc || clientNeedsEth) {
+	const what = [
+		clientNeedsUsdc && `USDC low (${fmtUsdc(clientUsdc)})`,
+		clientNeedsEth && `ETH low (${fmtEth(clientEth)})`,
+	]
+		.filter(Boolean)
+		.join(", ");
+	console.log(`⚡ CLIENT ${what} — requesting faucet drip…`);
+	fundingTasks.push(callCircleFaucet("CLIENT", clientAddress, clientNeedsUsdc, clientNeedsEth));
 }
 
-if (key0Usdc < KEY0_MIN_USDC) {
-	console.log(`⚡ KEY0 USDC low (${fmtUsdc(key0Usdc)}) — requesting faucet drip…`);
-	fundingTasks.push(callCircleFaucet("KEY0", key0Address, true, false));
+const key0NeedsUsdc = key0Usdc < KEY0_MIN_USDC;
+const key0NeedsEth = key0Eth < MIN_ETH_WEI;
+if (key0NeedsUsdc || key0NeedsEth) {
+	const what = [
+		key0NeedsUsdc && `USDC low (${fmtUsdc(key0Usdc)})`,
+		key0NeedsEth && `ETH low (${fmtEth(key0Eth)})`,
+	]
+		.filter(Boolean)
+		.join(", ");
+	console.log(`⚡ KEY0 ${what} — requesting faucet drip…`);
+	fundingTasks.push(callCircleFaucet("KEY0", key0Address, key0NeedsUsdc, key0NeedsEth));
 }
 
 const gasNeedsUsdc = gasUsdc < GAS_MIN_USDC;
@@ -224,7 +240,7 @@ if (fundingTasks.length > 0) {
 
 	const polls: Array<Promise<boolean>> = [];
 
-	if (clientUsdc < CLIENT_MIN_USDC) {
+	if (clientNeedsUsdc) {
 		polls.push(
 			pollUntil("CLIENT USDC", async () => {
 				clientUsdc = await getUsdc(clientAddress);
@@ -233,11 +249,29 @@ if (fundingTasks.length > 0) {
 		);
 	}
 
-	if (key0Usdc < KEY0_MIN_USDC) {
+	if (clientNeedsEth) {
+		polls.push(
+			pollUntil("CLIENT ETH", async () => {
+				clientEth = await getEth(clientAddress);
+				return clientEth >= MIN_ETH_WEI;
+			}),
+		);
+	}
+
+	if (key0NeedsUsdc) {
 		polls.push(
 			pollUntil("KEY0 USDC", async () => {
 				key0Usdc = await getUsdc(key0Address);
 				return key0Usdc >= KEY0_MIN_USDC;
+			}),
+		);
+	}
+
+	if (key0NeedsEth) {
+		polls.push(
+			pollUntil("KEY0 ETH", async () => {
+				key0Eth = await getEth(key0Address);
+				return key0Eth >= MIN_ETH_WEI;
 			}),
 		);
 	}
@@ -263,11 +297,11 @@ if (fundingTasks.length > 0) {
 	const results = await Promise.all(polls);
 	const allConfirmed = results.every(Boolean);
 
-	// Re-read remaining balances that weren't polled
-	if (clientUsdc >= CLIENT_MIN_USDC) clientUsdc = await getUsdc(clientAddress);
-	clientEth = await getEth(clientAddress);
-	key0Eth = await getEth(key0Address);
-	if (key0Usdc >= KEY0_MIN_USDC) key0Usdc = await getUsdc(key0Address);
+	// Re-read balances that weren't polled so post-funding display is accurate
+	if (!clientNeedsUsdc) clientUsdc = await getUsdc(clientAddress);
+	if (!clientNeedsEth) clientEth = await getEth(clientAddress);
+	if (!key0NeedsUsdc) key0Usdc = await getUsdc(key0Address);
+	if (!key0NeedsEth) key0Eth = await getEth(key0Address);
 	if (!gasNeedsUsdc) gasUsdc = await getUsdc(gasWalletAddress);
 	if (!gasNeedsEth) gasEth = await getEth(gasWalletAddress);
 
