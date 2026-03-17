@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCli, generateCliSource } from "../cli.js";
-import { parseCli, runInstall } from "../cli-template.js";
+import { parseCli, runInstall, runMain } from "../cli-template.js";
 
 describe("parseCli", () => {
 	test("--install returns install command", () => {
@@ -241,5 +241,22 @@ describe("runInstall", () => {
 			rmSync(localDir, { recursive: true, force: true });
 			rmSync(systemDir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("runMain --install wiring", () => {
+	test("--install flag appears in help flags", async () => {
+		const result = await runMain(["--help"], "my-agent", "https://example.com");
+		expect(result.exitCode).toBe(0);
+		const flags = result.output["flags"] as Record<string, string>;
+		expect(flags["--install"]).toBeTypeOf("string");
+	});
+
+	test("--install routes through runMain and returns a CliResult", async () => {
+		// No control over install dirs here — just verify shape and no crash
+		const result = await runMain(["--install"], "my-agent", "https://example.com");
+		expect(result).toHaveProperty("exitCode");
+		expect(result).toHaveProperty("output");
+		expect(typeof result.exitCode).toBe("number");
 	});
 });

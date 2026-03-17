@@ -190,6 +190,7 @@ export async function runMain(args: string[], name: string, url: string): Promis
 						"--plan": "Plan ID (required for request)",
 						"--resource": "Resource ID (optional, defaults to 'default')",
 						"--payment-signature": "Base64-encoded x402 payment payload from payments-mcp",
+						"--install": "Install this binary to PATH (~/.local/bin or /usr/local/bin)",
 					},
 				},
 			};
