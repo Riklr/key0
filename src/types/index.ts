@@ -19,15 +19,21 @@ export type {
 	ChallengeRecord,
 	ChallengeState,
 	PaymentProof,
+	ResourceResponse,
 	X402Challenge,
 } from "./challenge.js";
 
 export type {
+	FetchResourceParams,
+	FetchResourceResult,
 	IRedisLockClient,
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,
+	PaymentInfo,
 	Plan,
+	PlanRouteInfo,
+	ProxyToConfig,
 	SellerConfig,
 	TokenIssuanceResult,
 } from "./config.js";

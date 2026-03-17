@@ -4,8 +4,15 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import type { ChallengeEngine } from "../core/index.js";
-import type { NetworkConfig, SellerConfig, X402PaymentPayload } from "../types/index.js";
+import type {
+	NetworkConfig,
+	PlanRouteInfo,
+	ResourceResponse,
+	SellerConfig,
+	X402PaymentPayload,
+} from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { resolveConfigFetchResource } from "./pay-per-request.js";
 import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
 
 // ---------------------------------------------------------------------------
@@ -139,7 +146,11 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
  *
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
-export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): McpServer {
+export function createMcpServer(
+	engine: ChallengeEngine,
+	config: SellerConfig,
+	perRequestRoutes?: Map<string, PlanRouteInfo[]>,
+): McpServer {
 	const networkConfig = CHAIN_CONFIGS[config.network];
 
 	const server = new McpServer({
@@ -152,7 +163,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		"discover_plans",
 		{
 			title: "Discover Plans",
-			description: `Discover available plans and pricing for ${config.agentName}. Returns the plan catalog with plan IDs, prices (USDC), wallet address, and chain ID needed for payment.`,
+			description: `Discover available plans and pricing for ${config.agentName}. Returns the plan catalog with plan IDs, prices (USDC), wallet address, and chain ID needed for payment. Per-request plans also include the routes they gate.`,
 		},
 		async () => {
 			const catalog = {
@@ -162,11 +173,16 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 				chainId: networkConfig.chainId,
 				walletAddress: config.walletAddress,
 				asset: "USDC",
-				plans: config.plans.map((tier) => ({
-					planId: tier.planId,
-					unitAmount: tier.unitAmount,
-					...(tier.description ? { description: tier.description } : {}),
-				})),
+				plans: config.plans.map((tier) => {
+					const effectiveRoutes = perRequestRoutes?.get(tier.planId) ?? tier.routes ?? [];
+					return {
+						planId: tier.planId,
+						unitAmount: tier.unitAmount,
+						mode: tier.mode ?? "subscription",
+						...(tier.description ? { description: tier.description } : {}),
+						...(effectiveRoutes.length > 0 ? { routes: effectiveRoutes } : {}),
+					};
+				}),
 			};
 			return { content: [{ type: "text" as const, text: JSON.stringify(catalog, null, 2) }] };
 		},
@@ -180,8 +196,10 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 			description: [
 				`Purchase access to a ${config.agentName} plan.`,
 				"This tool is x402 payment-gated.",
+				"For subscription plans: call without payment to get requirements, then re-call with x402 payment to receive an access token.",
+				"For per-request plans (standalone mode): include a 'resource' field specifying the backend endpoint to call.",
 				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
-				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resourceId} in the body and the accepts array as paymentRequirements.",
+				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resource} in the body.",
 				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
 			].join(" "),
 			inputSchema: {
@@ -189,18 +207,55 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 				resourceId: z
 					.string()
 					.default("default")
-					.describe("Specific resource ID (defaults to 'default')"),
+					.describe(
+						"Specific resource ID for subscription plans (defaults to 'default'). Not used for per-request plans.",
+					),
+				resource: z
+					.object({
+						method: z.string().describe("HTTP method to call on the backend (e.g. GET, POST)"),
+						path: z.string().describe("Path to call on the backend (e.g. /api/weather/london)"),
+						body: z
+							.unknown()
+							.optional()
+							.describe("Optional request body to forward to the backend"),
+					})
+					.optional()
+					.describe(
+						"For per-request plans in standalone mode: the backend resource to call after payment.",
+					),
 			},
 		},
-		async ({ planId, resourceId }, extra) => {
+		async ({ planId, resourceId, resource }, extra) => {
 			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
+			const plan = config.plans.find((t) => t.planId === planId);
+			const fetchResourceFn = resolveConfigFetchResource(config);
 
 			try {
 				if (!paymentPayload) {
-					// No payment — return x402 PaymentRequired signal
-					const tier = config.plans.find((t) => t.planId === planId);
-					if (!tier) {
+					// No payment — validate plan exists, then return x402 PaymentRequired signal
+					if (!plan) {
 						throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
+					}
+					// Per-request plan in embedded mode: reject immediately
+					if (plan.mode === "per-request" && !fetchResourceFn) {
+						const routeMethod = plan.routes?.[0]?.method ?? "GET";
+						const routePath = plan.routes?.[0]?.path ?? "/";
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(
+										{
+											error: "PER_REQUEST_EMBEDDED_MODE",
+											message: `Per-request plans are not available via MCP in embedded mode. Use direct HTTP calls: ${routeMethod} ${routePath}`,
+										},
+										null,
+										2,
+									),
+								},
+							],
+						};
 					}
 					return buildPaymentRequiredResult(planId, resourceId, config, networkConfig);
 				}
@@ -213,6 +268,114 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 
 				// Derive stable requestId from payment signature for idempotent retry recovery
 				const requestId = deriveRequestId(paymentPayload);
+
+				// Branch on plan mode
+				if (plan?.mode === "per-request") {
+					if (!fetchResourceFn) {
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(
+										{
+											error: "PER_REQUEST_EMBEDDED_MODE",
+											message: "Per-request plans are not available via MCP in embedded mode.",
+										},
+										null,
+										2,
+									),
+								},
+							],
+						};
+					}
+
+					if (!resource?.method || !resource?.path) {
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(
+										{
+											error: "MISSING_RESOURCE_FIELD",
+											message:
+												'Per-request plans require a "resource" field: { method: "GET", path: "/api/example" }',
+										},
+										null,
+										2,
+									),
+								},
+							],
+						};
+					}
+
+					// Record payment (PENDING → PAID) without token issuance
+					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
+						requestId,
+						planId,
+						resource.path,
+						txHash,
+						payer as `0x${string}` | undefined,
+					);
+
+					// Proxy to backend
+					const backendResult = await fetchResourceFn({
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId,
+							amount: plan.unitAmount,
+							method: resource.method,
+							path: resource.path,
+							challengeId,
+						},
+						method: resource.method,
+						path: resource.path,
+						headers: {},
+						body: resource.body,
+					});
+
+					if (backendResult.status >= 200 && backendResult.status < 300) {
+						await engine.markDelivered(challengeId);
+					} else {
+						console.warn(
+							`[Key0 MCP] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+						);
+					}
+
+					const resourceResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId,
+						requestId,
+						planId,
+						txHash,
+						explorerUrl,
+						resource: {
+							status: backendResult.status,
+							...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
+							body: backendResult.body,
+						},
+					};
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify(
+									{ status: "resource_delivered", ...resourceResponse },
+									null,
+									2,
+								),
+							},
+						],
+						_meta: {
+							"x402/payment-response": settleResponse,
+						},
+					};
+				}
+
+				// Subscription plan: issue access grant
 				const grant = await engine.processHttpPayment(
 					requestId,
 					planId,
@@ -262,7 +425,6 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 							config,
 							networkConfig,
 						);
-						// Override the generic error with the specific failure message
 						const failContent = {
 							...(failResult.structuredContent as Record<string, unknown>),
 							error: err.message,
@@ -310,6 +472,7 @@ export function mountMcpRoutes(
 	router: Router,
 	engine: ChallengeEngine,
 	config: SellerConfig,
+	perRequestRoutes?: Map<string, PlanRouteInfo[]>,
 ): void {
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 
@@ -328,7 +491,9 @@ export function mountMcpRoutes(
 
 	// MCP Streamable HTTP transport (stateless — new server + transport per request)
 	router.post("/mcp", async (req: Request, res: Response) => {
-		const server = createMcpServer(engine, config);
+		// Snapshot the registry at request time so each stateless server has current routes.
+		const routeSnapshot = perRequestRoutes ? new Map(perRequestRoutes) : undefined;
+		const server = createMcpServer(engine, config, routeSnapshot);
 		const transport = new StreamableHTTPServerTransport({});
 		try {
 			await server.connect(transport as Parameters<typeof server.connect>[0]);

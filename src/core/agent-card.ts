@@ -10,9 +10,13 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 
 	const planIds = config.plans.map((p) => p.planId);
 
-	// Two A2A spec-compliant skills
-	// Skill 1: Discovery (free) — browse the product catalog
-	// Skill 2: Purchase (x402-gated) — buy an access token
+	// Standalone mode: fetchResource or proxyTo is set on SellerConfig.
+	// Per-request skills point to /x402/access (supports HTTP, A2A, MCP).
+	// Embedded mode: per-request skills point to the actual route URLs (HTTP-only).
+	const isStandalone = !!(config.fetchResource ?? config.proxyTo);
+
+	// Core A2A skills (discovery + subscription purchase)
+	// Additional per-request skills are appended below for each gated route.
 	const skills: AgentSkill[] = [
 		{
 			id: "discover-plans",
@@ -61,6 +65,67 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			],
 		},
 	];
+
+	// Per-request skills: one skill per gated route across all per-request plans.
+	// Standalone: skills point to /x402/access with workflow + inputSchema (A2A/MCP/HTTP).
+	// Embedded: skills point to the actual route URL (HTTP-only, direct middleware gating).
+	for (const plan of config.plans) {
+		if (plan.mode !== "per-request" || !plan.routes?.length) continue;
+		for (const route of plan.routes) {
+			const method = route.method.toUpperCase() as "GET" | "POST";
+			const skillId = `ppr-${plan.planId}-${route.method.toLowerCase()}-${route.path.replace(/\//g, "-").replace(/:/g, "")}`;
+			const description =
+				route.description ??
+				`Pay-per-request: ${plan.unitAmount} USDC per call. Plan: ${plan.planId}.`;
+
+			if (isStandalone) {
+				skills.push({
+					id: skillId,
+					name: `${route.method} ${route.path}`,
+					description,
+					tags: ["pay-per-request", "x402", plan.planId],
+					endpoint: { url: `${baseUrl}/x402/access`, method: "POST" },
+					inputSchema: {
+						type: "object",
+						required: ["planId", "resource"],
+						properties: {
+							planId: { type: "string", const: plan.planId },
+							resource: {
+								type: "object",
+								required: ["method", "path"],
+								properties: {
+									method: {
+										type: "string",
+										const: route.method,
+										description: `HTTP method for this route (${route.method})`,
+									},
+									path: {
+										type: "string",
+										description: `Path pattern: ${route.path}`,
+									},
+								},
+							},
+						},
+					},
+					workflow: [
+						`POST to ${baseUrl}/x402/access with { planId: "${plan.planId}", resource: { method: "${route.method}", path: "<actual path>" } }`,
+						"Receive 402 with payment requirements",
+						`Pay ${plan.unitAmount} USDC on-chain`,
+						"Retry same POST with PAYMENT-SIGNATURE header",
+						"Receive 200 with ResourceResponse containing the backend data (not a token)",
+					],
+				});
+			} else {
+				skills.push({
+					id: skillId,
+					name: `${route.method} ${route.path}`,
+					description,
+					tags: ["pay-per-request", "x402", plan.planId],
+					endpoint: { url: `${baseUrl}${route.path}`, method },
+				});
+			}
+		}
+	}
 
 	const x402Extension: AgentExtension = {
 		uri: X402_EXTENSION_URI,

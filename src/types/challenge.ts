@@ -14,6 +14,12 @@ export type AccessRequest = {
 	readonly planId: string; // must match a Plan.planId
 	readonly clientAgentId: string; // DID or URL of client agent
 	readonly callbackUrl?: string; // optional async webhook
+	/** For per-request plans in standalone mode: the backend resource to call after payment. */
+	readonly resource?: {
+		readonly method: string;
+		readonly path: string;
+		readonly body?: unknown;
+	};
 };
 
 export type X402Challenge = {
@@ -52,6 +58,24 @@ export type AccessGrant = {
 	readonly planId: string;
 	readonly txHash: `0x${string}`;
 	readonly explorerUrl: string;
+};
+
+/**
+ * Returned by /x402/access for per-request plans in standalone mode.
+ * Contains the actual backend resource data instead of an access token.
+ */
+export type ResourceResponse = {
+	readonly type: "ResourceResponse";
+	readonly challengeId: string;
+	readonly requestId: string;
+	readonly planId: string;
+	readonly txHash: `0x${string}`;
+	readonly explorerUrl: string;
+	readonly resource: {
+		readonly status: number;
+		readonly headers?: Record<string, string>;
+		readonly body: unknown;
+	};
 };
 
 // Internal challenge record (stored in IChallengeStore)

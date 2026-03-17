@@ -7,6 +7,7 @@ import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
 	Plan,
+	PlanRouteInfo,
 	SellerConfig,
 	X402PaymentPayload,
 	X402PaymentRequiredResponse,
@@ -159,10 +160,14 @@ export function buildHttpPaymentRequirements(
  * Build a discovery 402 response covering all product tiers.
  * Used when a bare request is made without specifying a planId.
  * Does not create any PENDING records — pure discovery.
+ *
+ * @param perRequestRoutes - Optional map of planId → routes (merged from config + runtime registry).
+ *   When provided, each plan's `extra` block includes `mode` and `routes` for per-request plans.
  */
 export function buildDiscoveryResponse(
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
+	perRequestRoutes?: Map<string, PlanRouteInfo[]>,
 ): X402PaymentRequiredResponse {
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
@@ -172,6 +177,7 @@ export function buildDiscoveryResponse(
 	// Build accepts array with one entry per tier
 	const accepts = config.plans.map((tier: Plan) => {
 		const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
+		const effectiveRoutes = perRequestRoutes?.get(tier.planId) ?? tier.routes ?? [];
 		return {
 			scheme: "exact" as const,
 			network,
@@ -184,6 +190,8 @@ export function buildDiscoveryResponse(
 				version: networkConfig.usdcDomain.version,
 				planId: tier.planId,
 				description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
+				mode: tier.mode ?? "subscription",
+				...(effectiveRoutes.length > 0 ? { routes: effectiveRoutes } : {}),
 			},
 		};
 	});
@@ -212,23 +220,59 @@ export function buildDiscoveryResponse(
 						},
 						resourceId: {
 							type: "string",
-							description: "Optional: Specific resource identifier (defaults to 'default')",
+							description:
+								"Optional: Specific resource identifier for subscription plans (defaults to 'default')",
+						},
+						resource: {
+							type: "object",
+							description:
+								"Required for per-request plans in standalone mode: the backend resource to call after payment.",
+							properties: {
+								method: { type: "string", description: "HTTP method (e.g. GET, POST)" },
+								path: {
+									type: "string",
+									description: "Path to call on the backend (e.g. /api/weather/london)",
+								},
+								body: { description: "Optional request body forwarded to the backend" },
+							},
+							required: ["method", "path"],
 						},
 					},
 					required: ["planId"],
 				},
 				outputSchema: {
 					type: "object",
-					properties: {
-						accessToken: { type: "string", description: "JWT token for API access" },
-						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-						resourceEndpoint: {
-							type: "string",
-							description: "URL to access the protected resource",
+					oneOf: [
+						{
+							description: "Subscription plan response: access token",
+							properties: {
+								type: { type: "string", const: "AccessGrant" },
+								accessToken: { type: "string", description: "JWT token for API access" },
+								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+								resourceEndpoint: {
+									type: "string",
+									description: "URL to access the protected resource",
+								},
+								txHash: { type: "string", description: "On-chain transaction hash" },
+								explorerUrl: { type: "string", description: "Blockchain explorer URL" },
+							},
 						},
-						txHash: { type: "string", description: "On-chain transaction hash" },
-						explorerUrl: { type: "string", description: "Blockchain explorer URL" },
-					},
+						{
+							description: "Per-request plan response: backend resource data",
+							properties: {
+								type: { type: "string", const: "ResourceResponse" },
+								resource: {
+									type: "object",
+									properties: {
+										status: { type: "number", description: "Backend HTTP status code" },
+										body: { description: "Response body from the backend" },
+									},
+								},
+								txHash: { type: "string", description: "On-chain transaction hash" },
+								explorerUrl: { type: "string", description: "Blockchain explorer URL" },
+							},
+						},
+					],
 				},
 				description: `${config.agentDescription}`,
 			},

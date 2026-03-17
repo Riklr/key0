@@ -781,4 +781,141 @@ export class ChallengeEngine {
 
 		return grant;
 	}
+
+	/**
+	 * Records a per-request payment: validates the plan, guards against double-spend,
+	 * creates/finds the PENDING challenge record, transitions to PAID, and marks the txHash used.
+	 *
+	 * Unlike `processHttpPayment`, this does NOT call `fetchResourceCredentials` and does NOT
+	 * transition to DELIVERED. The caller is responsible for proxying to the backend and calling
+	 * `markDelivered` if the backend returns a success response.
+	 *
+	 * Used by the HTTP, A2A, and MCP handlers when plan.mode === "per-request" in standalone mode.
+	 */
+	async recordPerRequestPayment(
+		requestId: string,
+		planId: string,
+		resourcePath: string,
+		txHash: `0x${string}`,
+		fromAddress?: `0x${string}`,
+	): Promise<{ challengeId: string; requestId: string; explorerUrl: string }> {
+		// 1. Validate plan
+		const tier = this.findPlan(planId);
+		if (!tier) {
+			throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found in plan catalog`, 400);
+		}
+
+		// 2. Double-spend guard
+		const alreadyUsed = await this.seenTxStore.get(txHash);
+		if (alreadyUsed) {
+			throw new Key0Error("TX_ALREADY_REDEEMED", "This txHash has already been redeemed", 409, {
+				existingChallengeId: alreadyUsed,
+			});
+		}
+
+		// 3. Find existing PENDING record or auto-create one
+		let challenge = await this.store.findActiveByRequestId(requestId);
+		if (challenge?.state === "DELIVERED") {
+			throw new Key0Error(
+				"PROOF_ALREADY_REDEEMED",
+				"This request has already been paid and delivered.",
+				200,
+				{ challengeId: challenge.challengeId },
+			);
+		}
+		if (challenge?.state === "EXPIRED" || challenge?.state === "CANCELLED") {
+			throw new Key0Error(
+				"CHALLENGE_EXPIRED",
+				"Challenge expired or cancelled. Re-request access to get a new challenge.",
+				410,
+			);
+		}
+		if (!challenge || challenge.state !== "PENDING") {
+			const challengeId = `ppr-${crypto.randomUUID()}`;
+			const expiresAt = new Date(this.now() + this.challengeTTL);
+			const nowSettle = new Date(this.now());
+			const record: ChallengeRecord = {
+				challengeId,
+				requestId,
+				clientAgentId: "x402-ppr",
+				resourceId: resourcePath,
+				planId,
+				amount: tier.unitAmount,
+				amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+				asset: "USDC",
+				chainId: this.networkConfig.chainId,
+				destination: this.config.walletAddress,
+				state: "PENDING",
+				expiresAt,
+				createdAt: nowSettle,
+				updatedAt: nowSettle,
+			};
+			await this.store.create(record, { actor: "engine", reason: "ppr_auto_created" });
+			challenge = record;
+		}
+
+		// 4. Transition PENDING → PAID
+		const transitioned = await this.store.transition(
+			challenge.challengeId,
+			"PENDING",
+			"PAID",
+			{
+				txHash,
+				paidAt: new Date(this.now()),
+				...(fromAddress ? { fromAddress } : {}),
+			},
+			{ actor: "engine", reason: "ppr_payment_verified" },
+		);
+		if (!transitioned) {
+			const updated = await this.store.get(challenge.challengeId);
+			if (updated?.state === "DELIVERED") {
+				throw new Key0Error(
+					"PROOF_ALREADY_REDEEMED",
+					"This request has already been paid and delivered.",
+					200,
+					{ challengeId: challenge.challengeId },
+				);
+			}
+			throw new Key0Error("INTERNAL_ERROR", "Concurrent state transition", 500);
+		}
+
+		// 5. Mark txHash as used (double-spend prevention)
+		const marked = await this.seenTxStore.markUsed(txHash, challenge.challengeId);
+		if (!marked) {
+			await this.store.transition(challenge.challengeId, "PAID", "PENDING", undefined, {
+				actor: "engine",
+				reason: "tx_already_redeemed_race",
+			});
+			throw new Key0Error(
+				"TX_ALREADY_REDEEMED",
+				"This txHash has already been redeemed (race condition)",
+				409,
+			);
+		}
+
+		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${txHash}`;
+		return { challengeId: challenge.challengeId, requestId: challenge.requestId, explorerUrl };
+	}
+
+	/**
+	 * Transitions a challenge from PAID to DELIVERED.
+	 * Called by the per-request proxy path after the backend returns a 2xx response.
+	 * Best-effort — failure is logged but not re-thrown (the payment was already settled).
+	 */
+	async markDelivered(challengeId: string): Promise<void> {
+		try {
+			await this.store.transition(
+				challengeId,
+				"PAID",
+				"DELIVERED",
+				{ deliveredAt: new Date(this.now()) },
+				{ actor: "engine", reason: "ppr_delivery_confirmed" },
+			);
+		} catch (err) {
+			console.error(
+				`[Key0] Failed to mark DELIVERED for ${challengeId} — record stays PAID (refund cron eligible):`,
+				err,
+			);
+		}
+	}
 }

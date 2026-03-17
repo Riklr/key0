@@ -29,10 +29,64 @@ export type NetworkConfig = {
 	};
 };
 
+export type PlanRouteInfo = {
+	readonly method: string;
+	readonly path: string;
+	readonly description?: string;
+};
+
 export type Plan = {
 	readonly planId: string;
 	readonly unitAmount: string; // "$0.10"
 	readonly description?: string;
+	/** "subscription" (default) uses the /x402/access challenge flow; "per-request" gates individual routes. */
+	readonly mode?: "subscription" | "per-request";
+	/** Declared routes for per-request plans — surfaced in discovery, agent card, and MCP discover_plans. */
+	readonly routes?: readonly PlanRouteInfo[];
+};
+
+// ---------------------------------------------------------------------------
+// Per-request / fetchResource types
+// Defined here (not in pay-per-request.ts) so SellerConfig can reference them
+// without creating a circular import between types/ and integrations/.
+// ---------------------------------------------------------------------------
+
+export type PaymentInfo = {
+	readonly txHash: `0x${string}`;
+	readonly payer: string | undefined;
+	readonly planId: string;
+	readonly amount: string;
+	readonly method: string;
+	readonly path: string;
+	readonly challengeId: string;
+};
+
+/** Request context passed to `fetchResource` in standalone gateway mode. */
+export type FetchResourceParams = {
+	readonly paymentInfo: PaymentInfo;
+	readonly method: string;
+	readonly path: string;
+	readonly headers: Record<string, string>;
+	readonly body?: unknown;
+};
+
+/** Response shape returned by `fetchResource` in standalone gateway mode. */
+export type FetchResourceResult = {
+	readonly status: number;
+	readonly headers?: Record<string, string>;
+	readonly body: unknown;
+};
+
+/**
+ * Shorthand for proxying to a backend URL instead of writing a full
+ * `fetchResource` callback. `fetchResource` takes priority when both are provided.
+ */
+export type ProxyToConfig = {
+	readonly baseUrl: string;
+	/** Extra headers merged into the proxied request (e.g. service auth). */
+	readonly headers?: Record<string, string>;
+	/** Optional path rewrite applied before forwarding (e.g. strip a prefix). */
+	readonly pathRewrite?: (path: string) => string;
 };
 
 /**
@@ -63,16 +117,32 @@ export type SellerConfig = {
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900
 
-	// Credential issuance callback (required)
+	// Credential issuance callback (required for subscription plans)
 	/**
 	 * Callback that fetches/issues resource credentials after payment is verified.
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
+	 * Not called for per-request plans when fetchResource/proxyTo is configured.
 	 */
 	readonly fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 	/** Timeout for fetchResourceCredentials callback in ms. Default: 15000. */
 	readonly tokenIssueTimeoutMs?: number;
 	/** Max retries for fetchResourceCredentials on failure. Default: 2. */
 	readonly tokenIssueRetries?: number;
+
+	// Standalone per-request proxy (optional — enables full A2A/MCP/HTTP support for per-request plans)
+	/**
+	 * Called after on-chain settlement for per-request plans. The gateway proxies the request
+	 * to the backend and returns its response directly to the client.
+	 * When set, per-request plans flow through /x402/access (HTTP, A2A, MCP).
+	 * When absent, per-request plans are HTTP-only via payPerRequest middleware.
+	 */
+	readonly fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;
+	/**
+	 * Shorthand: proxy per-request plans to a backend URL.
+	 * Builds a `fetchResource` callback automatically.
+	 * `fetchResource` takes priority when both are provided.
+	 */
+	readonly proxyTo?: ProxyToConfig;
 
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;

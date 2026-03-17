@@ -4,9 +4,19 @@ import { type NextFunction, type Request, type Response, Router } from "express"
 import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
-import type { X402PaymentRequiredResponse } from "../types/index.js";
+import type {
+	PlanRouteInfo,
+	ResourceResponse,
+	X402PaymentRequiredResponse,
+} from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { mountMcpRoutes } from "./mcp.js";
+import type { PayPerRequestOptions } from "./pay-per-request.js";
+import {
+	createExpressPayPerRequest,
+	mergePerRequestRoutes,
+	resolveConfigFetchResource,
+} from "./pay-per-request.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -14,11 +24,63 @@ import {
 	settlePayment,
 } from "./settlement.js";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type ExpressMiddleware = (
+	req: { method: string; path: string; originalUrl: string; headers: Record<string, unknown> },
+	res: {
+		status: (code: number) => { json: (data: unknown) => unknown };
+		setHeader: (name: string, value: string) => void;
+		statusCode: number;
+		on: (event: string, cb: () => void) => void;
+	},
+	next: () => void,
+) => unknown | Promise<unknown>;
+
 /**
- * Create an Express router that serves the agent card and the unified x402 endpoint.
+ * Extended Express Router returned by `key0Router`.
+ *
+ * Can be used exactly like a plain Router (`app.use(key0)`), but also
+ * exposes a `.payPerRequest()` factory that shares config, stores, and
+ * settlement logic with the router.
+ *
+ * @example
+ * ```ts
+ * const key0 = key0Router({ config, adapter, store, seenTxStore });
+ * app.use(key0);
+ *
+ * // Per-request payment — shares config with key0Router
+ * app.get("/api/weather/:city",
+ *   key0.payPerRequest("weather-query"),
+ *   (req, res) => res.json({ temp: 72 }),
+ * );
+ * ```
+ */
+export type Key0Router = Router & {
+	/**
+	 * Create a per-request payment middleware for the given plan.
+	 *
+	 * The middleware returns **402** when no `PAYMENT-SIGNATURE` header is present,
+	 * and settles on-chain + calls `next()` when one is provided.
+	 *
+	 * @param planId - Which plan from `config.plans` to charge per request
+	 * @param options - Optional callbacks (e.g. `onPayment`)
+	 */
+	payPerRequest: (planId: string, options?: PayPerRequestOptions) => ExpressMiddleware;
+};
+
+/**
+ * Create an Express router that serves the agent card, the unified x402 endpoint,
+ * and exposes a `.payPerRequest()` factory for per-request payment gating.
  *
  * Usage:
- *   app.use(key0Router({ config, adapter }));
+ *   const key0 = key0Router({ config, adapter, store, seenTxStore });
+ *   app.use(key0);
+ *
+ *   // Gate individual routes with per-request payment
+ *   app.get("/api/weather/:city", key0.payPerRequest("weather-query"), handler);
  *
  * This auto-serves:
  *   GET  /.well-known/agent.json          — A2A agent card (discovery)
@@ -27,10 +89,32 @@ import {
  *     • No header                         → x402 HTTP flow (discovery / challenge / settle)
  *   POST /mcp                             — MCP Streamable HTTP (when mcp: true)
  */
-export function key0Router(opts: Key0Config): Router {
+export function key0Router(opts: Key0Config): Key0Router {
 	const { requestHandler, engine } = createKey0(opts);
-	const router = Router();
+	const router = Router() as Key0Router;
 	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+
+	// ── Pay-per-request factory ──────────────────────────────────────────
+	// Shares config, stores, and networkConfig with this router instance.
+	const pprDeps = {
+		config: opts.config,
+		networkConfig,
+		seenTxStore: opts.seenTxStore,
+		store: opts.store,
+	} as const;
+
+	// Runtime route registry: populated when .payPerRequest() is called with options.route.
+	// Discovery merges these with config-declared routes at request time.
+	const pprRouteRegistry = new Map<string, PlanRouteInfo[]>();
+
+	router.payPerRequest = (planId: string, options?: PayPerRequestOptions) => {
+		if (options?.route) {
+			const existing = pprRouteRegistry.get(planId) ?? [];
+			existing.push(options.route);
+			pprRouteRegistry.set(planId, existing);
+		}
+		return createExpressPayPerRequest(planId, pprDeps, options);
+	};
 
 	// Agent Card
 	router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
@@ -63,6 +147,9 @@ export function key0Router(opts: Key0Config): Router {
 				const body = req.body || {};
 				let { planId, resourceId = "default" } = body;
 				let { requestId } = body;
+				const resource = body.resource as
+					| { method: string; path: string; body?: unknown }
+					| undefined;
 
 				// Check for PAYMENT-SIGNATURE header
 				const paymentSignature = req.headers["payment-signature"] as string | undefined;
@@ -118,6 +205,11 @@ export function key0Router(opts: Key0Config): Router {
 					const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
 					console.log(`[x402-access] ✓ PENDING record created, challengeId=${challengeId}`);
 
+					// Determine plan mode to add resource field to schema for per-request plans
+					const planForChallenge = opts.config.plans.find((p) => p.planId === planId);
+					const isPprPlan = planForChallenge?.mode === "per-request";
+					const isStandaloneForChallenge = !!resolveConfigFetchResource(opts.config);
+
 					// Build payment requirements with schema
 					console.log(`[x402-access] Building payment requirements for tier: ${planId}`);
 					const requirements: X402PaymentRequiredResponse = buildHttpPaymentRequirements(
@@ -138,23 +230,56 @@ export function key0Router(opts: Key0Config): Router {
 										description:
 											"Client-generated UUID for idempotency (auto-generated if omitted)",
 									},
-									resourceId: {
-										type: "string",
-										description: "Optional: Specific resource identifier (defaults to 'default')",
-									},
+									...(isPprPlan && isStandaloneForChallenge
+										? {
+												resource: {
+													type: "object",
+													description:
+														"The backend resource to call after payment (required for per-request plans)",
+													properties: {
+														method: { type: "string" },
+														path: { type: "string" },
+														body: {
+															description: "Optional request body forwarded to the backend",
+														},
+													},
+													required: ["method", "path"],
+												},
+											}
+										: {
+												resourceId: {
+													type: "string",
+													description:
+														"Optional: Specific resource identifier (defaults to 'default')",
+												},
+											}),
 								},
-								required: ["planId"],
+								required:
+									isPprPlan && isStandaloneForChallenge ? ["planId", "resource"] : ["planId"],
 							},
 							outputSchema: {
 								type: "object",
 								properties: {
-									accessToken: { type: "string", description: "JWT token for API access" },
-									tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-									expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
-									resourceEndpoint: {
-										type: "string",
-										description: "URL to access the protected resource",
-									},
+									...(isPprPlan && isStandaloneForChallenge
+										? {
+												resource: {
+													type: "object",
+													description: "The backend resource response",
+													properties: {
+														status: { type: "number" },
+														body: { description: "Response body from the backend" },
+													},
+												},
+											}
+										: {
+												accessToken: { type: "string", description: "JWT token for API access" },
+												tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+												expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
+												resourceEndpoint: {
+													type: "string",
+													description: "URL to access the protected resource",
+												},
+											}),
 									txHash: { type: "string", description: "On-chain transaction hash" },
 									explorerUrl: { type: "string", description: "Blockchain explorer URL" },
 								},
@@ -184,7 +309,7 @@ export function key0Router(opts: Key0Config): Router {
 					});
 				}
 
-				// ===== CASE 3: planId + PAYMENT-SIGNATURE → Settle and return access grant =====
+				// ===== CASE 3: planId + PAYMENT-SIGNATURE → Settle and return access grant or resource =====
 				console.log("[x402-access] → CASE 3: Processing payment");
 				console.log(
 					`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`,
@@ -218,8 +343,116 @@ export function key0Router(opts: Key0Config): Router {
 				console.log(`[x402-access]   - Payer: ${payer}`);
 				console.log(`[x402-access]   - Settle Response:`, JSON.stringify(settleResponse, null, 2));
 
-				// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
-				console.log(`[x402-access] Processing payment for requestId: ${requestId}`);
+				// Set payment-response header
+				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
+				res.setHeader("payment-response", paymentResponse);
+
+				// Determine plan mode and deployment mode
+				const plan = opts.config.plans.find((p) => p.planId === planId);
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+
+				if (plan?.mode === "per-request") {
+					if (!fetchResourceFn) {
+						// Embedded mode: per-request plans must be accessed via their route endpoints
+						const routePath = plan.routes?.[0]?.path ?? "/";
+						return res.status(400).json({
+							error: "PER_REQUEST_EMBEDDED_MODE",
+							message:
+								"Per-request plans must be accessed via their route endpoints directly. " +
+								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
+						});
+					}
+
+					// Standalone mode: validate resource field
+					if (!resource?.method || !resource?.path) {
+						return res.status(400).json({
+							error: "MISSING_RESOURCE_FIELD",
+							message:
+								'Per-request plans require a "resource" field in the request body: ' +
+								'{ method: "GET", path: "/api/example" }',
+						});
+					}
+
+					// Record payment (PENDING → PAID) without issuing a token
+					console.log(
+						`[x402-access] Per-request plan: recording payment for requestId: ${requestId}`,
+					);
+					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
+						requestId,
+						planId,
+						resource.path,
+						txHash,
+						payer as `0x${string}` | undefined,
+					);
+
+					// Build request headers to forward (strip hop-by-hop and body-related
+					// headers when the proxied method carries no body — forwarding Content-Length
+					// from the incoming POST to a GET causes the backend to hang waiting for a
+					// body that never arrives).
+					const noBodyMethod =
+						resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+					const skipHeaders = new Set([
+						"host",
+						"connection",
+						"payment-signature",
+						"transfer-encoding",
+						...(noBodyMethod ? ["content-length", "content-type"] : []),
+					]);
+					const forwardHeaders: Record<string, string> = {};
+					for (const [key, value] of Object.entries(req.headers)) {
+						if (value && !skipHeaders.has(key.toLowerCase())) {
+							forwardHeaders[key] = Array.isArray(value) ? value.join(", ") : value;
+						}
+					}
+
+					// Proxy to backend
+					console.log(`[x402-access] Proxying to backend: ${resource.method} ${resource.path}`);
+					const backendResult = await fetchResourceFn({
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId,
+							amount: plan.unitAmount,
+							method: resource.method,
+							path: resource.path,
+							challengeId,
+						},
+						method: resource.method,
+						path: resource.path,
+						headers: forwardHeaders,
+						body: resource.body,
+					});
+					console.log(`[x402-access] Backend responded with status ${backendResult.status}`);
+
+					// Mark delivered if backend returned 2xx
+					if (backendResult.status >= 200 && backendResult.status < 300) {
+						await engine.markDelivered(challengeId);
+					} else {
+						console.warn(
+							`[x402-access] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+						);
+					}
+
+					const resourceResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId,
+						requestId,
+						planId,
+						txHash,
+						explorerUrl,
+						resource: {
+							status: backendResult.status,
+							...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
+							body: backendResult.body,
+						},
+					};
+
+					console.log("[x402-access] → Returning HTTP 200 OK with ResourceResponse");
+					return res.status(200).json(resourceResponse);
+				}
+
+				// Subscription plan: process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
+				console.log(`[x402-access] Processing subscription payment for requestId: ${requestId}`);
 				const grant = await engine.processHttpPayment(
 					requestId,
 					planId,
@@ -230,11 +463,7 @@ export function key0Router(opts: Key0Config): Router {
 				console.log("[x402-access] ✓ Access grant issued successfully");
 				console.log("[x402-access] Grant details:", JSON.stringify(grant, null, 2));
 
-				// Set payment-response header
-				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
-				res.setHeader("payment-response", paymentResponse);
 				console.log(`[x402-access] payment-response header set (${paymentResponse.length} bytes)`);
-
 				console.log("[x402-access] → Returning HTTP 200 OK with access grant");
 				return res.status(200).json(grant);
 			} catch (err: unknown) {
@@ -273,13 +502,14 @@ export function key0Router(opts: Key0Config): Router {
 	);
 
 	router.get("/discovery", (_req: Request, res: Response) => {
-		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
+		const mergedRoutes = mergePerRequestRoutes(opts.config.plans, pprRouteRegistry);
+		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig, mergedRoutes);
 		return res.status(200).json({ discoveryResponse });
 	});
 
 	// MCP routes (when mcp: true)
 	if (opts.config.mcp) {
-		mountMcpRoutes(router, engine, opts.config);
+		mountMcpRoutes(router, engine, opts.config, pprRouteRegistry);
 	}
 
 	return router;
@@ -308,4 +538,13 @@ export function validateAccessToken(config: ValidateAccessTokenConfig) {
 	};
 }
 
+export type {
+	FetchResourceParams,
+	FetchResourceResult,
+	PaymentInfo,
+	PayPerRequestConfig,
+	PayPerRequestOptions,
+	ProxyToConfig,
+} from "./pay-per-request.js";
+export { key0PayPerRequest } from "./pay-per-request.js";
 export type { ValidateAccessTokenConfig };
