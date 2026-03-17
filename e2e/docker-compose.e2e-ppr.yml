@@ -1,0 +1,39 @@
+services:
+  key0:
+    build: ..
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: 3000
+      KEY0_WALLET_ADDRESS: ${KEY0_WALLET_ADDRESS}
+      KEY0_WALLET_PRIVATE_KEY: ${KEY0_WALLET_KEY}
+      GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
+      KEY0_NETWORK: testnet
+      REDIS_URL: redis://redis:6379
+      CHALLENGE_TTL_SECONDS: 300
+      AGENT_URL: http://localhost:3002
+      BASE_PATH: /a2a
+      PROXY_TO_BASE_URL: http://host.docker.internal:3001
+      # PPR-only plans never call this, but docker/server.ts requires it for isConfigured
+      ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
+      PLANS: '[{"planId":"weather-query","unitAmount":"$0.01","description":"Weather query per request","mode":"per-request"},{"planId":"joke-of-the-day","unitAmount":"$0.005","description":"Joke per request","mode":"per-request"}]'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6382:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5

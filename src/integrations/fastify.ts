@@ -169,6 +169,19 @@ function mountFastifyRoutes(
 			// CASE 2: planId, no PAYMENT-SIGNATURE → Challenge
 			if (!paymentSignature) {
 				console.log("[x402-access/fastify] → CASE 2: Challenge 402");
+
+				// Validate: per-request plans in standalone mode require a resource field
+				const planForValidation = opts.config.plans.find((p) => p.planId === planId);
+				const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
+				if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
+					return reply.code(400).send({
+						type: "Error",
+						code: "RESOURCE_REQUIRED",
+						message:
+							"Per-request plans in standalone mode require a 'resource' field (method + path).",
+					});
+				}
+
 				const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
 
 				const planForChallenge = opts.config.plans.find((p) => p.planId === planId);

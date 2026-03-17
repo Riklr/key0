@@ -21,3 +21,10 @@ export const REFUND_INTERVAL_MS = 5000;
 export const REFUND_MIN_AGE_MS = 3000;
 /** Poll timeout for refund assertions: interval + min age + buffer */
 export const REFUND_POLL_TIMEOUT_MS = 30_000;
+
+/** PPR plan IDs (standalone docker stack on port 3002) */
+export const PPR_WEATHER_PLAN_ID = "weather-query";
+export const PPR_JOKE_PLAN_ID = "joke-of-the-day";
+export const PPR_WEATHER_AMOUNT_MICRO = 10_000n; // $0.01 USDC
+export const PPR_JOKE_AMOUNT_MICRO = 5_000n; // $0.005 USDC
+export const PPR_KEY0_URL = "http://localhost:3002";

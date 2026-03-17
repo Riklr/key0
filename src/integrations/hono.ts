@@ -167,6 +167,22 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 			// CASE 2: planId, no PAYMENT-SIGNATURE → Challenge
 			if (!paymentSignature) {
 				console.log("[x402-access/hono] → CASE 2: Challenge 402");
+
+				// Validate: per-request plans in standalone mode require a resource field
+				const planForValidation = opts.config.plans.find((p) => p.planId === planId);
+				const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
+				if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
+					return c.json(
+						{
+							type: "Error",
+							code: "RESOURCE_REQUIRED",
+							message:
+								"Per-request plans in standalone mode require a 'resource' field (method + path).",
+						},
+						400,
+					);
+				}
+
 				const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
 
 				const planForChallenge = opts.config.plans.find((p) => p.planId === planId);

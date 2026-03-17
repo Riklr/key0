@@ -199,6 +199,19 @@ export function key0Router(opts: Key0Config): Key0Router {
 					console.log(
 						"[x402-access] → CASE 2: planId provided, no PAYMENT-SIGNATURE, issuing 402 challenge",
 					);
+
+					// Validate: per-request plans in standalone mode require a resource field
+					const planForValidation = opts.config.plans.find((p) => p.planId === planId);
+					const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
+					if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
+						return res.status(400).json({
+							type: "Error",
+							code: "RESOURCE_REQUIRED",
+							message:
+								"Per-request plans in standalone mode require a 'resource' field (method + path).",
+						});
+					}
+
 					console.log(`[x402-access] Creating PENDING record for requestId: ${requestId}`);
 
 					// Create PENDING record via engine (handles tier/resource validation and idempotency)

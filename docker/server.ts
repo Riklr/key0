@@ -310,6 +310,7 @@ if (!isConfigured) {
 	const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
 	const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 	const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+	const _PROXY_TO_BASE_URL = process.env.PROXY_TO_BASE_URL;
 	const WALLET_PRIVATE_KEY = process.env.KEY0_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 	const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 	const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
@@ -615,6 +616,7 @@ if (!isConfigured) {
 				...(GAS_WALLET_PRIVATE_KEY && redis
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),
+				...(_PROXY_TO_BASE_URL ? { proxyTo: { baseUrl: _PROXY_TO_BASE_URL } } : {}),
 			},
 			adapter,
 			store,
