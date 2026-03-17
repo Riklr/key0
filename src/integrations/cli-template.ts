@@ -1,3 +1,7 @@
+import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 // These constants are replaced by buildCli() at build time.
 // When running tests, they have placeholder values.
 export const CLI_NAME = "__CLI_NAME__";
@@ -97,10 +101,75 @@ export async function runRequest(
 }
 
 export async function runInstall(
-	_binaryName: string,
-	_opts?: Record<string, unknown>,
+	binaryName: string,
+	opts?: {
+		localBinDir?: string;
+		systemBinDir?: string;
+		platform?: string;
+		isRoot?: boolean;
+		pathEnv?: string;
+		execPath?: string;
+	},
 ): Promise<CliResult> {
-	return { exitCode: 1, output: { error: "not implemented", code: "NOT_IMPLEMENTED" } };
+	const platform = opts?.platform ?? process.platform;
+	if (platform === "win32") {
+		return {
+			exitCode: 1,
+			output: { error: "Windows is not supported", code: "UNSUPPORTED_PLATFORM" },
+		};
+	}
+
+	const isRoot = opts?.isRoot ?? process.getuid?.() === 0;
+	const srcPath = opts?.execPath ?? process.execPath;
+	const localBinDir = opts?.localBinDir ?? join(homedir(), ".local", "bin");
+	const systemBinDir = opts?.systemBinDir ?? "/usr/local/bin";
+	const pathEnv = opts?.pathEnv ?? process.env["PATH"] ?? "";
+
+	function tryInstall(dir: string): string | null {
+		try {
+			mkdirSync(dir, { recursive: true });
+			const dest = join(dir, binaryName);
+			copyFileSync(srcPath, dest);
+			chmodSync(dest, 0o755);
+			return dest;
+		} catch {
+			return null;
+		}
+	}
+
+	let installed: string | null = null;
+	let usedLocalBin = false;
+
+	if (!isRoot) {
+		installed = tryInstall(localBinDir);
+		if (installed !== null) usedLocalBin = true;
+	}
+
+	if (installed === null) {
+		installed = tryInstall(systemBinDir);
+	}
+
+	if (installed === null) {
+		return {
+			exitCode: 1,
+			output: {
+				error: `Permission denied. Try: sudo ./${binaryName} --install`,
+				code: "PERMISSION_DENIED",
+			},
+		};
+	}
+
+	const installDir = usedLocalBin ? localBinDir : systemBinDir;
+	const inPath = pathEnv.split(":").includes(installDir);
+	const output: Record<string, unknown> = { installed, inPath };
+
+	if (usedLocalBin) {
+		// `addToPath` uses the actual installDir so the hint is accurate
+		// even when localBinDir is overridden via opts
+		output["addToPath"] = `export PATH="${installDir}:$PATH"`;
+	}
+
+	return { exitCode: 0, output };
 }
 
 export async function runMain(args: string[], name: string, url: string): Promise<CliResult> {

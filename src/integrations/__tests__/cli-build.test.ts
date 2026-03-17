@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCli, generateCliSource } from "../cli.js";
-import { parseCli } from "../cli-template.js";
+import { parseCli, runInstall } from "../cli-template.js";
 
 describe("parseCli", () => {
 	test("--install returns install command", () => {
@@ -84,4 +84,162 @@ describe("buildCli", () => {
 		expect(output.commands).toHaveProperty("discover");
 		expect(output.commands).toHaveProperty("request");
 	}, 120_000);
+});
+
+describe("runInstall", () => {
+	let fakeBinary: string;
+	let tmpBase: string;
+
+	beforeAll(async () => {
+		tmpBase = mkdtempSync(join(tmpdir(), "install-test-"));
+		fakeBinary = join(tmpBase, "fake-binary");
+		await Bun.write(fakeBinary, "#!/bin/sh\necho hello");
+		chmodSync(fakeBinary, 0o755);
+	});
+
+	afterAll(() => {
+		rmSync(tmpBase, { recursive: true, force: true });
+	});
+
+	test("installs to localBinDir when writable", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: false,
+				pathEnv: localDir,
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output["installed"]).toBe(join(localDir, "my-agent"));
+			expect(result.output["inPath"]).toBe(true);
+			expect(result.output["addToPath"]).toBeTypeOf("string");
+			expect(result.output["addToPath"] as string).toContain(localDir);
+			const mode = statSync(join(localDir, "my-agent")).mode;
+			expect(mode & 0o755).toBe(0o755);
+		} finally {
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
+
+	test("falls through to systemBinDir when localBinDir is not writable", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			chmodSync(localDir, 0o555);
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: false,
+				pathEnv: systemDir,
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output["installed"]).toBe(join(systemDir, "my-agent"));
+			expect(result.output["addToPath"]).toBeUndefined();
+		} finally {
+			chmodSync(localDir, 0o755);
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
+
+	test("returns PERMISSION_DENIED when both dirs are not writable", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			chmodSync(localDir, 0o555);
+			chmodSync(systemDir, 0o555);
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: false,
+				pathEnv: "",
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(1);
+			expect(result.output["code"]).toBe("PERMISSION_DENIED");
+		} finally {
+			chmodSync(localDir, 0o755);
+			chmodSync(systemDir, 0o755);
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
+
+	test("returns UNSUPPORTED_PLATFORM on Windows", async () => {
+		const result = await runInstall("my-agent", { platform: "win32", execPath: fakeBinary });
+		expect(result.exitCode).toBe(1);
+		expect(result.output["code"]).toBe("UNSUPPORTED_PLATFORM");
+	});
+
+	test("skips localBinDir and installs to systemBinDir when root", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: true,
+				pathEnv: systemDir,
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output["installed"]).toBe(join(systemDir, "my-agent"));
+			expect(result.output["addToPath"]).toBeUndefined();
+		} finally {
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
+
+	test("inPath is false and addToPath is present when install dir not in PATH", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: false,
+				pathEnv: "/usr/bin:/usr/local/bin",
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output["inPath"]).toBe(false);
+			expect(result.output["addToPath"]).toBeTypeOf("string");
+		} finally {
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
+
+	test("addToPath is absent when installed to systemBinDir", async () => {
+		const localDir = mkdtempSync(join(tmpdir(), "local-bin-"));
+		const systemDir = mkdtempSync(join(tmpdir(), "system-bin-"));
+		try {
+			chmodSync(localDir, 0o555);
+			const result = await runInstall("my-agent", {
+				localBinDir: localDir,
+				systemBinDir: systemDir,
+				platform: "linux",
+				isRoot: false,
+				pathEnv: systemDir,
+				execPath: fakeBinary,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output["addToPath"]).toBeUndefined();
+		} finally {
+			chmodSync(localDir, 0o755);
+			rmSync(localDir, { recursive: true, force: true });
+			rmSync(systemDir, { recursive: true, force: true });
+		}
+	});
 });
