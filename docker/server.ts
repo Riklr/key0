@@ -56,9 +56,11 @@ const redisUsable = await isHostReachable(REDIS_URL);
 const postgresUrlUsable = await isHostReachable(process.env.DATABASE_URL);
 const STORAGE_BACKEND_EARLY = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 
+// Proxy-only mode: ISSUE_TOKEN_API not required when PROXY_TO_BASE_URL is set
+const isProxyOnlyMode = Boolean(process.env.PROXY_TO_BASE_URL);
 const isConfigured = Boolean(
 	WALLET_ADDRESS &&
-		ISSUE_TOKEN_API &&
+		(ISSUE_TOKEN_API || isProxyOnlyMode) &&
 		(STORAGE_BACKEND_EARLY === "postgres" ? postgresUrlUsable && redisUsable : redisUsable),
 );
 
@@ -384,11 +386,13 @@ if (!isConfigured) {
 		console.log("[key0] Using Redis storage:", REDIS_URL);
 	}
 
-	// Token issuance
-	const fetchResourceCredentials = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
-		apiSecret: ISSUE_TOKEN_API_SECRET,
-		plans,
-	});
+	// Token issuance — optional in proxy-only mode (no ISSUE_TOKEN_API)
+	const fetchResourceCredentials = ISSUE_TOKEN_API
+		? buildDockerTokenIssuer(ISSUE_TOKEN_API, {
+				apiSecret: ISSUE_TOKEN_API_SECRET,
+				plans,
+			})
+		: undefined;
 
 	// Adapter & routes
 	const adapter = new X402Adapter({

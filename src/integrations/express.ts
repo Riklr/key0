@@ -557,6 +557,86 @@ export function key0Router(opts: Key0Config): Key0Router {
 					return res.status(200).json(resourceResponse);
 				}
 
+				// ProxyPath plan: record payment then proxy to backend (no token issuance)
+				if (plan?.proxyPath && fetchResourceFn) {
+					const rawParams = (req.body?.params ?? {}) as Record<string, string>;
+					let resolvedProxyPath: string;
+					try {
+						resolvedProxyPath = interpolateUrlTemplate(plan.proxyPath, rawParams);
+					} catch (err) {
+						return res.status(400).json({ error: "TEMPLATE_ERROR", message: (err as Error).message });
+					}
+					const qs = plan.proxyQuery
+						? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
+						: "";
+
+					const { challengeId: proxyChallengeId, explorerUrl: proxyExplorerUrl } =
+						await engine.recordPerRequestPayment(
+							requestId,
+							planId,
+							resolvedProxyPath,
+							txHash,
+							payer as `0x${string}` | undefined,
+						);
+
+					await engine.assertPaidState(proxyChallengeId);
+
+					let backendResult: Awaited<ReturnType<NonNullable<typeof fetchResourceFn>>>;
+					try {
+						backendResult = await fetchResourceFn({
+							method: plan.proxyMethod ?? "GET",
+							path: resolvedProxyPath + qs,
+							headers: {},
+							paymentInfo: {
+								txHash,
+								payer: payer ?? undefined,
+								planId,
+								amount: plan.unitAmount ?? "$0",
+								method: plan.proxyMethod ?? "GET",
+								path: resolvedProxyPath,
+								challengeId: proxyChallengeId,
+							},
+						});
+					} catch (err) {
+						const msg =
+							err instanceof Error && err.name === "AbortError"
+								? "Backend timed out. A refund has been initiated."
+								: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
+						await engine.initiateRefund(proxyChallengeId, "proxy_timeout").catch(() => {});
+						return res
+							.status(502)
+							.json({ type: "Error", code: "PROXY_ERROR", message: msg });
+					}
+
+					if (backendResult.status >= 400) {
+						await engine
+							.initiateRefund(proxyChallengeId, "backend_non_2xx")
+							.catch(() => {});
+						return res.status(502).json({
+							type: "Error",
+							code: "PROXY_BACKEND_ERROR",
+							message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+						});
+					}
+
+					await engine.markDelivered(proxyChallengeId).catch(() => {});
+
+					const proxyResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId: proxyChallengeId,
+						requestId,
+						planId,
+						txHash,
+						explorerUrl: proxyExplorerUrl,
+						resource: {
+							status: backendResult.status,
+							...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
+							body: backendResult.body,
+						},
+					};
+					return res.status(200).json(proxyResponse);
+				}
+
 				// Subscription plan: process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
 				console.log(`[x402-access] Processing subscription payment for requestId: ${requestId}`);
 				const grant = await engine.processHttpPayment(

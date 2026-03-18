@@ -62,9 +62,12 @@ export function validateSellerConfig(config: SellerConfig): void {
 		}
 	}
 
-	// Only require fetchResourceCredentials if there are subscription plans
-	const hasSubscriptionPlans = config.plans.some((p) => !p.free && p.mode !== "per-request");
-	if (hasSubscriptionPlans && typeof config.fetchResourceCredentials !== "function") {
+	// Only require fetchResourceCredentials for plans that don't use proxy routing
+	// Plans with proxyPath (proxy-only mode) don't need fetchResourceCredentials
+	const hasPlansNeedingCredentials = config.plans.some(
+		(p) => !p.free && !p.proxyPath && p.mode !== "per-request",
+	);
+	if (hasPlansNeedingCredentials && typeof config.fetchResourceCredentials !== "function") {
 		throw new Error("SellerConfig: fetchResourceCredentials is required for subscription plans");
 	}
 }
