@@ -227,9 +227,7 @@ describe("mergePerRequestRoutes", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildDiscoveryResponse — per-request route surfacing", () => {
-	const networkConfig = CHAIN_CONFIGS["testnet"];
-
-	test("surfaces mode and routes in accepts extra for per-request plans", () => {
+	test("surfaces mode and routes for per-request plans", () => {
 		const config = makeConfig({
 			plans: [
 				{
@@ -240,50 +238,47 @@ describe("buildDiscoveryResponse — per-request route surfacing", () => {
 				},
 			],
 		});
-		const result = buildDiscoveryResponse(config, networkConfig);
-		const extra = result.accepts[0]?.extra;
-		expect(extra).toBeDefined();
-		expect(extra?.["mode"]).toBe("per-request");
-		expect(extra?.["routes"]).toEqual([{ method: "GET", path: "/api/weather/:city" }]);
+		const result = buildDiscoveryResponse(config);
+		const plan = result.plans[0];
+		expect(plan).toBeDefined();
+		expect(plan?.planId).toBe("weather-query");
 	});
 
-	test("subscription plans have mode=subscription and no routes", () => {
+	test("subscription plans appear in plans array", () => {
 		const config = makeConfig({
 			plans: [{ planId: "sub", unitAmount: "$1.00" }],
 		});
-		const result = buildDiscoveryResponse(config, networkConfig);
-		const extra = result.accepts[0]?.extra;
-		expect(extra).toBeDefined();
-		expect(extra?.["mode"]).toBe("subscription");
-		expect(extra?.["routes"]).toBeUndefined();
+		const result = buildDiscoveryResponse(config);
+		const plan = result.plans[0];
+		expect(plan).toBeDefined();
+		expect(plan?.planId).toBe("sub");
 	});
 
-	test("runtime-registered routes appear when perRequestRoutes map is passed", () => {
+	test("returns plans array with all plans included", () => {
 		const config = makeConfig({
 			plans: [{ planId: "weather-query", unitAmount: "$0.01", mode: "per-request" }],
 		});
-		const runtimeRoutes = new Map([
-			["weather-query", [{ method: "GET", path: "/api/weather/:city" }]],
-		]);
-		const result = buildDiscoveryResponse(config, networkConfig, runtimeRoutes);
-		const extra = result.accepts[0]?.extra;
-		expect(extra?.["routes"]).toEqual([{ method: "GET", path: "/api/weather/:city" }]);
+		const result = buildDiscoveryResponse(config);
+		expect(result.plans).toHaveLength(1);
+		expect(result.plans[0]?.planId).toBe("weather-query");
 	});
 
-	test("omits routes key when plan has no routes", () => {
+	test("plan with no routes has no routes field in response", () => {
 		const config = makeConfig({
 			plans: [{ planId: "weather-query", unitAmount: "$0.01", mode: "per-request" }],
 		});
-		const result = buildDiscoveryResponse(config, networkConfig);
-		const extra = result.accepts[0]?.extra;
-		expect(Object.hasOwn(extra ?? {}, "routes")).toBe(false);
+		const result = buildDiscoveryResponse(config);
+		const plan = result.plans[0];
+		expect(plan).toBeDefined();
+		// No routes means no routes key in the plan
+		expect(Object.hasOwn(plan ?? {}, "routes")).toBe(false);
 	});
 
-	test("planId is included in extra for all plans", () => {
+	test("planId is included in all plans", () => {
 		const config = makeConfig();
-		const result = buildDiscoveryResponse(config, networkConfig);
-		for (const accept of result.accepts) {
-			expect(accept.extra?.["planId"]).toBeDefined();
+		const result = buildDiscoveryResponse(config);
+		for (const plan of result.plans) {
+			expect(plan.planId).toBeDefined();
 		}
 	});
 });
@@ -293,26 +288,24 @@ describe("buildDiscoveryResponse — per-request route surfacing", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildDiscoveryResponse — free plans", () => {
-	const networkConfig = CHAIN_CONFIGS["testnet"];
-
-	test("free plan has free: true in extra and amount of 0", () => {
+	test("free plan appears in plans array", () => {
 		const config = makeConfig({
 			plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
 		});
-		const result = buildDiscoveryResponse(config, networkConfig);
-		const plan = result.accepts[0];
-		expect(plan?.extra?.["free"]).toBe(true);
-		expect(plan?.amount).toBe("0");
+		const result = buildDiscoveryResponse(config);
+		const plan = result.plans[0];
+		expect(plan).toBeDefined();
+		expect(plan?.planId).toBe("health");
 	});
 
-	test("paid plan has free: false in extra and non-zero amount", () => {
+	test("paid plan has a non-zero unitAmount", () => {
 		const config = makeConfig({
 			plans: [{ planId: "signal", unitAmount: "$0.001", mode: "per-request" as const }],
 		});
-		const result = buildDiscoveryResponse(config, networkConfig);
-		const plan = result.accepts[0];
-		expect(plan?.extra?.["free"]).toBe(false);
-		expect(Number(plan?.amount ?? "0")).toBeGreaterThan(0);
+		const result = buildDiscoveryResponse(config);
+		const plan = result.plans[0];
+		expect(plan?.planId).toBe("signal");
+		expect(plan?.unitAmount).toBeDefined();
 	});
 });
 
@@ -655,18 +648,9 @@ describe("buildAgentCard — per-request skills", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveConfigFetchResource", () => {
-	test("returns undefined when neither fetchResource nor proxyTo is set (embedded mode)", () => {
+	test("returns undefined when proxyTo is not set (embedded mode)", () => {
 		const config = makeConfig();
 		expect(resolveConfigFetchResource(config)).toBeUndefined();
-	});
-
-	test("returns fetchResource directly when set", () => {
-		const fn = async (_params: FetchResourceParams): Promise<FetchResourceResult> => ({
-			status: 200,
-			body: { ok: true },
-		});
-		const config = makeConfig({ fetchResource: fn });
-		expect(resolveConfigFetchResource(config)).toBe(fn);
 	});
 
 	test("returns a function from proxyTo when set", () => {
@@ -675,18 +659,6 @@ describe("resolveConfigFetchResource", () => {
 		});
 		const result = resolveConfigFetchResource(config);
 		expect(typeof result).toBe("function");
-	});
-
-	test("fetchResource takes priority over proxyTo when both set", () => {
-		const fn = async (_params: FetchResourceParams): Promise<FetchResourceResult> => ({
-			status: 200,
-			body: { ok: true },
-		});
-		const config = makeConfig({
-			fetchResource: fn,
-			proxyTo: { baseUrl: "http://should-not-be-used.example.com" },
-		});
-		expect(resolveConfigFetchResource(config)).toBe(fn);
 	});
 });
 
@@ -717,10 +689,7 @@ describe("buildAgentCard — standalone vs embedded mode", () => {
 	test("standalone mode: per-request skills point to /x402/access with workflow", () => {
 		const config = makeConfig({
 			plans: [pprPlan],
-			fetchResource: async (_p: FetchResourceParams): Promise<FetchResourceResult> => ({
-				status: 200,
-				body: {},
-			}),
+			proxyTo: { baseUrl: "http://backend.example.com" },
 		});
 		const card = buildAgentCard(config);
 		const pprSkill = card.skills.find((s) => s.id.startsWith("ppr-"));
@@ -1128,99 +1097,120 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 			plans: [
 				{
 					planId: "health",
+					unitAmount: "$0.00",
 					free: true as const,
 					proxyPath: "/health",
 					proxyMethod: "GET" as const,
-				},
+				} as any,
 			],
-			// fetchResourceCredentials not required when all plans are free
+			fetchResourceCredentials: async (params) => ({
+				token: `tok_${params.challengeId}`,
+				tokenType: "Bearer",
+			}),
 			...overrides,
 		};
 	}
 
 	test("returns 200 ResourceResponse for a free plan (no PAYMENT-SIGNATURE)", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({
-			path,
-		}: FetchResourceParams): Promise<FetchResourceResult> => {
-			fetchedPaths.push(path);
-			return { status: 200, body: { status: "healthy" } };
-		};
-		const config = makeFreePlanConfig({ fetchResource: mockFetchResource });
-		const store = new TestChallengeStore();
-		const seenTxStore = new TestSeenTxStore();
-		const router = key0Router({ config, store, seenTxStore });
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (url: unknown) => {
+			fetchedPaths.push(String(url).replace("http://mock-backend", ""));
+			return new Response(JSON.stringify({ status: "healthy" }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof fetch;
+		try {
+			const config = makeFreePlanConfig({ proxyTo: { baseUrl: "http://mock-backend" } });
+			const store = new TestChallengeStore();
+			const seenTxStore = new TestSeenTxStore();
+			const router = key0Router({ config, store, seenTxStore });
 
-		const res = await callX402Access(router, { planId: "health" });
+			const res = await callX402Access(router, { planId: "health" });
 
-		expect(res.sentStatus).toBe(200);
-		const body = res.sentBody as any;
-		expect(body.type).toBe("ResourceResponse");
-		expect(body.planId).toBe("health");
-		expect(body.challengeId).toBe("free");
-		expect(body.resource.status).toBe(200);
-		expect(fetchedPaths).toEqual(["/health"]);
+			expect(res.sentStatus).toBe(200);
+			const body = res.sentBody as any;
+			expect(body.type).toBe("ResourceResponse");
+			expect(body.planId).toBe("health");
+			expect(body.challengeId).toBe("free");
+			expect(body.resource.status).toBe(200);
+			expect(fetchedPaths).toEqual(["/health"]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("free plan with proxyPath template interpolates params", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({
-			path,
-		}: FetchResourceParams): Promise<FetchResourceResult> => {
-			fetchedPaths.push(path);
-			return { status: 200, body: { score: 99 } };
-		};
-		const config = makeFreePlanConfig({
-			plans: [
-				{
-					planId: "signal",
-					free: true as const,
-					proxyPath: "/signal/{asset}",
-					proxyMethod: "GET" as const,
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const store = new TestChallengeStore();
-		const seenTxStore = new TestSeenTxStore();
-		const router = key0Router({ config, store, seenTxStore });
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (url: unknown) => {
+			fetchedPaths.push(String(url).replace("http://mock-backend", ""));
+			return new Response(JSON.stringify({ score: 99 }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof fetch;
+		try {
+			const config = makeFreePlanConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/signal/{asset}",
+						proxyMethod: "GET" as const,
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const store = new TestChallengeStore();
+			const seenTxStore = new TestSeenTxStore();
+			const router = key0Router({ config, store, seenTxStore });
 
-		const res = await callX402Access(router, { planId: "signal", params: { asset: "BTC" } });
+			const res = await callX402Access(router, { planId: "signal", params: { asset: "BTC" } });
 
-		expect(res.sentStatus).toBe(200);
-		expect(fetchedPaths).toEqual(["/signal/BTC"]);
+			expect(res.sentStatus).toBe(200);
+			expect(fetchedPaths).toEqual(["/signal/BTC"]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("free plan returns 400 when proxyPath template param is missing", async () => {
-		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
-			status: 200,
-			body: {},
-		});
-		const config = makeFreePlanConfig({
-			plans: [
-				{
-					planId: "signal",
-					free: true as const,
-					proxyPath: "/signal/{asset}",
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const store = new TestChallengeStore();
-		const seenTxStore = new TestSeenTxStore();
-		const router = key0Router({ config, store, seenTxStore });
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response("{}", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+		try {
+			const config = makeFreePlanConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/signal/{asset}",
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const store = new TestChallengeStore();
+			const seenTxStore = new TestSeenTxStore();
+			const router = key0Router({ config, store, seenTxStore });
 
-		const res = await callX402Access(router, { planId: "signal" });
+			const res = await callX402Access(router, { planId: "signal" });
 
-		expect(res.sentStatus).toBe(400);
-		const body = res.sentBody as any;
-		expect(body.error).toBe("TEMPLATE_ERROR");
-		expect(body.message).toContain('Missing param "asset"');
+			expect(res.sentStatus).toBe(400);
+			const body = res.sentBody as any;
+			expect(body.error).toBe("TEMPLATE_ERROR");
+			expect(body.message).toContain('Missing param "asset"');
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
-	test("free plan returns 400 when fetchResource not configured", async () => {
-		// No proxyTo, no fetchResource — misconfigured
-		const config = makeFreePlanConfig(); // no fetchResource, no proxyTo
+	test("free plan returns 400 when proxyTo not configured", async () => {
+		// No proxyTo — misconfigured
+		const config = makeFreePlanConfig(); // no proxyTo
 		const store = new TestChallengeStore();
 		const seenTxStore = new TestSeenTxStore();
 		const router = key0Router({ config, store, seenTxStore });
@@ -1248,9 +1238,7 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 		return Buffer.from(JSON.stringify(payload)).toString("base64");
 	}
 
-	function makePerRequestConfig(
-		fetchResource: (p: FetchResourceParams) => Promise<FetchResourceResult>,
-	): SellerConfig {
+	function makePerRequestConfig(): SellerConfig {
 		return {
 			agentName: "Test Agent",
 			agentDescription: "Test",
@@ -1271,63 +1259,74 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 				token: `tok_${p.challengeId}`,
 				tokenType: "Bearer",
 			}),
-			fetchResource,
+			proxyTo: { baseUrl: "http://mock-backend" },
 		};
 	}
 
 	test("transitions PAID → REFUND_PENDING when proxy returns non-2xx", async () => {
 		const store = new TestChallengeStore();
 		const seenTxStore = new TestSeenTxStore();
-		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
-			status: 503,
-			body: { error: "backend down" },
-		});
-		const config = makePerRequestConfig(mockFetchResource);
-		const router = key0Router({ config, store, seenTxStore });
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ error: "backend down" }), {
+				status: 503,
+				headers: { "content-type": "application/json" },
+			})) as typeof fetch;
+		try {
+			const config = makePerRequestConfig();
+			const router = key0Router({ config, store, seenTxStore });
 
-		const res = await callX402Access(
-			router,
-			{
-				planId: "signal",
-				resource: { method: "GET", path: "/signal/BTC" },
-			},
-			{ "payment-signature": makeFakePaymentSignature() },
-		);
+			const res = await callX402Access(
+				router,
+				{
+					planId: "signal",
+					resource: { method: "GET", path: "/signal/BTC" },
+				},
+				{ "payment-signature": makeFakePaymentSignature() },
+			);
 
-		expect(res.sentStatus).toBe(502);
-		const body = res.sentBody as any;
-		expect(body.error).toBe("PROXY_ERROR");
+			expect(res.sentStatus).toBe(502);
+			const body = res.sentBody as any;
+			expect(body.error).toBe("PROXY_ERROR");
 
-		// Challenge must have been transitioned to REFUND_PENDING
-		const refundPending = await store.listByState("REFUND_PENDING");
-		expect(refundPending.length).toBeGreaterThan(0);
+			// Challenge must have been transitioned to REFUND_PENDING
+			const refundPending = await store.listByState("REFUND_PENDING");
+			expect(refundPending.length).toBeGreaterThan(0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("transitions PAID → REFUND_PENDING on proxy timeout (AbortError)", async () => {
 		const store = new TestChallengeStore();
 		const seenTxStore = new TestSeenTxStore();
-		const mockFetchResource = async (): Promise<FetchResourceResult> => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => {
 			throw new DOMException("The operation was aborted.", "AbortError");
-		};
-		const config = makePerRequestConfig(mockFetchResource);
-		const router = key0Router({ config, store, seenTxStore });
+		}) as typeof fetch;
+		try {
+			const config = makePerRequestConfig();
+			const router = key0Router({ config, store, seenTxStore });
 
-		const res = await callX402Access(
-			router,
-			{
-				planId: "signal",
-				resource: { method: "GET", path: "/signal/BTC" },
-			},
-			{ "payment-signature": makeFakePaymentSignature() },
-		);
+			const res = await callX402Access(
+				router,
+				{
+					planId: "signal",
+					resource: { method: "GET", path: "/signal/BTC" },
+				},
+				{ "payment-signature": makeFakePaymentSignature() },
+			);
 
-		expect(res.sentStatus).toBe(502);
-		const body = res.sentBody as any;
-		expect(body.error).toBe("PROXY_TIMEOUT");
+			expect(res.sentStatus).toBe(502);
+			const body = res.sentBody as any;
+			expect(body.error).toBe("PROXY_TIMEOUT");
 
-		// Challenge must have been transitioned to REFUND_PENDING
-		const refundPending = await store.listByState("REFUND_PENDING");
-		expect(refundPending.length).toBeGreaterThan(0);
+			// Challenge must have been transitioned to REFUND_PENDING
+			const refundPending = await store.listByState("REFUND_PENDING");
+			expect(refundPending.length).toBeGreaterThan(0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });
 
@@ -1371,96 +1370,133 @@ function makeEngine(config: SellerConfig, opts?: { store?: TestChallengeStore })
 describe("createMcpServer — free plan request_access", () => {
 	test("free plan proxies immediately without payment", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({
-			path,
-		}: FetchResourceParams): Promise<FetchResourceResult> => {
-			fetchedPaths.push(path);
-			return { status: 200, body: { status: "ok" } };
-		};
-		const config = makeConfig({
-			plans: [
-				{
-					planId: "health",
-					free: true as const,
-					proxyPath: "/health",
-					proxyMethod: "GET" as const,
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config);
-		const server = createMcpServer(engine, config);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (url: unknown) => {
+			fetchedPaths.push(String(url).replace("http://mock-backend", ""));
+			return new Response(JSON.stringify({ status: "ok" }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "health",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/health",
+						proxyMethod: "GET" as const,
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config);
+			const server = createMcpServer(engine, config);
 
-		const result = await callMcpTool(server, "request_access", { planId: "health" });
+			const result = await callMcpTool(server, "request_access", { planId: "health" });
 
-		expect(result.isError).toBeUndefined();
-		expect(fetchedPaths).toEqual(["/health"]);
-		const parsed = JSON.parse(result.content[0]!.text);
-		expect(parsed.type).toBe("ResourceResponse");
-		expect(parsed.resource.status).toBe(200);
+			expect(result.isError).toBeUndefined();
+			expect(fetchedPaths).toEqual(["/health"]);
+			const parsed = JSON.parse(result.content[0]!.text);
+			expect(parsed.type).toBe("ResourceResponse");
+			expect(parsed.resource.status).toBe(200);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("free plan with proxyPath template interpolates params", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({
-			path,
-		}: FetchResourceParams): Promise<FetchResourceResult> => {
-			fetchedPaths.push(path);
-			return { status: 200, body: { score: 72 } };
-		};
-		const config = makeConfig({
-			plans: [
-				{
-					planId: "signal",
-					free: true as const,
-					proxyPath: "/signal/{asset}",
-					proxyMethod: "GET" as const,
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config);
-		const server = createMcpServer(engine, config);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (url: unknown) => {
+			fetchedPaths.push(String(url).replace("http://mock-backend", ""));
+			return new Response(JSON.stringify({ score: 72 }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/signal/{asset}",
+						proxyMethod: "GET" as const,
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config);
+			const server = createMcpServer(engine, config);
 
-		await callMcpTool(server, "request_access", { planId: "signal", params: { asset: "BTC" } });
-		expect(fetchedPaths).toEqual(["/signal/BTC"]);
+			await callMcpTool(server, "request_access", { planId: "signal", params: { asset: "BTC" } });
+			expect(fetchedPaths).toEqual(["/signal/BTC"]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("free plan returns error if proxyPath template param is missing", async () => {
-		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
-			status: 200,
-			body: {},
-		});
-		const config = makeConfig({
-			plans: [{ planId: "signal", free: true as const, proxyPath: "/signal/{asset}" }],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config);
-		const server = createMcpServer(engine, config);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response("{}", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/signal/{asset}",
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config);
+			const server = createMcpServer(engine, config);
 
-		const result = await callMcpTool(server, "request_access", { planId: "signal" });
-		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(result.content[0]!.text);
-		expect(parsed.message).toContain('Missing param "asset"');
+			const result = await callMcpTool(server, "request_access", { planId: "signal" });
+			expect(result.isError).toBe(true);
+			const parsed = JSON.parse(result.content[0]!.text);
+			expect(parsed.message).toContain('Missing param "asset"');
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("free plan propagates non-2xx status verbatim (no refund)", async () => {
-		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
-			status: 503,
-			body: { error: "backend down" },
-		});
-		const config = makeConfig({
-			plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config);
-		const server = createMcpServer(engine, config);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ error: "backend down" }), {
+				status: 503,
+				headers: { "content-type": "application/json" },
+			})) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "health",
+						unitAmount: "$0.00",
+						free: true as const,
+						proxyPath: "/health",
+					} as any,
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config);
+			const server = createMcpServer(engine, config);
 
-		const result = await callMcpTool(server, "request_access", { planId: "health" });
-		// Free plan: return the status verbatim, no isError, no REFUND_PENDING
-		const parsed = JSON.parse(result.content[0]!.text);
-		expect(parsed.resource.status).toBe(503);
-		expect(result.isError).toBeUndefined();
+			const result = await callMcpTool(server, "request_access", { planId: "health" });
+			// Free plan: return the status verbatim, no isError, no REFUND_PENDING
+			const parsed = JSON.parse(result.content[0]!.text);
+			expect(parsed.resource.status).toBe(503);
+			expect(result.isError).toBeUndefined();
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });
 
@@ -1504,68 +1540,79 @@ async function callMcpToolWithPayment(
 describe("createMcpServer — proxy error handling (paid plans)", () => {
 	test("transitions PAID → REFUND_PENDING when proxy returns non-2xx", async () => {
 		const store = makeTestStore();
-		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
-			status: 503,
-			body: { error: "backend down" },
-		});
-		const config = makeConfig({
-			plans: [
-				{
-					planId: "signal",
-					unitAmount: "$0.001",
-					mode: "per-request" as const,
-					proxyPath: "/signal/{asset}",
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config, { store });
-		const server = createMcpServer(engine, config);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ error: "backend down" }), {
+				status: 503,
+				headers: { "content-type": "application/json" },
+			})) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.001",
+						mode: "per-request" as const,
+						proxyPath: "/signal/{asset}",
+					},
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config, { store });
+			const server = createMcpServer(engine, config);
 
-		const result = await callMcpToolWithPayment(server, "request_access", {
-			planId: "signal",
-			params: { asset: "BTC" },
-		});
+			const result = await callMcpToolWithPayment(server, "request_access", {
+				planId: "signal",
+				params: { asset: "BTC" },
+			});
 
-		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(result.content[0]!.text);
-		expect(parsed.error).toBe("PROXY_ERROR");
+			expect(result.isError).toBe(true);
+			const parsed = JSON.parse(result.content[0]!.text);
+			expect(parsed.error).toBe("PROXY_ERROR");
 
-		// Challenge must be in REFUND_PENDING
-		const challenges = await store.listByState("REFUND_PENDING");
-		expect(challenges.length).toBeGreaterThan(0);
+			// Challenge must be in REFUND_PENDING
+			const challenges = await store.listByState("REFUND_PENDING");
+			expect(challenges.length).toBeGreaterThan(0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("transitions PAID → REFUND_PENDING on proxy timeout (AbortError)", async () => {
 		const store = makeTestStore();
-		const mockFetchResource = async (): Promise<FetchResourceResult> => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => {
 			throw new DOMException("The operation was aborted.", "AbortError");
-		};
-		const config = makeConfig({
-			plans: [
-				{
-					planId: "signal",
-					unitAmount: "$0.001",
-					mode: "per-request" as const,
-					proxyPath: "/signal/{asset}",
-				},
-			],
-			fetchResource: mockFetchResource,
-		});
-		const engine = makeEngine(config, { store });
-		const server = createMcpServer(engine, config);
+		}) as typeof fetch;
+		try {
+			const config = makeConfig({
+				plans: [
+					{
+						planId: "signal",
+						unitAmount: "$0.001",
+						mode: "per-request" as const,
+						proxyPath: "/signal/{asset}",
+					},
+				],
+				proxyTo: { baseUrl: "http://mock-backend" },
+			});
+			const engine = makeEngine(config, { store });
+			const server = createMcpServer(engine, config);
 
-		const result = await callMcpToolWithPayment(server, "request_access", {
-			planId: "signal",
-			params: { asset: "BTC" },
-		});
+			const result = await callMcpToolWithPayment(server, "request_access", {
+				planId: "signal",
+				params: { asset: "BTC" },
+			});
 
-		expect(result.isError).toBe(true);
-		const parsed = JSON.parse(result.content[0]!.text);
-		expect(parsed.error).toBe("PROXY_TIMEOUT");
+			expect(result.isError).toBe(true);
+			const parsed = JSON.parse(result.content[0]!.text);
+			expect(parsed.error).toBe("PROXY_TIMEOUT");
 
-		const challenges = await store.listByState("REFUND_PENDING");
-		expect(challenges.length).toBeGreaterThan(0);
+			const challenges = await store.listByState("REFUND_PENDING");
+			expect(challenges.length).toBeGreaterThan(0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });
 
