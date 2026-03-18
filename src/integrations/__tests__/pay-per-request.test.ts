@@ -1,18 +1,49 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { buildAgentCard } from "../../core/agent-card.js";
 import { ChallengeEngine } from "../../core/challenge-engine.js";
 import { MockPaymentAdapter } from "../../test-utils/mock-adapter.js";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
-import type { FetchResourceResult, SellerConfig } from "../../types/index.js";
+import type { FetchResourceResult, SellerConfig, X402PaymentPayload } from "../../types/index.js";
 import { CHAIN_CONFIGS } from "../../types/index.js";
-import { createMcpServer } from "../mcp.js";
 import {
 	type FetchResourceParams,
 	key0PayPerRequest,
 	mergePerRequestRoutes,
 	resolveConfigFetchResource,
 } from "../pay-per-request.js";
-import { buildDiscoveryResponse } from "../settlement.js";
+import {
+	buildDiscoveryResponse,
+	buildHttpPaymentRequirements,
+} from "../settlement.js";
+
+// ---------------------------------------------------------------------------
+// Module-level mock for settlePayment (keeps buildDiscoveryResponse and
+// buildHttpPaymentRequirements real — they are imported statically above
+// before mock registration).
+// createMcpServer is imported dynamically after mock registration so that
+// mcp.ts picks up the mocked settlement module.
+// ---------------------------------------------------------------------------
+
+type SettlePaymentImpl = (payload: X402PaymentPayload) => Promise<{
+	txHash: `0x${string}`;
+	settleResponse: { success: boolean; transaction: string; network: string };
+	payer?: string;
+}>;
+
+let settlePaymentImpl: SettlePaymentImpl = async () => ({
+	txHash: `0x${"cc".repeat(32)}` as `0x${string}`,
+	settleResponse: { success: true, transaction: `0x${"cc".repeat(32)}`, network: "eip155:84532" },
+	payer: `0x${"aa".repeat(20)}`,
+});
+
+mock.module("../settlement.js", () => ({
+	settlePayment: (payload: X402PaymentPayload) => settlePaymentImpl(payload),
+	buildDiscoveryResponse,
+	buildHttpPaymentRequirements,
+}));
+
+// Import createMcpServer AFTER the mock is registered so it picks up the mocked settlement.
+const { createMcpServer } = await import("../mcp.js");
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -978,9 +1009,13 @@ async function callMcpTool(
 	}>;
 }
 
-function makeEngine(config: SellerConfig) {
+function makeTestStore() {
+	return new TestChallengeStore();
+}
+
+function makeEngine(config: SellerConfig, opts?: { store?: TestChallengeStore }) {
 	const adapter = new MockPaymentAdapter();
-	const store = new TestChallengeStore();
+	const store = opts?.store ?? new TestChallengeStore();
 	const seenTxStore = new TestSeenTxStore();
 	const engine = new ChallengeEngine({ config, store, seenTxStore, adapter });
 	return engine;
@@ -1071,5 +1106,112 @@ describe("createMcpServer — free plan request_access", () => {
 		const parsed = JSON.parse(result.content[0]!.text);
 		expect(parsed.resource.status).toBe(503);
 		expect(result.isError).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Helper: simulate a full paid-plan request_access call
+// Configures settlePaymentImpl to return a unique txHash, then invokes the
+// tool with a minimal x402 payment payload in _meta.
+// ---------------------------------------------------------------------------
+
+async function callMcpToolWithPayment(
+	server: ReturnType<typeof createMcpServer>,
+	_engine: ReturnType<typeof makeEngine>,
+	_store: TestChallengeStore,
+	toolName: string,
+	args: Record<string, unknown>,
+) {
+	const txHash = `0x${Array.from(crypto.getRandomValues(new Uint8Array(32)))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("")}` as `0x${string}`;
+
+	// Configure the settlement mock to return our unique txHash
+	settlePaymentImpl = async () => ({
+		txHash,
+		settleResponse: { success: true, transaction: txHash, network: "eip155:84532" },
+		payer: `0x${"aa".repeat(20)}`,
+	});
+
+	const paymentPayload: X402PaymentPayload = {
+		x402Version: 2,
+		network: "eip155:84532",
+		payload: {
+			signature: txHash, // unique per call → unique requestId via deriveRequestId
+		},
+	};
+
+	return callMcpTool(server, toolName, args, { "x402/payment": paymentPayload });
+}
+
+// ---------------------------------------------------------------------------
+// Integration: createMcpServer — proxy error handling (paid plans)
+// ---------------------------------------------------------------------------
+
+describe("createMcpServer — proxy error handling (paid plans)", () => {
+	test("transitions PAID → REFUND_PENDING when proxy returns non-2xx", async () => {
+		const store = makeTestStore();
+		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
+			status: 503,
+			body: { error: "backend down" },
+		});
+		const config = makeConfig({
+			plans: [
+				{
+					planId: "signal",
+					unitAmount: "$0.001",
+					mode: "per-request" as const,
+					proxyPath: "/signal/{asset}",
+				},
+			],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config, { store });
+		const server = createMcpServer(engine, config);
+
+		const result = await callMcpToolWithPayment(server, engine, store, "request_access", {
+			planId: "signal",
+			params: { asset: "BTC" },
+		});
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(result.content[0]!.text);
+		expect(parsed.error).toBe("PROXY_ERROR");
+
+		// Challenge must be in REFUND_PENDING
+		const challenges = await store.listByState("REFUND_PENDING");
+		expect(challenges.length).toBeGreaterThan(0);
+	});
+
+	test("transitions PAID → REFUND_PENDING on proxy timeout (AbortError)", async () => {
+		const store = makeTestStore();
+		const mockFetchResource = async (): Promise<FetchResourceResult> => {
+			throw new DOMException("The operation was aborted.", "AbortError");
+		};
+		const config = makeConfig({
+			plans: [
+				{
+					planId: "signal",
+					unitAmount: "$0.001",
+					mode: "per-request" as const,
+					proxyPath: "/signal/{asset}",
+				},
+			],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config, { store });
+		const server = createMcpServer(engine, config);
+
+		const result = await callMcpToolWithPayment(server, engine, store, "request_access", {
+			planId: "signal",
+			params: { asset: "BTC" },
+		});
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(result.content[0]!.text);
+		expect(parsed.error).toBe("PROXY_TIMEOUT");
+
+		const challenges = await store.listByState("REFUND_PENDING");
+		expect(challenges.length).toBeGreaterThan(0);
 	});
 });

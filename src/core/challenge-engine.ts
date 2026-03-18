@@ -927,4 +927,39 @@ export class ChallengeEngine {
 			);
 		}
 	}
+
+	/**
+	 * Asserts that a challenge is still in PAID state by performing a no-op PAID→PAID transition.
+	 * Throws if the challenge is no longer PAID (e.g. refund already in progress).
+	 * Called as a pre-proxy guard to avoid calling the backend when the challenge is stale.
+	 */
+	async assertPaidState(
+		challengeId: string,
+		actor: string = "engine",
+		reason: string = "pre-proxy state guard",
+	): Promise<void> {
+		const ok = await this.store.transition(challengeId, "PAID", "PAID", {}, { actor, reason });
+		if (!ok) {
+			throw new Key0Error(
+				"CHALLENGE_NOT_PAID",
+				"Challenge is no longer in PAID state. A refund may already be in progress.",
+				409,
+			);
+		}
+	}
+
+	/**
+	 * Transitions a challenge from PAID to REFUND_PENDING.
+	 * Called when the backend proxy returns a non-2xx response or times out.
+	 * Best-effort — callers should `.catch(() => {})` if fire-and-forget.
+	 */
+	async initiateRefund(challengeId: string, reason: string): Promise<void> {
+		await this.store.transition(
+			challengeId,
+			"PAID",
+			"REFUND_PENDING",
+			{},
+			{ actor: "engine", reason },
+		);
+	}
 }

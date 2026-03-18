@@ -457,29 +457,82 @@ export function createMcpServer(
 						payer as `0x${string}` | undefined,
 					);
 
-					// Proxy to backend
-					const backendResult = await fetchResourceFn({
-						paymentInfo: {
-							txHash,
-							payer: payer ?? undefined,
-							planId,
-							amount: plan.unitAmount!,
+					// Pre-proxy guard: confirm challenge is still in PAID state.
+					// Throws CHALLENGE_NOT_PAID if a concurrent refund already started.
+					await engine.assertPaidState(challengeId, "key0-mcp", "pre-proxy state guard");
+
+					// Proxy to backend — handle errors explicitly so we can trigger refunds.
+					let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+					try {
+						backendResult = await fetchResourceFn({
+							paymentInfo: {
+								txHash,
+								payer: payer ?? undefined,
+								planId,
+								amount: plan.unitAmount!,
+								method: resolvedMethod,
+								path: resolvedResourcePath,
+								challengeId,
+							},
 							method: resolvedMethod,
 							path: resolvedResourcePath,
-							challengeId,
-						},
-						method: resolvedMethod,
-						path: resolvedResourcePath,
-						headers: {},
-						body: resource?.body,
-					});
+							headers: {},
+							body: resource?.body,
+						});
+					} catch (err) {
+						const isTimeout = err instanceof DOMException && err.name === "AbortError";
+						engine
+							.initiateRefund(
+								challengeId,
+								isTimeout ? "proxy timeout" : `proxy threw: ${(err as Error).message}`,
+							)
+							.catch(() => {
+								/* best-effort */
+							});
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+										message: isTimeout
+											? "Backend timed out. A refund has been initiated."
+											: `Backend error: ${(err as Error).message}. A refund has been initiated.`,
+										challengeId,
+										txHash,
+									}),
+								},
+							],
+						};
+					}
 
 					if (backendResult.status >= 200 && backendResult.status < 300) {
-						await engine.markDelivered(challengeId);
+						// Success — mark DELIVERED (best-effort)
+						engine.markDelivered(challengeId).catch(() => {
+							/* best-effort */
+						});
 					} else {
-						console.warn(
-							`[Key0 MCP] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
-						);
+						// Non-2xx — trigger refund (best-effort)
+						engine
+							.initiateRefund(challengeId, `proxy returned ${backendResult.status}`)
+							.catch(() => {
+								/* best-effort */
+							});
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										error: "PROXY_ERROR",
+										message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+										challengeId,
+										txHash,
+									}),
+								},
+							],
+						};
 					}
 
 					const resourceResponse: ResourceResponse = {
