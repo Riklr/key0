@@ -15,7 +15,6 @@ import { mountMcpRoutes } from "./mcp.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import {
 	createExpressPayPerRequest,
-	mergePerRequestRoutes,
 	resolveConfigFetchResource,
 } from "./pay-per-request.js";
 import {
@@ -150,9 +149,24 @@ export function key0Router(opts: Key0Config): Key0Router {
 				const body = req.body || {};
 				let { planId, resourceId = "default" } = body;
 				let { requestId } = body;
+				const { routeId } = body as { routeId?: string };
 				const resource = body.resource as
 					| { method: string; path: string; body?: unknown }
 					| undefined;
+
+				// ===== routeId: mutual exclusion with planId =====
+				if (planId && routeId) {
+					return res.status(400).json({ error: "Provide either planId or routeId, not both" });
+				}
+
+				// ===== routeId path: delegate to pay-per-request middleware =====
+				if (routeId !== undefined) {
+					const route = (opts.config.routes ?? []).find((r) => r.routeId === routeId);
+					if (!route) {
+						return res.status(404).json({ error: `Route "${routeId}" not found` });
+					}
+					return createExpressPayPerRequest(routeId, pprDeps)(req, res, next);
+				}
 
 				// Check for PAYMENT-SIGNATURE header
 				const paymentSignature = req.headers["payment-signature"] as string | undefined;
@@ -179,11 +193,11 @@ export function key0Router(opts: Key0Config): Key0Router {
 					}
 				}
 
-				// ===== CASE 1: No planId → 400 pointing to GET /discovery =====
+				// ===== CASE 1: No planId → 400 pointing to GET /discover =====
 				if (!planId) {
 					return res.status(400).json({
 						error:
-							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
+							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discover",
 					});
 				}
 
@@ -691,11 +705,16 @@ export function key0Router(opts: Key0Config): Key0Router {
 		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
 	);
 
-	router.get("/discovery", (_req: Request, res: Response) => {
-		const mergedRoutes = mergePerRequestRoutes(opts.config.plans, pprRouteRegistry);
-		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig, mergedRoutes);
-		return res.status(200).json({ discoveryResponse });
+	router.get("/discover", (_req: Request, res: Response) => {
+		const discoveryResponse = buildDiscoveryResponse(opts.config);
+		return res.status(200).json(discoveryResponse);
 	});
+
+	// Auto-mount transparent proxy routes from config.routes
+	for (const route of opts.config.routes ?? []) {
+		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
+		router[method](route.path, createExpressPayPerRequest(route.routeId, pprDeps));
+	}
 
 	// MCP routes (when mcp: true)
 	if (opts.config.mcp) {
