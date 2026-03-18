@@ -1,20 +1,15 @@
 /**
- * Standalone PPR gateway — unified via /x402/access.
+ * Key0 Gateway — demonstrates coexistence of subscription plans and per-request routes.
  *
- * Key0 runs as a separate payment service in front of a backend API.
- * All traffic flows through /x402/access — no separate route registrations needed.
+ * Two ways to access /api/weather/:city:
+ *   1. Subscribe: POST /x402/access { planId: "basic" } → pay $5 → get Bearer token
+ *      → call backend directly: GET /api/weather/london  (Authorization: Bearer <token>)
+ *   2. Pay-per-use: POST /x402/access { planId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }
+ *      → pay $0.10 → Key0 proxies to backend and returns data inline (no token issued)
  *
- * For per-request plans, clients post to /x402/access with:
- *   { planId, resource: { method, path } }
- * Key0 issues the 402, settles the payment, then proxies the request to the
- * backend (injecting X-Gateway-Secret + payment headers) and returns the
- * ResourceResponse directly — no token issuance, no client-side Bearer header.
- *
- * For subscription plans, the legacy /x402/access → AccessGrant (JWT) flow is used.
- *
- * A2A agents: POST /x402/access via A2A JSON-RPC with resource field.
- * MCP clients: use the request_access tool with resource field.
- * HTTP clients: POST /x402/access directly.
+ * The backend (see backend.ts) accepts requests from EITHER path:
+ *   - Subscription clients present a Bearer JWT (validated locally, no gateway in path).
+ *   - PPR clients arrive via Key0 proxy, identified by the X-Key0-Internal-Token header.
  *
  * Start order:
  *   1. bun run start:backend   (port 3001)
@@ -41,8 +36,9 @@ const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
 const SECRET =
 	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
-// Shared secret sent to the backend so it can reject requests that bypass the gateway.
-const GATEWAY_SECRET = process.env["GATEWAY_SECRET"] ?? "dev-gateway-secret-change-in-production";
+// Shared secret injected into every proxied request so the backend can verify Key0 origin.
+const PROXY_SECRET =
+	process.env["KEY0_PROXY_SECRET"] ?? "dev-proxy-secret-change-in-production!!";
 // Gas wallet private key for self-contained on-chain settlement (no Coinbase facilitator needed).
 const GAS_WALLET_KEY = process.env["GAS_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 
@@ -58,15 +54,35 @@ const redis = new Redis(REDIS_URL);
 const store = new RedisChallengeStore({ redis });
 const seenTxStore = new RedisSeenTxStore({ redis });
 
-// Required by SellerConfig for subscription plans.
-// Per-request plans skip this — they proxy to the backend inline and return ResourceResponse.
+// Token issuer for subscription plans — issues a signed JWT after payment.
+// Subscription clients store this token and call the backend directly with Bearer auth.
 const tokenIssuer = new AccessTokenIssuer(SECRET);
+
+/**
+ * Issue a JWT for a given subscription plan.
+ * In production, customise expiry and claims to match your access model.
+ */
+async function issueJwtForPlan(planId: string, challengeId: string, txHash: string): Promise<string> {
+	const { token } = await tokenIssuer.sign(
+		{
+			sub: challengeId,
+			jti: challengeId,
+			resourceId: planId,
+			planId,
+			txHash,
+		},
+		// 30 days TTL for subscription access
+		60 * 60 * 24 * 30,
+	);
+	return token;
+}
 
 const key0 = key0Router({
 	config: {
-		agentName: "Pay-Per-Request Demo (Standalone Gateway)",
+		agentName: "Weather API",
 		agentDescription:
-			"Micro-payment gateway in standalone mode. After payment the request is forwarded to the backend service — clients receive the backend response directly.",
+			"Weather data API — available via subscription (Bearer JWT) or pay-per-request. " +
+			"Both access patterns are accepted by the backend.",
 		agentUrl: PUBLIC_URL,
 		providerName: "Example Corp",
 		providerUrl: "https://example.com",
@@ -74,30 +90,55 @@ const key0 = key0Router({
 		network: NETWORK,
 		challengeTTLSeconds: 300,
 		...(GAS_WALLET_KEY ? { gasWalletPrivateKey: GAS_WALLET_KEY } : {}),
+
+		// ── Subscription plans ───────────────────────────────────────────────
+		// Clients pay once, receive a Bearer JWT, and call the backend directly.
+		// Key0 is NOT in the request path after token issuance.
+		plans: [
+			{
+				planId: "basic",
+				unitAmount: "$5.00",
+				description: "100 API calls — pay once, use your token for ongoing access",
+			},
+		],
+		fetchResourceCredentials: async ({ planId, challengeId, txHash }) => ({
+			token: await issueJwtForPlan(planId, challengeId, txHash),
+			tokenType: "Bearer",
+		}),
+
+		// ── Per-request routes ───────────────────────────────────────────────
+		// Clients pay per call. Key0 settles the payment and proxies the request
+		// to the backend, returning the backend response inline — no token issued.
 		routes: [
 			{
 				routeId: "weather-query",
-				method: "GET",
+				method: "GET" as const,
 				path: "/api/weather/:city",
-				unitAmount: "$0.01",
-				description: "Current weather conditions for a given city",
+				unitAmount: "$0.10",
+				description: "Pay per query — no subscription needed",
 			},
 			{
 				routeId: "joke-of-the-day",
-				method: "GET",
+				method: "GET" as const,
 				path: "/api/joke",
 				unitAmount: "$0.005",
 				description: "Get a random programming joke",
 			},
+			{
+				routeId: "health",
+				method: "GET" as const,
+				path: "/health",
+				// no unitAmount = free
+			},
 		],
-		// proxyTo enables standalone mode: routes are auto-mounted and payment is settled inline.
-		// X-Gateway-Secret is injected so the backend can reject requests that bypass the gateway.
-		// Payment metadata headers (txHash, routeId, amount, payer) are injected automatically.
+
+		// proxyTo enables standalone mode: after payment, Key0 forwards the request
+		// to the backend and returns the response directly.
+		// proxySecret is sent as X-Key0-Internal-Token so the backend can reject
+		// requests that bypass the gateway.
 		proxyTo: {
 			baseUrl: BACKEND_URL,
-			headers: {
-				"x-gateway-secret": GATEWAY_SECRET,
-			},
+			proxySecret: PROXY_SECRET,
 		},
 	},
 	adapter,
@@ -106,25 +147,26 @@ const key0 = key0Router({
 });
 
 // Mount Key0 — serves agent card, /discovery, and /x402/access.
-// No separate route registrations needed: per-request plans flow through /x402/access.
 app.use(key0);
 
 app.listen(GATEWAY_PORT, () => {
-	console.log(`\nPay-Per-Request Gateway (standalone) running on ${PUBLIC_URL}`);
+	console.log(`\nWeather API Gateway (Key0) running on ${PUBLIC_URL}`);
 	console.log(`  Agent card:    ${PUBLIC_URL}/.well-known/agent.json`);
 	console.log(`  Discovery:     GET ${PUBLIC_URL}/discovery`);
 	console.log(`  x402 endpoint: POST ${PUBLIC_URL}/x402/access`);
-	console.log(`  A2A endpoint:  POST ${PUBLIC_URL}/x402/access  (via A2A JSON-RPC)`);
-	console.log(`  MCP endpoint:  POST ${PUBLIC_URL}/mcp  (request_access tool with resource field)`);
-	console.log(`\n  Per-request flow (HTTP):`);
+	console.log(`\n  Subscription flow (pay once, call backend directly):`);
+	console.log(`    POST ${PUBLIC_URL}/x402/access  { planId: "basic" }`);
+	console.log(`    → 402 Payment Required ($5.00)`);
+	console.log(`    → Pay USDC on-chain → receive Bearer JWT`);
+	console.log(`    → GET http://localhost:3001/api/weather/london`);
+	console.log(`         Authorization: Bearer <token>   (Key0 not in path)`);
+	console.log(`\n  Pay-per-request flow (pay per call, Key0 proxies):`);
 	console.log(`    POST ${PUBLIC_URL}/x402/access`);
 	console.log(
 		`         { planId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }`,
 	);
-	console.log(`    → 402 Payment Required`);
-	console.log(`    → Pay USDC on-chain`);
-	console.log(`    → Retry with PAYMENT-SIGNATURE header`);
-	console.log(`    → 200 ResourceResponse (backend data, no token)`);
+	console.log(`    → 402 Payment Required ($0.10)`);
+	console.log(`    → Pay USDC on-chain → Key0 proxies to backend → 200 ResourceResponse`);
 	console.log(`\n  Backend: ${BACKEND_URL}`);
 	console.log(`  Network: ${NETWORK}`);
 	console.log(`  Wallet:  ${WALLET}\n`);
