@@ -4,7 +4,6 @@ import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import type {
-	PlanRouteInfo,
 	ResourceResponse,
 	X402PaymentRequiredResponse,
 } from "../types/index.js";
@@ -13,7 +12,6 @@ import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import {
 	createHonoPayPerRequest,
-	mergePerRequestRoutes,
 	resolveConfigFetchResource,
 } from "./pay-per-request.js";
 import {
@@ -102,15 +100,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 		store: opts.store,
 	} as const;
 
-	// Runtime route registry: populated when .payPerRequest() is called with options.route.
-	const pprRouteRegistry = new Map<string, PlanRouteInfo[]>();
-
 	app.payPerRequest = (planId: string, options?: PayPerRequestOptions) => {
-		if (options?.route) {
-			const existing = pprRouteRegistry.get(planId) ?? [];
-			existing.push(options.route);
-			pprRouteRegistry.set(planId, existing);
-		}
 		return createHonoPayPerRequest(planId, pprDeps, options) as HonoMiddleware;
 	};
 
@@ -119,7 +109,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 	app.get("/.well-known/agent.json", (c) => c.json(agentCard));
 
 	// Unified x402 endpoint
-	app.post("/x402/access", async (c) => {
+	app.post("/x402/access", async (c, next) => {
 		const startTime = Date.now();
 		try {
 			console.log("\n[x402-access/hono] ========== NEW REQUEST ==========");
@@ -130,10 +120,26 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				resourceId?: string;
 			};
 			let { requestId } = body as { requestId?: string };
+			const { routeId } = body as { routeId?: string };
 			const resource = (body as { resource?: { method: string; path: string; body?: unknown } })
 				.resource;
 
 			const paymentSignature = c.req.header("payment-signature");
+
+			// ===== routeId: mutual exclusion with planId =====
+			if (planId && routeId) {
+				return c.json({ error: "Provide either planId or routeId, not both" }, 400);
+			}
+
+			// ===== routeId path: delegate to pay-per-request middleware =====
+			if (routeId !== undefined) {
+				const route = (opts.config.routes ?? []).find((r) => r.routeId === routeId);
+				if (!route) {
+					return c.json({ error: `Route "${routeId}" not found` }, 404);
+				}
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				return createHonoPayPerRequest(routeId, pprDeps)(c as any, next);
+			}
 
 			// Extract planId from PAYMENT-SIGNATURE if not in body
 			if (!planId && paymentSignature) {
@@ -151,12 +157,12 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				}
 			}
 
-			// CASE 1: No planId → 400 pointing to GET /discovery
+			// CASE 1: No planId → 400 pointing to GET /discover
 			if (!planId) {
 				return c.json(
 					{
 						error:
-							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
+							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discover",
 					},
 					400,
 				);
@@ -168,10 +174,12 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 			}
 
 			// FREE PLAN FAST-PATH: proxy immediately without payment
-			const planDef = opts.config.plans.find((p) => p.planId === planId);
-			if (planDef?.free === true) {
+			const planDef = (opts.config.plans ?? []).find((p) => p.planId === planId);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const planDefAny = planDef as any;
+			if (planDefAny?.free === true) {
 				const fetchResourceFn = resolveConfigFetchResource(opts.config);
-				if (!fetchResourceFn || !planDef.proxyPath) {
+				if (!fetchResourceFn || !planDefAny.proxyPath) {
 					return c.json(
 						{
 							error: "FREE_PLAN_MISCONFIGURED",
@@ -183,7 +191,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				const rawParams = (body as { params?: Record<string, string> }).params ?? {};
 				let resolvedPath: string;
 				try {
-					resolvedPath = interpolateUrlTemplate(planDef.proxyPath, rawParams);
+					resolvedPath = interpolateUrlTemplate(planDefAny.proxyPath, rawParams);
 				} catch (err) {
 					return c.json(
 						{
@@ -193,11 +201,11 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 						400,
 					);
 				}
-				const queryString = planDef.proxyQuery
-					? `?${new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()}`
+				const queryString = planDefAny.proxyQuery
+					? `?${new URLSearchParams(planDefAny.proxyQuery as Record<string, string>).toString()}`
 					: "";
 				const proxyResult = await fetchResourceFn({
-					method: planDef.proxyMethod ?? "GET",
+					method: planDefAny.proxyMethod ?? "GET",
 					path: resolvedPath + queryString,
 					headers: {},
 					paymentInfo: {
@@ -205,7 +213,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 						payer: undefined,
 						planId,
 						amount: "$0",
-						method: planDef.proxyMethod ?? "GET",
+						method: planDefAny.proxyMethod ?? "GET",
 						path: resolvedPath,
 						challengeId: "free",
 					},
@@ -230,26 +238,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 			if (!paymentSignature) {
 				console.log("[x402-access/hono] → CASE 2: Challenge 402");
 
-				// Validate: per-request plans in standalone mode require a resource field
-				const planForValidation = opts.config.plans.find((p) => p.planId === planId);
-				const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
-				if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
-					return c.json(
-						{
-							type: "Error",
-							code: "RESOURCE_REQUIRED",
-							message:
-								"Per-request plans in standalone mode require a 'resource' field (method + path).",
-						},
-						400,
-					);
-				}
-
 				const { challengeId } = await engine.requestHttpAccess(requestId, planId, resourceId);
-
-				const planForChallenge = opts.config.plans.find((p) => p.planId === planId);
-				const isPprPlan = planForChallenge?.mode === "per-request";
-				const isStandaloneForChallenge = !!resolveConfigFetchResource(opts.config);
 
 				const requirements: X402PaymentRequiredResponse = buildHttpPaymentRequirements(
 					planId,
@@ -262,49 +251,20 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 							properties: {
 								planId: { type: "string", description: `Tier to purchase. Must be '${planId}'` },
 								requestId: { type: "string", description: "Client-generated UUID for idempotency" },
-								...(isPprPlan && isStandaloneForChallenge
-									? {
-											resource: {
-												type: "object",
-												description:
-													"The backend resource to call after payment (required for per-request plans)",
-												properties: {
-													method: { type: "string" },
-													path: { type: "string" },
-													body: { description: "Optional request body forwarded to the backend" },
-												},
-												required: ["method", "path"],
-											},
-										}
-									: {
-											resourceId: { type: "string", description: "Optional resource identifier" },
-										}),
+								resourceId: { type: "string", description: "Optional resource identifier" },
 							},
-							required: isPprPlan && isStandaloneForChallenge ? ["planId", "resource"] : ["planId"],
+							required: ["planId"],
 						},
 						outputSchema: {
 							type: "object",
 							properties: {
-								...(isPprPlan && isStandaloneForChallenge
-									? {
-											resource: {
-												type: "object",
-												description: "The backend resource response",
-												properties: {
-													status: { type: "number" },
-													body: { description: "Response body from the backend" },
-												},
-											},
-										}
-									: {
-											accessToken: { type: "string", description: "JWT token for API access" },
-											tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-											expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
-											resourceEndpoint: {
-												type: "string",
-												description: "URL to access the protected resource",
-											},
-										}),
+								accessToken: { type: "string", description: "JWT token for API access" },
+								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+								expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
+								resourceEndpoint: {
+									type: "string",
+									description: "URL to access the protected resource",
+								},
 								txHash: { type: "string", description: "On-chain transaction hash" },
 								explorerUrl: { type: "string", description: "Blockchain explorer URL" },
 							},
@@ -331,35 +291,6 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				return c.json(existingGrant, 200);
 			}
 
-			// Pre-settlement guard: validate per-request plan requirements before burning USDC
-			const plan = opts.config.plans.find((p) => p.planId === planId);
-			const fetchResourceFn = resolveConfigFetchResource(opts.config);
-
-			if (plan?.mode === "per-request") {
-				if (!fetchResourceFn) {
-					return c.json(
-						{
-							error: "PER_REQUEST_EMBEDDED_MODE",
-							message:
-								"Per-request plans must be accessed via their route endpoints directly. " +
-								`Use ${plan.routes?.[0]?.method ?? "GET"} ${plan.routes?.[0]?.path ?? "/"} with PAYMENT-SIGNATURE header.`,
-						},
-						400,
-					);
-				}
-				if (!resource?.method || !resource?.path) {
-					return c.json(
-						{
-							error: "MISSING_RESOURCE_FIELD",
-							message:
-								'Per-request plans require a "resource" field in the request body: ' +
-								'{ method: "GET", path: "/api/example" }',
-						},
-						400,
-					);
-				}
-			}
-
 			const paymentPayload = decodePaymentSignature(paymentSignature);
 			const { txHash, settleResponse, payer } = await settlePayment(
 				paymentPayload,
@@ -369,124 +300,6 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 
 			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
 			c.header("payment-response", paymentResponse);
-
-			if (plan?.mode === "per-request") {
-				// Validated by pre-settlement guard above — safe to assert non-null
-				const pprResource = resource!;
-				const pprFetch = fetchResourceFn!;
-
-				console.log(
-					`[x402-access/hono] Per-request plan: recording payment for requestId: ${requestId}`,
-				);
-				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
-					requestId,
-					planId,
-					pprResource.path,
-					txHash,
-					payer as `0x${string}` | undefined,
-				);
-
-				const noBodyMethodHono =
-					pprResource.method.toUpperCase() === "GET" || pprResource.method.toUpperCase() === "HEAD";
-				const skipHeadersHono = new Set([
-					"host",
-					"connection",
-					"payment-signature",
-					"transfer-encoding",
-					...(noBodyMethodHono ? ["content-length", "content-type"] : []),
-				]);
-				const forwardHeaders: Record<string, string> = {};
-				for (const [key, val] of Object.entries(
-					c.req.raw?.headers ? Object.fromEntries(c.req.raw.headers.entries()) : {},
-				)) {
-					if (!skipHeadersHono.has(key.toLowerCase())) {
-						forwardHeaders[key] = val;
-					}
-				}
-
-				// Pre-proxy guard: confirm challenge is still PAID
-				await engine.assertPaidState(challengeId);
-
-				// Proxy to backend — handle errors explicitly so we can trigger refunds.
-				let backendResult: Awaited<ReturnType<typeof pprFetch>>;
-				try {
-					backendResult = await pprFetch({
-						paymentInfo: {
-							txHash,
-							payer: payer ?? undefined,
-							planId,
-							amount: plan.unitAmount!,
-							method: pprResource.method,
-							path: pprResource.path,
-							challengeId,
-						},
-						method: pprResource.method,
-						path: pprResource.path,
-						headers: forwardHeaders,
-						body: pprResource.body,
-					});
-				} catch (err) {
-					const isTimeout = err instanceof DOMException && err.name === "AbortError";
-					engine
-						.initiateRefund(
-							challengeId,
-							isTimeout ? "proxy timeout" : `proxy threw: ${(err as Error).message}`,
-						)
-						.catch(() => {
-							/* best-effort */
-						});
-					return c.json(
-						{
-							error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
-							message: isTimeout
-								? "Backend timed out. A refund has been initiated."
-								: `Backend error: ${(err as Error).message}. A refund has been initiated.`,
-							challengeId,
-							txHash,
-						},
-						502,
-					);
-				}
-				console.log(`[x402-access/hono] Backend responded with status ${backendResult.status}`);
-
-				if (backendResult.status >= 200 && backendResult.status < 300) {
-					engine.markDelivered(challengeId).catch(() => {
-						/* best-effort */
-					});
-				} else {
-					console.warn(
-						`[x402-access/hono] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
-					);
-					engine.initiateRefund(challengeId, `proxy returned ${backendResult.status}`).catch(() => {
-						/* best-effort */
-					});
-					return c.json(
-						{
-							error: "PROXY_ERROR",
-							message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
-							challengeId,
-							txHash,
-						},
-						502,
-					);
-				}
-
-				const resourceResponse: ResourceResponse = {
-					type: "ResourceResponse",
-					challengeId,
-					requestId,
-					planId,
-					txHash,
-					explorerUrl,
-					resource: {
-						status: backendResult.status,
-						...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
-						body: backendResult.body,
-					},
-				};
-
-				return c.json(resourceResponse, 200);
-			}
 
 			// Subscription plan: process payment with full lifecycle tracking
 			const grant = await engine.processHttpPayment(
@@ -521,11 +334,20 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 		}
 	});
 
-	app.get("/discovery", (c) => {
-		const mergedRoutes = mergePerRequestRoutes(opts.config.plans, pprRouteRegistry);
-		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig, mergedRoutes);
-		return c.json({ discoveryResponse });
+	app.get("/discover", (c) => {
+		const discoveryResponse = buildDiscoveryResponse(opts.config);
+		return c.json(discoveryResponse);
 	});
+
+	// Auto-mount transparent proxy routes from config.routes
+	for (const route of opts.config.routes ?? []) {
+		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(app as any)[method](
+			route.path,
+			createHonoPayPerRequest(route.routeId, pprDeps),
+		);
+	}
 
 	return app;
 }
