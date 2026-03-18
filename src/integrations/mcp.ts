@@ -227,7 +227,7 @@ export function createMcpServer(
 						"For per-request plans in standalone mode: the backend resource to call after payment.",
 					),
 				params: z
-					.record(z.string())
+					.record(z.string(), z.string())
 					.optional()
 					.describe(
 						"Template params for plans with proxyPath (e.g. { asset: 'BTC' } for /signal/{asset}). Not needed for plans with no placeholders.",
