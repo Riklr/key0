@@ -10,6 +10,7 @@
 
 import { randomBytes } from "node:crypto";
 import { formatUnits, type PublicClient, type WalletClient } from "viem";
+import type { ResourceResponse } from "../../src/types/challenge.ts";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -69,20 +70,6 @@ export type EIP3009Auth = {
 		validAfter: string;
 		validBefore: string;
 		nonce: `0x${string}`;
-	};
-};
-
-export type ResourceResponse = {
-	type: "ResourceResponse";
-	challengeId: string;
-	requestId: string;
-	planId: string;
-	txHash: `0x${string}`;
-	explorerUrl: string;
-	resource: {
-		status: number;
-		headers?: Record<string, string>;
-		body: unknown;
 	};
 };
 
