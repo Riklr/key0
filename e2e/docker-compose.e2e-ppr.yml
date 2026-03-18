@@ -16,6 +16,7 @@ services:
       PROXY_TO_BASE_URL: http://host.docker.internal:3001
       # PPR-only plans never call this, but docker/server.ts requires it for isConfigured
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
+      ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
       PLANS: '[{"planId":"weather-query","unitAmount":"$0.01","description":"Weather query per request","mode":"per-request"},{"planId":"joke-of-the-day","unitAmount":"$0.005","description":"Joke per request","mode":"per-request"}]'
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -72,7 +72,11 @@ beforeAll(async () => {
 	const store = new RedisChallengeStore({ redis });
 	const seenTxStore = new RedisSeenTxStore({ redis });
 	const tokenIssuer = new AccessTokenIssuer(ACCESS_TOKEN_SECRET);
-	const adapter = new X402Adapter({ network: NETWORK });
+	const ALCHEMY_RPC = process.env["ALCHEMY_BASE_SEPOLIA_RPC_URL"];
+	const adapter = new X402Adapter({
+		network: NETWORK,
+		...(ALCHEMY_RPC ? { rpcUrl: ALCHEMY_RPC } : {}),
+	});
 
 	const app = express();
 	app.use(express.json());
