@@ -74,50 +74,25 @@ const key0 = key0Router({
 		network: NETWORK,
 		challengeTTLSeconds: 300,
 		...(GAS_WALLET_KEY ? { gasWalletPrivateKey: GAS_WALLET_KEY } : {}),
-		plans: [
+		routes: [
 			{
-				planId: "weather-query",
+				routeId: "weather-query",
+				method: "GET",
+				path: "/api/weather/:city",
 				unitAmount: "$0.01",
-				description: "Current weather for any city — $0.01 per request.",
-				mode: "per-request",
-				routes: [
-					{
-						method: "GET",
-						path: "/api/weather/:city",
-						description: "Current weather conditions for a given city",
-					},
-				],
+				description: "Current weather conditions for a given city",
 			},
 			{
-				planId: "joke-of-the-day",
+				routeId: "joke-of-the-day",
+				method: "GET",
+				path: "/api/joke",
 				unitAmount: "$0.005",
-				description: "A random programming joke — $0.005 per request.",
-				mode: "per-request",
-				routes: [
-					{
-						method: "GET",
-						path: "/api/joke",
-						description: "Get a random programming joke",
-					},
-				],
+				description: "Get a random programming joke",
 			},
 		],
-		fetchResourceCredentials: async (params) => {
-			return tokenIssuer.sign(
-				{
-					sub: params.requestId,
-					jti: params.challengeId,
-					resourceId: params.resourceId,
-					planId: params.planId,
-					txHash: params.txHash,
-				},
-				3600,
-			);
-		},
-		// proxyTo enables standalone mode: all per-request plans are routed through /x402/access.
+		// proxyTo enables standalone mode: routes are auto-mounted and payment is settled inline.
 		// X-Gateway-Secret is injected so the backend can reject requests that bypass the gateway.
-		// Payment metadata headers (txHash, planId, amount, payer) are injected automatically by
-		// the built-in proxyToFetchResource helper.
+		// Payment metadata headers (txHash, routeId, amount, payer) are injected automatically.
 		proxyTo: {
 			baseUrl: BACKEND_URL,
 			headers: {

@@ -47,46 +47,22 @@ const key0 = key0Router({
 		network: NETWORK,
 		challengeTTLSeconds: 300,
 		...(GAS_WALLET_KEY ? { gasWalletPrivateKey: GAS_WALLET_KEY } : {}),
-		plans: [
+		routes: [
 			{
-				planId: "weather-query",
+				routeId: "weather-query",
+				method: "GET",
+				path: "/api/weather/:city",
 				unitAmount: "$0.01",
-				description: "Current weather for any city — $0.01 per request.",
-				mode: "per-request",
-				routes: [
-					{
-						method: "GET",
-						path: "/api/weather/:city",
-						description: "Current weather conditions for a given city",
-					},
-				],
+				description: "Current weather conditions for a given city",
 			},
 			{
-				planId: "joke-of-the-day",
+				routeId: "joke-of-the-day",
+				method: "GET",
+				path: "/api/joke",
 				unitAmount: "$0.005",
-				description: "A random programming joke — $0.005 per request.",
-				mode: "per-request",
-				routes: [
-					{
-						method: "GET",
-						path: "/api/joke",
-						description: "Get a random programming joke",
-					},
-				],
+				description: "Get a random programming joke",
 			},
 		],
-		fetchResourceCredentials: async (params) => {
-			return tokenIssuer.sign(
-				{
-					sub: params.requestId,
-					jti: params.challengeId,
-					resourceId: params.resourceId,
-					planId: params.planId,
-					txHash: params.txHash,
-				},
-				3600,
-			);
-		},
 	},
 	adapter,
 	store,
@@ -103,11 +79,6 @@ app.use(key0);
 app.get(
 	"/api/weather/:city",
 	key0.payPerRequest("weather-query", {
-		route: {
-			method: "GET",
-			path: "/api/weather/:city",
-			description: "Current weather conditions for a given city",
-		},
 		onPayment: (info: PaymentInfo) => {
 			console.log(`[PPR] weather-query settled | tx=${info.txHash} | path=${info.path}`);
 		},
@@ -131,11 +102,6 @@ app.get(
 app.get(
 	"/api/joke",
 	key0.payPerRequest("joke-of-the-day", {
-		route: {
-			method: "GET",
-			path: "/api/joke",
-			description: "Get a random programming joke",
-		},
 		onPayment: (info: PaymentInfo) => {
 			console.log(`[PPR] joke-of-the-day settled | tx=${info.txHash}`);
 		},
