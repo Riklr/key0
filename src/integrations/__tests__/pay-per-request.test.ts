@@ -1,11 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
 import { buildAgentCard } from "../../core/agent-card.js";
 import { ChallengeEngine } from "../../core/challenge-engine.js";
+import { makeSellerConfig } from "../../test-utils/fixtures.js";
 import { MockPaymentAdapter } from "../../test-utils/mock-adapter.js";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 import type { FetchResourceResult, SellerConfig, X402PaymentPayload } from "../../types/index.js";
 import { CHAIN_CONFIGS } from "../../types/index.js";
 import {
+	createExpressPayPerRequest,
 	type FetchResourceParams,
 	key0PayPerRequest,
 	mergePerRequestRoutes,
@@ -1564,5 +1566,47 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 
 		const challenges = await store.listByState("REFUND_PENDING");
 		expect(challenges.length).toBeGreaterThan(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Unit: routeId lookup — createExpressPayPerRequest
+// ---------------------------------------------------------------------------
+
+describe("routeId lookup — createExpressPayPerRequest", () => {
+	const testNetworkConfig = CHAIN_CONFIGS["testnet"];
+
+	test("does not throw for a known routeId", () => {
+		const config = makeSellerConfig({
+			plans: [],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
+			proxyTo: { baseUrl: "http://localhost:9999" },
+		});
+		expect(() =>
+			createExpressPayPerRequest("weather", {
+				config,
+				networkConfig: testNetworkConfig,
+				seenTxStore: new TestSeenTxStore(),
+			}),
+		).not.toThrow();
+	});
+
+	test("throws for an unknown routeId", () => {
+		const config = makeSellerConfig({
+			plans: [],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
+			proxyTo: { baseUrl: "http://localhost:9999" },
+		});
+		expect(() =>
+			createExpressPayPerRequest("unknown-id", {
+				config,
+				networkConfig: testNetworkConfig,
+				seenTxStore: new TestSeenTxStore(),
+			}),
+		).toThrow(/route "unknown-id" not found/);
 	});
 });
