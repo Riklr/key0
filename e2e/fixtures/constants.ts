@@ -35,3 +35,9 @@ export const PPR_KEY0_URL = "http://localhost:3002";
  * min-age guard (3 s).  Use 120 s to give a comfortable margin.
  */
 export const REFUND_POLL_TIMEOUT_MS = 120_000;
+
+/** Gateway proxy plan IDs */
+export const GATEWAY_FREE_PLAN_ID = "status";
+export const GATEWAY_SIGNAL_PLAN_ID = "weather-by-city"; // paid, proxyPath with template
+export const GATEWAY_KEY0_URL = "http://localhost:3002"; // reuse PPR stack port
+export const GATEWAY_PROXY_SECRET = "e2e-gateway-proxy-secret-32-chars!";
