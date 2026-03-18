@@ -177,6 +177,12 @@ All routes — paid and free — are also accessible via `POST /x402/access` and
 
 For free routes, `txHash` and `explorerUrl` are absent. For backend non-2xx responses via A2A: refund is initiated, and the backend error is surfaced inside `resource` (status + body from backend unchanged).
 
+**A2A agent card skills:**
+- Skill `id: "discover-plans"`, `name: "Discover Plans"` → `id: "discover"`, `name: "Discover"`
+- Skill `id: "request-access"`, `name: "Request Access"` → `id: "access"`, `name: "Access"`
+- All skill descriptions and examples referencing `${baseUrl}/discovery` → `${baseUrl}/discover`
+- Per-request route skills: `id` prefix `ppr-<planId>-` → `ppr-<routeId>-` (reflects route/plan split)
+
 **MCP tools:**
 - `discover_plans` → renamed to `discover` — returns both plans and routes
 - `request_access` → renamed to `access` — handles both `planId` (subscription) and `routeId` (route); exactly one required
@@ -419,6 +425,10 @@ This is a **breaking change** to the `feat/pay-per-request` branch (not to `main
 | `key0.payPerRequest(planId)` | `key0.payPerRequest(routeId)` (parameter rename) |
 | `GET /discovery` endpoint | Renamed to `GET /discover` |
 | `discoveryResponse` wrapper on `GET /discover` | Unwrapped response object |
+| A2A skill `id: "discover-plans"` | Renamed to `id: "discover"` |
+| A2A skill `id: "request-access"` | Renamed to `id: "access"` |
+| MCP tool `discover_plans` | Renamed to `discover` |
+| MCP tool `request_access` | Renamed to `access` |
 
 The subscription flow (`Plan` → payment → JWT) is **unchanged**. Sellers using only subscription plans today are unaffected.
 
