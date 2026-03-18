@@ -326,17 +326,7 @@ function mountFastifyRoutes(
 				return reply.code(200).send(existingGrant);
 			}
 
-			const paymentPayload = decodePaymentSignature(paymentSignature);
-			const { txHash, settleResponse, payer } = await settlePayment(
-				paymentPayload,
-				opts.config,
-				networkConfig,
-			);
-
-			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
-			reply.header("payment-response", paymentResponse);
-
-			// Determine plan mode and deployment mode
+			// Pre-settlement guard: validate per-request plan requirements before burning USDC
 			const plan = opts.config.plans.find((p) => p.planId === planId);
 			const fetchResourceFn = resolveConfigFetchResource(opts.config);
 
@@ -349,7 +339,6 @@ function mountFastifyRoutes(
 							`Use ${plan.routes?.[0]?.method ?? "GET"} ${plan.routes?.[0]?.path ?? "/"} with PAYMENT-SIGNATURE header.`,
 					});
 				}
-
 				if (!resource?.method || !resource?.path) {
 					return reply.code(400).send({
 						error: "MISSING_RESOURCE_FIELD",
@@ -358,6 +347,22 @@ function mountFastifyRoutes(
 							'{ method: "GET", path: "/api/example" }',
 					});
 				}
+			}
+
+			const paymentPayload = decodePaymentSignature(paymentSignature);
+			const { txHash, settleResponse, payer } = await settlePayment(
+				paymentPayload,
+				opts.config,
+				networkConfig,
+			);
+
+			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
+			reply.header("payment-response", paymentResponse);
+
+			if (plan?.mode === "per-request") {
+				// Validated by pre-settlement guard above — safe to assert non-null
+				const pprResource = resource!;
+				const pprFetch = fetchResourceFn!;
 
 				console.log(
 					`[x402-access/fastify] Per-request plan: recording payment for requestId: ${requestId}`,
@@ -365,13 +370,13 @@ function mountFastifyRoutes(
 				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 					requestId,
 					planId,
-					resource.path,
+					pprResource.path,
 					txHash,
 					payer as `0x${string}` | undefined,
 				);
 
 				const noBodyMethodFastify =
-					resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+					pprResource.method.toUpperCase() === "GET" || pprResource.method.toUpperCase() === "HEAD";
 				const skipHeadersFastify = new Set([
 					"host",
 					"connection",
@@ -390,22 +395,22 @@ function mountFastifyRoutes(
 				await engine.assertPaidState(challengeId);
 
 				// Proxy to backend — handle errors explicitly so we can trigger refunds.
-				let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+				let backendResult: Awaited<ReturnType<typeof pprFetch>>;
 				try {
-					backendResult = await fetchResourceFn({
+					backendResult = await pprFetch({
 						paymentInfo: {
 							txHash,
 							payer: payer ?? undefined,
 							planId,
 							amount: plan.unitAmount!,
-							method: resource.method,
-							path: resource.path,
+							method: pprResource.method,
+							path: pprResource.path,
 							challengeId,
 						},
-						method: resource.method,
-						path: resource.path,
+						method: pprResource.method,
+						path: pprResource.path,
 						headers: forwardHeaders,
-						body: resource.body,
+						body: pprResource.body,
 					});
 				} catch (err) {
 					const isTimeout = err instanceof DOMException && err.name === "AbortError";

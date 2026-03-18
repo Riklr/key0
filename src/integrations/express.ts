@@ -392,6 +392,30 @@ export function key0Router(opts: Key0Config): Key0Router {
 					return res.status(200).json(existingGrant);
 				}
 
+				// Pre-settlement guard: validate per-request plan requirements before burning USDC
+				const plan = opts.config.plans.find((p) => p.planId === planId);
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+
+				if (plan?.mode === "per-request") {
+					if (!fetchResourceFn) {
+						const routePath = plan.routes?.[0]?.path ?? "/";
+						return res.status(400).json({
+							error: "PER_REQUEST_EMBEDDED_MODE",
+							message:
+								"Per-request plans must be accessed via their route endpoints directly. " +
+								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
+						});
+					}
+					if (!resource?.method || !resource?.path) {
+						return res.status(400).json({
+							error: "MISSING_RESOURCE_FIELD",
+							message:
+								'Per-request plans require a "resource" field in the request body: ' +
+								'{ method: "GET", path: "/api/example" }',
+						});
+					}
+				}
+
 				// Decode header then settle via shared settlement layer
 				console.log("[x402-access] Decoding payment signature...");
 				const paymentPayload = decodePaymentSignature(paymentSignature);
@@ -416,31 +440,10 @@ export function key0Router(opts: Key0Config): Key0Router {
 				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
 				res.setHeader("payment-response", paymentResponse);
 
-				// Determine plan mode and deployment mode
-				const plan = opts.config.plans.find((p) => p.planId === planId);
-				const fetchResourceFn = resolveConfigFetchResource(opts.config);
-
 				if (plan?.mode === "per-request") {
-					if (!fetchResourceFn) {
-						// Embedded mode: per-request plans must be accessed via their route endpoints
-						const routePath = plan.routes?.[0]?.path ?? "/";
-						return res.status(400).json({
-							error: "PER_REQUEST_EMBEDDED_MODE",
-							message:
-								"Per-request plans must be accessed via their route endpoints directly. " +
-								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
-						});
-					}
-
-					// Standalone mode: validate resource field
-					if (!resource?.method || !resource?.path) {
-						return res.status(400).json({
-							error: "MISSING_RESOURCE_FIELD",
-							message:
-								'Per-request plans require a "resource" field in the request body: ' +
-								'{ method: "GET", path: "/api/example" }',
-						});
-					}
+					// Validated by pre-settlement guard above — safe to assert non-null
+					const pprResource = resource!;
+					const pprFetch = fetchResourceFn!;
 
 					// Record payment (PENDING → PAID) without issuing a token
 					console.log(
@@ -449,7 +452,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 						requestId,
 						planId,
-						resource.path,
+						pprResource.path,
 						txHash,
 						payer as `0x${string}` | undefined,
 					);
@@ -459,7 +462,8 @@ export function key0Router(opts: Key0Config): Key0Router {
 					// from the incoming POST to a GET causes the backend to hang waiting for a
 					// body that never arrives).
 					const noBodyMethod =
-						resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+						pprResource.method.toUpperCase() === "GET" ||
+						pprResource.method.toUpperCase() === "HEAD";
 					const skipHeaders = new Set([
 						"host",
 						"connection",
@@ -478,23 +482,25 @@ export function key0Router(opts: Key0Config): Key0Router {
 					await engine.assertPaidState(challengeId);
 
 					// Proxy to backend — handle errors explicitly so we can trigger refunds.
-					console.log(`[x402-access] Proxying to backend: ${resource.method} ${resource.path}`);
-					let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+					console.log(
+						`[x402-access] Proxying to backend: ${pprResource.method} ${pprResource.path}`,
+					);
+					let backendResult: Awaited<ReturnType<typeof pprFetch>>;
 					try {
-						backendResult = await fetchResourceFn({
+						backendResult = await pprFetch({
 							paymentInfo: {
 								txHash,
 								payer: payer ?? undefined,
 								planId,
 								amount: plan.unitAmount!,
-								method: resource.method,
-								path: resource.path,
+								method: pprResource.method,
+								path: pprResource.path,
 								challengeId,
 							},
-							method: resource.method,
-							path: resource.path,
+							method: pprResource.method,
+							path: pprResource.path,
 							headers: forwardHeaders,
-							body: resource.body,
+							body: pprResource.body,
 						});
 					} catch (err) {
 						const isTimeout = err instanceof DOMException && err.name === "AbortError";
@@ -564,7 +570,9 @@ export function key0Router(opts: Key0Config): Key0Router {
 					try {
 						resolvedProxyPath = interpolateUrlTemplate(plan.proxyPath, rawParams);
 					} catch (err) {
-						return res.status(400).json({ error: "TEMPLATE_ERROR", message: (err as Error).message });
+						return res
+							.status(400)
+							.json({ error: "TEMPLATE_ERROR", message: (err as Error).message });
 					}
 					const qs = plan.proxyQuery
 						? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
@@ -603,15 +611,11 @@ export function key0Router(opts: Key0Config): Key0Router {
 								? "Backend timed out. A refund has been initiated."
 								: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
 						await engine.initiateRefund(proxyChallengeId, "proxy_timeout").catch(() => {});
-						return res
-							.status(502)
-							.json({ type: "Error", code: "PROXY_ERROR", message: msg });
+						return res.status(502).json({ type: "Error", code: "PROXY_ERROR", message: msg });
 					}
 
 					if (backendResult.status >= 400) {
-						await engine
-							.initiateRefund(proxyChallengeId, "backend_non_2xx")
-							.catch(() => {});
+						await engine.initiateRefund(proxyChallengeId, "backend_non_2xx").catch(() => {});
 						return res.status(502).json({
 							type: "Error",
 							code: "PROXY_BACKEND_ERROR",

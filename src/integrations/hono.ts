@@ -331,17 +331,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				return c.json(existingGrant, 200);
 			}
 
-			const paymentPayload = decodePaymentSignature(paymentSignature);
-			const { txHash, settleResponse, payer } = await settlePayment(
-				paymentPayload,
-				opts.config,
-				networkConfig,
-			);
-
-			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
-			c.header("payment-response", paymentResponse);
-
-			// Determine plan mode and deployment mode
+			// Pre-settlement guard: validate per-request plan requirements before burning USDC
 			const plan = opts.config.plans.find((p) => p.planId === planId);
 			const fetchResourceFn = resolveConfigFetchResource(opts.config);
 
@@ -357,7 +347,6 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 						400,
 					);
 				}
-
 				if (!resource?.method || !resource?.path) {
 					return c.json(
 						{
@@ -369,6 +358,22 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 						400,
 					);
 				}
+			}
+
+			const paymentPayload = decodePaymentSignature(paymentSignature);
+			const { txHash, settleResponse, payer } = await settlePayment(
+				paymentPayload,
+				opts.config,
+				networkConfig,
+			);
+
+			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
+			c.header("payment-response", paymentResponse);
+
+			if (plan?.mode === "per-request") {
+				// Validated by pre-settlement guard above — safe to assert non-null
+				const pprResource = resource!;
+				const pprFetch = fetchResourceFn!;
 
 				console.log(
 					`[x402-access/hono] Per-request plan: recording payment for requestId: ${requestId}`,
@@ -376,13 +381,13 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 					requestId,
 					planId,
-					resource.path,
+					pprResource.path,
 					txHash,
 					payer as `0x${string}` | undefined,
 				);
 
 				const noBodyMethodHono =
-					resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+					pprResource.method.toUpperCase() === "GET" || pprResource.method.toUpperCase() === "HEAD";
 				const skipHeadersHono = new Set([
 					"host",
 					"connection",
@@ -403,22 +408,22 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				await engine.assertPaidState(challengeId);
 
 				// Proxy to backend — handle errors explicitly so we can trigger refunds.
-				let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+				let backendResult: Awaited<ReturnType<typeof pprFetch>>;
 				try {
-					backendResult = await fetchResourceFn({
+					backendResult = await pprFetch({
 						paymentInfo: {
 							txHash,
 							payer: payer ?? undefined,
 							planId,
 							amount: plan.unitAmount!,
-							method: resource.method,
-							path: resource.path,
+							method: pprResource.method,
+							path: pprResource.path,
 							challengeId,
 						},
-						method: resource.method,
-						path: resource.path,
+						method: pprResource.method,
+						path: pprResource.path,
 						headers: forwardHeaders,
-						body: resource.body,
+						body: pprResource.body,
 					});
 				} catch (err) {
 					const isTimeout = err instanceof DOMException && err.name === "AbortError";
