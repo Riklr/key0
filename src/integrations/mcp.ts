@@ -12,6 +12,7 @@ import type {
 	X402PaymentPayload,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { interpolateUrlTemplate } from "../utils/url-template.js";
 import { resolveConfigFetchResource } from "./pay-per-request.js";
 import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
 
@@ -225,14 +226,113 @@ export function createMcpServer(
 					.describe(
 						"For per-request plans in standalone mode: the backend resource to call after payment.",
 					),
+				params: z
+					.record(z.string())
+					.optional()
+					.describe(
+						"Template params for plans with proxyPath (e.g. { asset: 'BTC' } for /signal/{asset}). Not needed for plans with no placeholders.",
+					),
 			},
 		},
-		async ({ planId, resourceId, resource }, extra) => {
+		async ({ planId, resourceId, resource, params }, extra) => {
 			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
 			const plan = config.plans.find((t) => t.planId === planId);
 			const fetchResourceFn = resolveConfigFetchResource(config);
 
 			try {
+				// Free plan fast-path: proxy immediately without payment
+				if (plan?.free === true) {
+					if (!fetchResourceFn || !plan.proxyPath) {
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(
+										{
+											error: "FREE_PLAN_MISCONFIGURED",
+											message:
+												"Free plan requires both fetchResource (or proxyTo) and proxyPath to be configured.",
+										},
+										null,
+										2,
+									),
+								},
+							],
+						};
+					}
+
+					let resolvedPath: string;
+					try {
+						resolvedPath = interpolateUrlTemplate(plan.proxyPath, params ?? {});
+					} catch (templateErr: unknown) {
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(
+										{
+											error: "TEMPLATE_ERROR",
+											message:
+												templateErr instanceof Error
+													? templateErr.message
+													: String(templateErr),
+										},
+										null,
+										2,
+									),
+								},
+							],
+						};
+					}
+
+					// Append static query params if configured
+					if (plan.proxyQuery) {
+						const qs = new URLSearchParams(plan.proxyQuery).toString();
+						resolvedPath = `${resolvedPath}?${qs}`;
+					}
+
+					const proxyMethod = plan.proxyMethod ?? "GET";
+					const freeResult = await fetchResourceFn({
+						paymentInfo: {
+							txHash: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+							payer: undefined,
+							planId,
+							amount: "0",
+							method: proxyMethod,
+							path: resolvedPath,
+							challengeId: "free",
+						},
+						method: proxyMethod,
+						path: resolvedPath,
+						headers: {},
+					});
+
+					const freeResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId: "free",
+						requestId: "free",
+						planId,
+						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+						explorerUrl: "",
+						resource: {
+							status: freeResult.status,
+							...(freeResult.headers !== undefined ? { headers: freeResult.headers } : {}),
+							body: freeResult.body,
+						},
+					};
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify(freeResponse, null, 2),
+							},
+						],
+					};
+				}
+
 				if (!paymentPayload) {
 					// No payment — validate plan exists, then return x402 PaymentRequired signal
 					if (!plan) {
@@ -292,31 +392,67 @@ export function createMcpServer(
 						};
 					}
 
-					if (!resource?.method || !resource?.path) {
-						return {
-							isError: true as const,
-							content: [
-								{
-									type: "text" as const,
-									text: JSON.stringify(
-										{
-											error: "MISSING_RESOURCE_FIELD",
-											message:
-												'Per-request plans require a "resource" field: { method: "GET", path: "/api/example" }',
-										},
-										null,
-										2,
-									),
-								},
-							],
-						};
+					// Resolve method and path: proxyPath template takes precedence over resource field
+					let resolvedMethod: string;
+					let resolvedResourcePath: string;
+					if (plan.proxyPath) {
+						try {
+							resolvedResourcePath = interpolateUrlTemplate(plan.proxyPath, params ?? {});
+						} catch (templateErr: unknown) {
+							return {
+								isError: true as const,
+								content: [
+									{
+										type: "text" as const,
+										text: JSON.stringify(
+											{
+												error: "TEMPLATE_ERROR",
+												message:
+													templateErr instanceof Error
+														? templateErr.message
+														: String(templateErr),
+											},
+											null,
+											2,
+										),
+									},
+								],
+							};
+						}
+						if (plan.proxyQuery) {
+							const qs = new URLSearchParams(plan.proxyQuery).toString();
+							resolvedResourcePath = `${resolvedResourcePath}?${qs}`;
+						}
+						resolvedMethod = plan.proxyMethod ?? "GET";
+					} else {
+						if (!resource?.method || !resource?.path) {
+							return {
+								isError: true as const,
+								content: [
+									{
+										type: "text" as const,
+										text: JSON.stringify(
+											{
+												error: "MISSING_RESOURCE_FIELD",
+												message:
+													'Per-request plans require a "resource" field: { method: "GET", path: "/api/example" }',
+											},
+											null,
+											2,
+										),
+									},
+								],
+							};
+						}
+						resolvedMethod = resource.method;
+						resolvedResourcePath = resource.path;
 					}
 
 					// Record payment (PENDING → PAID) without token issuance
 					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 						requestId,
 						planId,
-						resource.path,
+						resolvedResourcePath,
 						txHash,
 						payer as `0x${string}` | undefined,
 					);
@@ -328,14 +464,14 @@ export function createMcpServer(
 							payer: payer ?? undefined,
 							planId,
 							amount: plan.unitAmount!,
-							method: resource.method,
-							path: resource.path,
+							method: resolvedMethod,
+							path: resolvedResourcePath,
 							challengeId,
 						},
-						method: resource.method,
-						path: resource.path,
+						method: resolvedMethod,
+						path: resolvedResourcePath,
 						headers: {},
-						body: resource.body,
+						body: resource?.body,
 					});
 
 					if (backendResult.status >= 200 && backendResult.status < 300) {

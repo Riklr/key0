@@ -956,3 +956,120 @@ describe("ChallengeEngine.markDelivered", () => {
 		await expect(engine.markDelivered(challengeId)).resolves.toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Helper: call a registered MCP tool directly (bypass full transport stack)
+// ---------------------------------------------------------------------------
+
+async function callMcpTool(
+	server: ReturnType<typeof createMcpServer>,
+	toolName: string,
+	args: Record<string, unknown>,
+	meta?: Record<string, unknown>,
+) {
+	type ToolEntry = { handler: (args: unknown, extra: unknown) => Promise<unknown> };
+	const tools = (server as unknown as { _registeredTools: Record<string, ToolEntry> })
+		._registeredTools;
+	const tool = tools[toolName];
+	if (!tool) throw new Error(`Tool "${toolName}" not found`);
+	return tool.handler(args, meta !== undefined ? { _meta: meta } : undefined) as Promise<{
+		isError?: true;
+		content: Array<{ type: string; text: string }>;
+	}>;
+}
+
+function makeEngine(config: SellerConfig) {
+	const adapter = new MockPaymentAdapter();
+	const store = new TestChallengeStore();
+	const seenTxStore = new TestSeenTxStore();
+	const engine = new ChallengeEngine({ config, store, seenTxStore, adapter });
+	return engine;
+}
+
+// ---------------------------------------------------------------------------
+// Integration: createMcpServer — free plan request_access
+// ---------------------------------------------------------------------------
+
+describe("createMcpServer — free plan request_access", () => {
+	test("free plan proxies immediately without payment", async () => {
+		const fetchedPaths: string[] = [];
+		const mockFetchResource = async ({
+			path,
+		}: FetchResourceParams): Promise<FetchResourceResult> => {
+			fetchedPaths.push(path);
+			return { status: 200, body: { status: "ok" } };
+		};
+		const config = makeConfig({
+			plans: [{ planId: "health", free: true as const, proxyPath: "/health", proxyMethod: "GET" as const }],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config);
+		const server = createMcpServer(engine, config);
+
+		const result = await callMcpTool(server, "request_access", { planId: "health" });
+
+		expect(result.isError).toBeUndefined();
+		expect(fetchedPaths).toEqual(["/health"]);
+		const parsed = JSON.parse(result.content[0]!.text);
+		expect(parsed.type).toBe("ResourceResponse");
+		expect(parsed.resource.status).toBe(200);
+	});
+
+	test("free plan with proxyPath template interpolates params", async () => {
+		const fetchedPaths: string[] = [];
+		const mockFetchResource = async ({
+			path,
+		}: FetchResourceParams): Promise<FetchResourceResult> => {
+			fetchedPaths.push(path);
+			return { status: 200, body: { score: 72 } };
+		};
+		const config = makeConfig({
+			plans: [
+				{ planId: "signal", free: true as const, proxyPath: "/signal/{asset}", proxyMethod: "GET" as const },
+			],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config);
+		const server = createMcpServer(engine, config);
+
+		await callMcpTool(server, "request_access", { planId: "signal", params: { asset: "BTC" } });
+		expect(fetchedPaths).toEqual(["/signal/BTC"]);
+	});
+
+	test("free plan returns error if proxyPath template param is missing", async () => {
+		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
+			status: 200,
+			body: {},
+		});
+		const config = makeConfig({
+			plans: [{ planId: "signal", free: true as const, proxyPath: "/signal/{asset}" }],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config);
+		const server = createMcpServer(engine, config);
+
+		const result = await callMcpTool(server, "request_access", { planId: "signal" });
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(result.content[0]!.text);
+		expect(parsed.message).toContain('Missing param "asset"');
+	});
+
+	test("free plan propagates non-2xx status verbatim (no refund)", async () => {
+		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
+			status: 503,
+			body: { error: "backend down" },
+		});
+		const config = makeConfig({
+			plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
+			fetchResource: mockFetchResource,
+		});
+		const engine = makeEngine(config);
+		const server = createMcpServer(engine, config);
+
+		const result = await callMcpTool(server, "request_access", { planId: "health" });
+		// Free plan: return the status verbatim, no isError, no REFUND_PENDING
+		const parsed = JSON.parse(result.content[0]!.text);
+		expect(parsed.resource.status).toBe(503);
+		expect(result.isError).toBeUndefined();
+	});
+});
