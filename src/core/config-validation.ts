@@ -86,15 +86,15 @@ export function validateSellerConfig(config: SellerConfig): void {
 				throw new Error(`route "${route.routeId}": invalid method "${route.method}"`);
 			}
 			if (route.unitAmount && !route.unitAmount.match(/^\$\d+\.\d{2}$/)) {
-				throw new Error(
-					`route "${route.routeId}": unitAmount must be in format "$X.XX"`,
-				);
+				throw new Error(`route "${route.routeId}": unitAmount must be in format "$X.XX"`);
 			}
 			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
 			routeIds.add(route.routeId);
 		}
 		if (!config.proxyTo?.proxySecret) {
-			console.warn("[key0] Warning: proxyTo.proxySecret not set — backend cannot verify Key0 origin");
+			console.warn(
+				"[key0] Warning: proxyTo.proxySecret not set — backend cannot verify Key0 origin",
+			);
 		}
 	}
 }

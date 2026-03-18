@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "bun:test";
-import type { SellerConfig } from "../../types";
 import { makeSellerConfig } from "../../test-utils/index.js";
+import type { SellerConfig } from "../../types";
 import { validateSellerConfig } from "../config-validation.js";
 
 function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
@@ -128,10 +128,10 @@ describe("routes validation", () => {
 			validateSellerConfig(
 				makeSellerConfig({
 					plans: [],
-					fetchResourceCredentials: undefined,
+					fetchResourceCredentials: undefined as unknown as never,
 					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
-				})
-			)
+				}),
+			),
 		).toThrow(/proxyTo is required when routes are configured/);
 	});
 
@@ -140,11 +140,11 @@ describe("routes validation", () => {
 			validateSellerConfig(
 				makeSellerConfig({
 					plans: [],
-					fetchResourceCredentials: undefined,
+					fetchResourceCredentials: undefined as unknown as never,
 					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
 					proxyTo: { baseUrl: "http://localhost:3001" },
-				})
-			)
+				}),
+			),
 		).not.toThrow();
 	});
 
@@ -153,11 +153,11 @@ describe("routes validation", () => {
 			validateSellerConfig(
 				makeSellerConfig({
 					plans: [],
-					fetchResourceCredentials: undefined,
+					fetchResourceCredentials: undefined as unknown as never,
 					routes: [{ routeId: "health", method: "GET", path: "/health" }],
 					proxyTo: { baseUrl: "http://localhost:3001" },
-				})
-			)
+				}),
+			),
 		).not.toThrow();
 	});
 
@@ -166,14 +166,14 @@ describe("routes validation", () => {
 			validateSellerConfig(
 				makeSellerConfig({
 					plans: [],
-					fetchResourceCredentials: undefined,
+					fetchResourceCredentials: undefined as unknown as never,
 					routes: [
 						{ routeId: "dup", method: "GET", path: "/a" },
 						{ routeId: "dup", method: "GET", path: "/b" },
 					],
 					proxyTo: { baseUrl: "http://localhost:3001" },
-				})
-			)
+				}),
+			),
 		).toThrow(/duplicate routeId/);
 	});
 
@@ -182,11 +182,11 @@ describe("routes validation", () => {
 			validateSellerConfig(
 				makeSellerConfig({
 					plans: [],
-					fetchResourceCredentials: undefined,
+					fetchResourceCredentials: undefined as unknown as never,
 					routes: [{ routeId: "r1", method: "GET", path: "no-slash" }],
 					proxyTo: { baseUrl: "http://localhost:3001" },
-				})
-			)
+				}),
+			),
 		).toThrow(/path must start with/);
 	});
 });
@@ -195,8 +195,8 @@ describe("plans-only seller", () => {
 	it("throws if plans configured without fetchResourceCredentials", () => {
 		expect(() =>
 			validateSellerConfig(
-				makeSellerConfig({ fetchResourceCredentials: undefined })
-			)
+				makeSellerConfig({ fetchResourceCredentials: undefined as unknown as never }),
+			),
 		).toThrow(/fetchResourceCredentials is required when plans are configured/);
 	});
 });
@@ -205,8 +205,8 @@ describe("neither plans nor routes", () => {
 	it("does not throw — warns and proceeds (developer mode)", () => {
 		expect(() =>
 			validateSellerConfig(
-				makeSellerConfig({ plans: [], fetchResourceCredentials: undefined })
-			)
+				makeSellerConfig({ plans: [], fetchResourceCredentials: undefined as unknown as never }),
+			),
 		).not.toThrow();
 	});
 });
