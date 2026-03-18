@@ -30,19 +30,20 @@ describe("createKey0 — startup validation", () => {
 		).toThrow("fetchResourceCredentials");
 	});
 
-	test("does not throw when all plans have proxyPath", () => {
+	test("does not throw when routes are configured with proxyTo", () => {
 		expect(() =>
 			createKey0({
 				config: {
 					...configWithoutFrc({
+						plans: [],
 						proxyTo: { baseUrl: "https://backend.internal" },
 					}),
-					plans: [
+					routes: [
 						{
-							planId: "signal",
-							unitAmount: "$0.001",
-							mode: "per-request" as const,
-							proxyPath: "/signal/{asset}",
+							routeId: "signal",
+							method: "GET" as const,
+							path: "/signal/{asset}",
+							unitAmount: "$0.10",
 						},
 					],
 				},
@@ -52,14 +53,15 @@ describe("createKey0 — startup validation", () => {
 		).not.toThrow();
 	});
 
-	test("does not throw when all plans are free", () => {
+	test("does not throw when only routes are configured, no plans", () => {
 		expect(() =>
 			createKey0({
 				config: {
 					...configWithoutFrc({
+						plans: [],
 						proxyTo: { baseUrl: "https://backend.internal" },
 					}),
-					plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
+					routes: [{ routeId: "health", method: "GET" as const, path: "/health" }],
 				},
 				store: makeTestStore(),
 				seenTxStore: makeTestSeenTxStore(),
@@ -67,36 +69,69 @@ describe("createKey0 — startup validation", () => {
 		).not.toThrow();
 	});
 
-	test("warns when proxyTo is configured without proxySecret", () => {
+	test("warns when routes are configured with proxyTo but no proxySecret", () => {
 		const warnSpy = spyOn(console, "warn");
 		createKey0({
 			config: {
 				...configWithoutFrc({
+					plans: [],
 					proxyTo: { baseUrl: "https://backend.internal" },
 				}),
-				plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
+				routes: [{ routeId: "health", method: "GET" as const, path: "/health" }],
 			},
 			store: makeTestStore(),
 			seenTxStore: makeTestSeenTxStore(),
 		});
-		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("KEY0_PROXY_SECRET"));
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("proxySecret"));
 	});
 
-	test("does not warn when proxyTo has proxySecret set", () => {
+	test("does not warn when routes have proxySecret set", () => {
 		const warnSpy = spyOn(console, "warn").mockReset();
 		createKey0({
 			config: {
 				...configWithoutFrc({
+					plans: [],
 					proxyTo: {
 						baseUrl: "https://backend.internal",
 						proxySecret: "secret-at-least-32-chars-long!!",
 					},
 				}),
-				plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
+				routes: [{ routeId: "health", method: "GET" as const, path: "/health" }],
 			},
 			store: makeTestStore(),
 			seenTxStore: makeTestSeenTxStore(),
 		});
-		expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("KEY0_PROXY_SECRET"));
+		expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("proxySecret"));
+	});
+});
+
+describe("createKey0 — new validation rules", () => {
+	test("throws if routes without proxyTo", () => {
+		expect(() =>
+			createKey0({
+				config: {
+					...configWithoutFrc({
+						proxyTo: undefined,
+					}),
+					plans: [],
+					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
+				},
+				store: makeTestStore(),
+				seenTxStore: makeTestSeenTxStore(),
+			}),
+		).toThrow(/proxyTo is required/);
+	});
+
+	test("throws if plans without fetchResourceCredentials", () => {
+		expect(() =>
+			createKey0({
+				config: {
+					...configWithoutFrc(),
+					plans: [{ planId: "basic", unitAmount: "$0.01" }],
+				},
+				store: makeTestStore(),
+				seenTxStore: makeTestSeenTxStore(),
+			}),
+		).toThrow(/fetchResourceCredentials is required/);
 	});
 });

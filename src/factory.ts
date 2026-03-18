@@ -1,5 +1,6 @@
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
 import { buildAgentCard, ChallengeEngine } from "./core/index.js";
+import { validateSellerConfig } from "./core/config-validation.js";
 import { Key0Executor } from "./executor.js";
 import type {
 	AgentCard,
@@ -24,23 +25,8 @@ export type Key0Instance = {
 };
 
 export function createKey0(opts: Key0Config): Key0Instance {
-	// Guard: fetchResourceCredentials required unless all plans have proxyPath or are free
-	const plansNeedingCredentials = opts.config.plans.filter((p) => !p.free && !p.proxyPath);
-	if (plansNeedingCredentials.length > 0 && !opts.config.fetchResourceCredentials) {
-		throw new Error(
-			`fetchResourceCredentials is required when any plan lacks both 'free: true' and 'proxyPath'. ` +
-				`Affected plans: ${plansNeedingCredentials.map((p) => p.planId).join(", ")}`,
-		);
-	}
-
-	// Warn if proxyTo is configured without proxySecret
-	if (opts.config.proxyTo && !opts.config.proxyTo.proxySecret) {
-		console.warn(
-			"[Key0] Warning: proxyTo is configured without proxySecret. " +
-				"Set KEY0_PROXY_SECRET and pass it as proxyTo.proxySecret to require " +
-				"X-Key0-Internal-Token validation on your backend.",
-		);
-	}
+	// Validate config at factory creation time
+	validateSellerConfig(opts.config);
 
 	if (!opts.store) {
 		throw new Error(
