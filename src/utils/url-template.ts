@@ -23,7 +23,7 @@ export function interpolateUrlTemplate(
 		const value = params[key]!;
 		if (!SAFE_PARAM_RE.test(value)) {
 			throw new Error(
-				`Invalid param "${key}": value "${value}" contains disallowed characters (allowed: A-Z a-z 0-9 _ -)`,
+				`Invalid param "${key}": value "${value}" contains disallowed characters`,
 			);
 		}
 		return value;

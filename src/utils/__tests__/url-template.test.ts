@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { interpolateUrlTemplate } from "../url-template.js";
+import { extractTemplateParams, interpolateUrlTemplate } from "../url-template.js";
 
 describe("interpolateUrlTemplate", () => {
 	test("replaces single placeholder", () => {
@@ -42,5 +42,19 @@ describe("interpolateUrlTemplate", () => {
 
 	test("allows alphanumeric, dash, underscore", () => {
 		expect(interpolateUrlTemplate("/token/{id}", { id: "TOKEN_A-1" })).toBe("/token/TOKEN_A-1");
+	});
+});
+
+describe("extractTemplateParams", () => {
+	test("returns empty array for template with no placeholders", () => {
+		expect(extractTemplateParams("/health")).toEqual([]);
+	});
+
+	test("returns single param name", () => {
+		expect(extractTemplateParams("/signal/{asset}")).toEqual(["asset"]);
+	});
+
+	test("returns multiple param names", () => {
+		expect(extractTemplateParams("/market/{asset}/interval/{period}")).toEqual(["asset", "period"]);
 	});
 });
