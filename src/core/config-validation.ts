@@ -37,12 +37,15 @@ export function validateSellerConfig(config: SellerConfig): void {
 	const hasPlans = (config.plans?.length ?? 0) > 0;
 	const hasRoutes = (config.routes?.length ?? 0) > 0;
 
-	// Plans require fetchResourceCredentials
-	if (hasPlans && typeof config.fetchResourceCredentials !== "function") {
+	// Subscription plans require fetchResourceCredentials
+	const hasSubscriptionPlans = (config.plans ?? []).some(
+		(p) => !p.free && p.mode !== "per-request",
+	);
+	if (hasSubscriptionPlans && typeof config.fetchResourceCredentials !== "function") {
 		throw new Error("fetchResourceCredentials is required when plans are configured");
 	}
 
-	// Routes require proxyTo
+	// Routes require proxyTo — they always proxy to a backend.
 	if (hasRoutes && !config.proxyTo) {
 		throw new Error("proxyTo is required when routes are configured");
 	}
@@ -65,12 +68,19 @@ export function validateSellerConfig(config: SellerConfig): void {
 			}
 			planIds.add(plan.planId);
 
-			try {
-				validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
-			} catch {
-				throw new Error(
-					`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
-				);
+			if (!plan.free) {
+				if (!plan.unitAmount) {
+					throw new Error(
+						`SellerConfig: plan "${plan.planId}" must have a unitAmount (or set free: true)`,
+					);
+				}
+				try {
+					validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
+				} catch {
+					throw new Error(
+						`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
+					);
+				}
 			}
 		}
 	}
@@ -85,8 +95,14 @@ export function validateSellerConfig(config: SellerConfig): void {
 			if (!["GET", "POST", "PUT", "DELETE", "PATCH"].includes(route.method)) {
 				throw new Error(`route "${route.routeId}": invalid method "${route.method}"`);
 			}
-			if (route.unitAmount && !route.unitAmount.match(/^\$\d+\.\d{2}$/)) {
-				throw new Error(`route "${route.routeId}": unitAmount must be in format "$X.XX"`);
+			if (route.unitAmount) {
+				try {
+					validateDollarAmount(route.unitAmount, `routes[${route.routeId}].unitAmount`);
+				} catch {
+					throw new Error(
+						`route "${route.routeId}": invalid unitAmount "${route.unitAmount}" (expected format: "$X.XX")`,
+					);
+				}
 			}
 			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
 			routeIds.add(route.routeId);

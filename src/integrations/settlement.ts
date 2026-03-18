@@ -7,6 +7,7 @@ import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
 	Plan,
+	Route,
 	SellerConfig,
 	X402PaymentPayload,
 	X402PaymentRequiredResponse,
@@ -106,15 +107,25 @@ export function buildHttpPaymentRequirements(
 		description?: string;
 	},
 ): X402PaymentRequiredResponse {
-	const tier = config.plans.find((t: Plan) => t.planId === planId);
-	if (!tier) {
-		throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
+	// Search plans first, then routes
+	const tier = (config.plans ?? []).find((t: Plan) => t.planId === planId);
+	const route = !tier
+		? (config.routes ?? []).find((r: Route) => r.routeId === planId)
+		: undefined;
+
+	if (!tier && !route) {
+		throw new Key0Error("TIER_NOT_FOUND", `Plan or route "${planId}" not found`, 400);
 	}
+
+	const unitAmount = tier ? tier.unitAmount! : route!.unitAmount!;
+	const description =
+		tier?.description ?? route?.description ?? `${planId} — ${unitAmount} USDC`;
+	const itemId = tier ? tier.planId : route!.routeId;
 
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
-	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount!);
+	const amountRaw = parseDollarToUsdcMicro(unitAmount);
 	const network = `eip155:${networkConfig.chainId}`;
 
 	const extensions =
@@ -147,7 +158,7 @@ export function buildHttpPaymentRequirements(
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
-					description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
+					description,
 				},
 			},
 		],

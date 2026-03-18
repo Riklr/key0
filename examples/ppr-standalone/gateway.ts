@@ -37,8 +37,7 @@ const SECRET =
 	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 // Shared secret injected into every proxied request so the backend can verify Key0 origin.
-const PROXY_SECRET =
-	process.env["KEY0_PROXY_SECRET"] ?? "dev-proxy-secret-change-in-production!!";
+const PROXY_SECRET = process.env["KEY0_PROXY_SECRET"] ?? "dev-proxy-secret-change-in-production!!";
 // Gas wallet private key for self-contained on-chain settlement (no Coinbase facilitator needed).
 const GAS_WALLET_KEY = process.env["GAS_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 
@@ -62,7 +61,11 @@ const tokenIssuer = new AccessTokenIssuer(SECRET);
  * Issue a JWT for a given subscription plan.
  * In production, customise expiry and claims to match your access model.
  */
-async function issueJwtForPlan(planId: string, challengeId: string, txHash: string): Promise<string> {
+async function issueJwtForPlan(
+	planId: string,
+	challengeId: string,
+	txHash: string,
+): Promise<string> {
 	const { token } = await tokenIssuer.sign(
 		{
 			sub: challengeId,
@@ -163,7 +166,7 @@ app.listen(GATEWAY_PORT, () => {
 	console.log(`\n  Pay-per-request flow (pay per call, Key0 proxies):`);
 	console.log(`    POST ${PUBLIC_URL}/x402/access`);
 	console.log(
-		`         { planId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }`,
+		`         { routeId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }`,
 	);
 	console.log(`    → 402 Payment Required ($0.10)`);
 	console.log(`    → Pay USDC on-chain → Key0 proxies to backend → 200 ResourceResponse`);
