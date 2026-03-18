@@ -4,19 +4,12 @@ import { type NextFunction, type Request, type Response, Router } from "express"
 import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
-import type {
-	PlanRouteInfo,
-	ResourceResponse,
-	X402PaymentRequiredResponse,
-} from "../types/index.js";
+import type { ResourceResponse, X402PaymentRequiredResponse } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { interpolateUrlTemplate } from "../utils/url-template.js";
 import { mountMcpRoutes } from "./mcp.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
-import {
-	createExpressPayPerRequest,
-	resolveConfigFetchResource,
-} from "./pay-per-request.js";
+import { createExpressPayPerRequest, resolveConfigFetchResource } from "./pay-per-request.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -38,6 +31,9 @@ type ExpressMiddleware = (
 	},
 	next: () => void,
 ) => unknown | Promise<unknown>;
+
+/** @internal Route registry type — kept here since PlanRouteInfo was removed from types. */
+type PlanRouteInfo = { method: string; path: string; description?: string };
 
 /**
  * Extended Express Router returned by `key0Router`.
@@ -212,7 +208,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 				);
 
 				// ===== FREE PLAN FAST-PATH: proxy immediately without payment =====
-				const planDef = opts.config.plans.find((p) => p.planId === planId);
+				const planDef = (opts.config.plans ?? []).find((p) => p.planId === planId);
 				if (planDef?.free === true) {
 					const fetchResourceFn = resolveConfigFetchResource(opts.config);
 					if (!fetchResourceFn || !planDef.proxyPath) {

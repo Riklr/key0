@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import express from "express";
 import request from "supertest";
-import { key0Router } from "../express.js";
 import { makeSellerConfig, TestChallengeStore, TestSeenTxStore } from "../../test-utils/index.js";
+import { key0Router } from "../express.js";
 
 function makeApp(configOverrides = {}) {
 	const app = express();
@@ -23,7 +23,6 @@ describe("GET /discover", () => {
 			plans: [],
 			routes: [{ routeId: "health", method: "GET", path: "/health", unitAmount: "$0.01" }],
 			proxyTo: { baseUrl: "http://localhost:9999" },
-			fetchResourceCredentials: undefined,
 		});
 		const res = await request(app).get("/discover");
 		expect(res.status).toBe(200);
@@ -44,7 +43,6 @@ describe("POST /x402/access — routeId", () => {
 			plans: [],
 			routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
 			proxyTo: { baseUrl: "http://localhost:9999" },
-			fetchResourceCredentials: undefined,
 		});
 		const res = await request(app)
 			.post("/x402/access")
@@ -57,7 +55,6 @@ describe("POST /x402/access — routeId", () => {
 			plans: [],
 			routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
 			proxyTo: { baseUrl: "http://localhost:9999" },
-			fetchResourceCredentials: undefined,
 		});
 		const res = await request(app)
 			.post("/x402/access")
@@ -73,7 +70,6 @@ describe("transparent proxy route mounting", () => {
 				plans: [],
 				routes: [{ routeId: "health", method: "GET", path: "/health", unitAmount: "$0.01" }],
 				proxyTo: { baseUrl: "http://localhost:9999" },
-				fetchResourceCredentials: undefined,
 			}),
 			store: new TestChallengeStore(),
 			seenTxStore: new TestSeenTxStore(),
