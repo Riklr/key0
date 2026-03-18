@@ -51,17 +51,23 @@ export function validateSellerConfig(config: SellerConfig): void {
 		}
 		planIds.add(plan.planId);
 
-		try {
-			validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
-		} catch {
-			throw new Error(
-				`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
-			);
+		if (!plan.free) {
+			try {
+				validateDollarAmount(plan.unitAmount!, `plans[${plan.planId}].unitAmount`);
+			} catch {
+				throw new Error(
+					`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
+				);
+			}
 		}
 	}
 
-	// Validate fetchResourceCredentials is a function
-	if (typeof config.fetchResourceCredentials !== "function") {
-		throw new Error("SellerConfig: fetchResourceCredentials must be a function");
+	// Only require fetchResourceCredentials for plans that don't use proxy routing
+	// Plans with proxyPath (proxy-only mode) don't need fetchResourceCredentials
+	const hasPlansNeedingCredentials = config.plans.some(
+		(p) => !p.free && !p.proxyPath && p.mode !== "per-request",
+	);
+	if (hasPlansNeedingCredentials && typeof config.fetchResourceCredentials !== "function") {
+		throw new Error("SellerConfig: fetchResourceCredentials is required for subscription plans");
 	}
 }

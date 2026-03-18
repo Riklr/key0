@@ -19,6 +19,7 @@ export type {
 	ChallengeRecord,
 	ChallengeState,
 	PaymentProof,
+	ProxyGrant,
 	ResourceResponse,
 	X402Challenge,
 } from "./challenge.js";

@@ -12,6 +12,7 @@ import type {
 	X402PaymentRequiredResponse,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import {
 	createFastifyPayPerRequest,
@@ -168,6 +169,59 @@ function mountFastifyRoutes(
 				requestId = `http-${crypto.randomUUID()}`;
 			}
 
+			// FREE PLAN FAST-PATH: proxy immediately without payment
+			const planDef = opts.config.plans.find((p) => p.planId === planId);
+			if (planDef?.free === true) {
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+				if (!fetchResourceFn || !planDef.proxyPath) {
+					return reply.code(400).send({
+						error: "FREE_PLAN_MISCONFIGURED",
+						message: "Free plan requires proxyTo and proxyPath to be configured.",
+					});
+				}
+				const rawParams = (body["params"] as Record<string, string> | undefined) ?? {};
+				let resolvedPath: string;
+				try {
+					resolvedPath = interpolateUrlTemplate(planDef.proxyPath, rawParams);
+				} catch (err) {
+					return reply.code(400).send({
+						error: "TEMPLATE_ERROR",
+						message: (err as Error).message,
+					});
+				}
+				const queryString = planDef.proxyQuery
+					? `?${new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()}`
+					: "";
+				const proxyResult = await fetchResourceFn({
+					method: planDef.proxyMethod ?? "GET",
+					path: resolvedPath + queryString,
+					headers: {},
+					paymentInfo: {
+						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+						payer: undefined,
+						planId,
+						amount: "$0",
+						method: planDef.proxyMethod ?? "GET",
+						path: resolvedPath,
+						challengeId: "free",
+					},
+				});
+				const freeResponse: ResourceResponse = {
+					type: "ResourceResponse",
+					challengeId: "free",
+					requestId,
+					planId,
+					txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+					explorerUrl: "",
+					resource: {
+						status: proxyResult.status,
+						...(proxyResult.headers !== undefined ? { headers: proxyResult.headers } : {}),
+						body: proxyResult.body,
+					},
+				};
+				return reply.code(200).send(freeResponse);
+			}
+
 			// CASE 2: planId, no PAYMENT-SIGNATURE → Challenge
 			if (!paymentSignature) {
 				console.log("[x402-access/fastify] → CASE 2: Challenge 402");
@@ -272,17 +326,7 @@ function mountFastifyRoutes(
 				return reply.code(200).send(existingGrant);
 			}
 
-			const paymentPayload = decodePaymentSignature(paymentSignature);
-			const { txHash, settleResponse, payer } = await settlePayment(
-				paymentPayload,
-				opts.config,
-				networkConfig,
-			);
-
-			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
-			reply.header("payment-response", paymentResponse);
-
-			// Determine plan mode and deployment mode
+			// Pre-settlement guard: validate per-request plan requirements before burning USDC
 			const plan = opts.config.plans.find((p) => p.planId === planId);
 			const fetchResourceFn = resolveConfigFetchResource(opts.config);
 
@@ -295,7 +339,6 @@ function mountFastifyRoutes(
 							`Use ${plan.routes?.[0]?.method ?? "GET"} ${plan.routes?.[0]?.path ?? "/"} with PAYMENT-SIGNATURE header.`,
 					});
 				}
-
 				if (!resource?.method || !resource?.path) {
 					return reply.code(400).send({
 						error: "MISSING_RESOURCE_FIELD",
@@ -304,6 +347,22 @@ function mountFastifyRoutes(
 							'{ method: "GET", path: "/api/example" }',
 					});
 				}
+			}
+
+			const paymentPayload = decodePaymentSignature(paymentSignature);
+			const { txHash, settleResponse, payer } = await settlePayment(
+				paymentPayload,
+				opts.config,
+				networkConfig,
+			);
+
+			const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
+			reply.header("payment-response", paymentResponse);
+
+			if (plan?.mode === "per-request") {
+				// Validated by pre-settlement guard above — safe to assert non-null
+				const pprResource = resource!;
+				const pprFetch = fetchResourceFn!;
 
 				console.log(
 					`[x402-access/fastify] Per-request plan: recording payment for requestId: ${requestId}`,
@@ -311,13 +370,13 @@ function mountFastifyRoutes(
 				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 					requestId,
 					planId,
-					resource.path,
+					pprResource.path,
 					txHash,
 					payer as `0x${string}` | undefined,
 				);
 
 				const noBodyMethodFastify =
-					resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+					pprResource.method.toUpperCase() === "GET" || pprResource.method.toUpperCase() === "HEAD";
 				const skipHeadersFastify = new Set([
 					"host",
 					"connection",
@@ -332,29 +391,65 @@ function mountFastifyRoutes(
 					}
 				}
 
-				const backendResult = await fetchResourceFn({
-					paymentInfo: {
-						txHash,
-						payer: payer ?? undefined,
-						planId,
-						amount: plan.unitAmount,
-						method: resource.method,
-						path: resource.path,
+				// Pre-proxy guard: confirm challenge is still PAID
+				await engine.assertPaidState(challengeId);
+
+				// Proxy to backend — handle errors explicitly so we can trigger refunds.
+				let backendResult: Awaited<ReturnType<typeof pprFetch>>;
+				try {
+					backendResult = await pprFetch({
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId,
+							amount: plan.unitAmount!,
+							method: pprResource.method,
+							path: pprResource.path,
+							challengeId,
+						},
+						method: pprResource.method,
+						path: pprResource.path,
+						headers: forwardHeaders,
+						body: pprResource.body,
+					});
+				} catch (err) {
+					const isTimeout = err instanceof DOMException && err.name === "AbortError";
+					engine
+						.initiateRefund(
+							challengeId,
+							isTimeout ? "proxy timeout" : `proxy threw: ${(err as Error).message}`,
+						)
+						.catch(() => {
+							/* best-effort */
+						});
+					return reply.code(502).send({
+						error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+						message: isTimeout
+							? "Backend timed out. A refund has been initiated."
+							: `Backend error: ${(err as Error).message}. A refund has been initiated.`,
 						challengeId,
-					},
-					method: resource.method,
-					path: resource.path,
-					headers: forwardHeaders,
-					body: resource.body,
-				});
+						txHash,
+					});
+				}
 				console.log(`[x402-access/fastify] Backend responded with status ${backendResult.status}`);
 
 				if (backendResult.status >= 200 && backendResult.status < 300) {
-					await engine.markDelivered(challengeId);
+					engine.markDelivered(challengeId).catch(() => {
+						/* best-effort */
+					});
 				} else {
 					console.warn(
-						`[x402-access/fastify] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+						`[x402-access/fastify] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
 					);
+					engine.initiateRefund(challengeId, `proxy returned ${backendResult.status}`).catch(() => {
+						/* best-effort */
+					});
+					return reply.code(502).send({
+						error: "PROXY_ERROR",
+						message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+						challengeId,
+						txHash,
+					});
 				}
 
 				const resourceResponse: ResourceResponse = {

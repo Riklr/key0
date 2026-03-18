@@ -10,6 +10,7 @@ import type {
 	X402PaymentRequiredResponse,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { interpolateUrlTemplate } from "../utils/url-template.js";
 import { mountMcpRoutes } from "./mcp.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import {
@@ -196,6 +197,59 @@ export function key0Router(opts: Key0Config): Key0Router {
 					`[x402-access] Parsed request - planId: ${planId}, requestId: ${requestId}, resourceId: ${resourceId}`,
 				);
 
+				// ===== FREE PLAN FAST-PATH: proxy immediately without payment =====
+				const planDef = opts.config.plans.find((p) => p.planId === planId);
+				if (planDef?.free === true) {
+					const fetchResourceFn = resolveConfigFetchResource(opts.config);
+					if (!fetchResourceFn || !planDef.proxyPath) {
+						return res.status(400).json({
+							error: "FREE_PLAN_MISCONFIGURED",
+							message: "Free plan requires proxyTo and proxyPath to be configured.",
+						});
+					}
+					const rawParams = (req.body?.params ?? {}) as Record<string, string>;
+					let resolvedPath: string;
+					try {
+						resolvedPath = interpolateUrlTemplate(planDef.proxyPath, rawParams);
+					} catch (err) {
+						return res.status(400).json({
+							error: "TEMPLATE_ERROR",
+							message: (err as Error).message,
+						});
+					}
+					const queryString = planDef.proxyQuery
+						? `?${new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()}`
+						: "";
+					const proxyResult = await fetchResourceFn({
+						method: planDef.proxyMethod ?? "GET",
+						path: resolvedPath + queryString,
+						headers: {},
+						paymentInfo: {
+							txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+							payer: undefined,
+							planId,
+							amount: "$0",
+							method: planDef.proxyMethod ?? "GET",
+							path: resolvedPath,
+							challengeId: "free",
+						},
+					});
+					const freeResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId: "free",
+						requestId,
+						planId,
+						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+						explorerUrl: "",
+						resource: {
+							status: proxyResult.status,
+							...(proxyResult.headers !== undefined ? { headers: proxyResult.headers } : {}),
+							body: proxyResult.body,
+						},
+					};
+					return res.status(200).json(freeResponse);
+				}
+
 				// ===== CASE 2: planId present, no PAYMENT-SIGNATURE → Challenge (402 + PENDING record) =====
 				if (!paymentSignature) {
 					console.log(
@@ -338,6 +392,30 @@ export function key0Router(opts: Key0Config): Key0Router {
 					return res.status(200).json(existingGrant);
 				}
 
+				// Pre-settlement guard: validate per-request plan requirements before burning USDC
+				const plan = opts.config.plans.find((p) => p.planId === planId);
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+
+				if (plan?.mode === "per-request") {
+					if (!fetchResourceFn) {
+						const routePath = plan.routes?.[0]?.path ?? "/";
+						return res.status(400).json({
+							error: "PER_REQUEST_EMBEDDED_MODE",
+							message:
+								"Per-request plans must be accessed via their route endpoints directly. " +
+								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
+						});
+					}
+					if (!resource?.method || !resource?.path) {
+						return res.status(400).json({
+							error: "MISSING_RESOURCE_FIELD",
+							message:
+								'Per-request plans require a "resource" field in the request body: ' +
+								'{ method: "GET", path: "/api/example" }',
+						});
+					}
+				}
+
 				// Decode header then settle via shared settlement layer
 				console.log("[x402-access] Decoding payment signature...");
 				const paymentPayload = decodePaymentSignature(paymentSignature);
@@ -362,31 +440,10 @@ export function key0Router(opts: Key0Config): Key0Router {
 				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
 				res.setHeader("payment-response", paymentResponse);
 
-				// Determine plan mode and deployment mode
-				const plan = opts.config.plans.find((p) => p.planId === planId);
-				const fetchResourceFn = resolveConfigFetchResource(opts.config);
-
 				if (plan?.mode === "per-request") {
-					if (!fetchResourceFn) {
-						// Embedded mode: per-request plans must be accessed via their route endpoints
-						const routePath = plan.routes?.[0]?.path ?? "/";
-						return res.status(400).json({
-							error: "PER_REQUEST_EMBEDDED_MODE",
-							message:
-								"Per-request plans must be accessed via their route endpoints directly. " +
-								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
-						});
-					}
-
-					// Standalone mode: validate resource field
-					if (!resource?.method || !resource?.path) {
-						return res.status(400).json({
-							error: "MISSING_RESOURCE_FIELD",
-							message:
-								'Per-request plans require a "resource" field in the request body: ' +
-								'{ method: "GET", path: "/api/example" }',
-						});
-					}
+					// Validated by pre-settlement guard above — safe to assert non-null
+					const pprResource = resource!;
+					const pprFetch = fetchResourceFn!;
 
 					// Record payment (PENDING → PAID) without issuing a token
 					console.log(
@@ -395,7 +452,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
 						requestId,
 						planId,
-						resource.path,
+						pprResource.path,
 						txHash,
 						payer as `0x${string}` | undefined,
 					);
@@ -405,7 +462,8 @@ export function key0Router(opts: Key0Config): Key0Router {
 					// from the incoming POST to a GET causes the backend to hang waiting for a
 					// body that never arrives).
 					const noBodyMethod =
-						resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
+						pprResource.method.toUpperCase() === "GET" ||
+						pprResource.method.toUpperCase() === "HEAD";
 					const skipHeaders = new Set([
 						"host",
 						"connection",
@@ -420,32 +478,71 @@ export function key0Router(opts: Key0Config): Key0Router {
 						}
 					}
 
-					// Proxy to backend
-					console.log(`[x402-access] Proxying to backend: ${resource.method} ${resource.path}`);
-					const backendResult = await fetchResourceFn({
-						paymentInfo: {
-							txHash,
-							payer: payer ?? undefined,
-							planId,
-							amount: plan.unitAmount,
-							method: resource.method,
-							path: resource.path,
+					// Pre-proxy guard: confirm challenge is still PAID
+					await engine.assertPaidState(challengeId);
+
+					// Proxy to backend — handle errors explicitly so we can trigger refunds.
+					console.log(
+						`[x402-access] Proxying to backend: ${pprResource.method} ${pprResource.path}`,
+					);
+					let backendResult: Awaited<ReturnType<typeof pprFetch>>;
+					try {
+						backendResult = await pprFetch({
+							paymentInfo: {
+								txHash,
+								payer: payer ?? undefined,
+								planId,
+								amount: plan.unitAmount!,
+								method: pprResource.method,
+								path: pprResource.path,
+								challengeId,
+							},
+							method: pprResource.method,
+							path: pprResource.path,
+							headers: forwardHeaders,
+							body: pprResource.body,
+						});
+					} catch (err) {
+						const isTimeout = err instanceof DOMException && err.name === "AbortError";
+						engine
+							.initiateRefund(
+								challengeId,
+								isTimeout ? "proxy timeout" : `proxy threw: ${(err as Error).message}`,
+							)
+							.catch(() => {
+								/* best-effort */
+							});
+						return res.status(502).json({
+							error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+							message: isTimeout
+								? "Backend timed out. A refund has been initiated."
+								: `Backend error: ${(err as Error).message}. A refund has been initiated.`,
 							challengeId,
-						},
-						method: resource.method,
-						path: resource.path,
-						headers: forwardHeaders,
-						body: resource.body,
-					});
+							txHash,
+						});
+					}
 					console.log(`[x402-access] Backend responded with status ${backendResult.status}`);
 
-					// Mark delivered if backend returned 2xx
+					// Mark delivered if backend returned 2xx, otherwise trigger refund
 					if (backendResult.status >= 200 && backendResult.status < 300) {
-						await engine.markDelivered(challengeId);
+						engine.markDelivered(challengeId).catch(() => {
+							/* best-effort */
+						});
 					} else {
 						console.warn(
-							`[x402-access] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+							`[x402-access] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
 						);
+						engine
+							.initiateRefund(challengeId, `proxy returned ${backendResult.status}`)
+							.catch(() => {
+								/* best-effort */
+							});
+						return res.status(502).json({
+							error: "PROXY_ERROR",
+							message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+							challengeId,
+							txHash,
+						});
 					}
 
 					const resourceResponse: ResourceResponse = {
@@ -464,6 +561,84 @@ export function key0Router(opts: Key0Config): Key0Router {
 
 					console.log("[x402-access] → Returning HTTP 200 OK with ResourceResponse");
 					return res.status(200).json(resourceResponse);
+				}
+
+				// ProxyPath plan: record payment then proxy to backend (no token issuance)
+				if (plan?.proxyPath && fetchResourceFn) {
+					const rawParams = (req.body?.params ?? {}) as Record<string, string>;
+					let resolvedProxyPath: string;
+					try {
+						resolvedProxyPath = interpolateUrlTemplate(plan.proxyPath, rawParams);
+					} catch (err) {
+						return res
+							.status(400)
+							.json({ error: "TEMPLATE_ERROR", message: (err as Error).message });
+					}
+					const qs = plan.proxyQuery
+						? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
+						: "";
+
+					const { challengeId: proxyChallengeId, explorerUrl: proxyExplorerUrl } =
+						await engine.recordPerRequestPayment(
+							requestId,
+							planId,
+							resolvedProxyPath,
+							txHash,
+							payer as `0x${string}` | undefined,
+						);
+
+					await engine.assertPaidState(proxyChallengeId);
+
+					let backendResult: Awaited<ReturnType<NonNullable<typeof fetchResourceFn>>>;
+					try {
+						backendResult = await fetchResourceFn({
+							method: plan.proxyMethod ?? "GET",
+							path: resolvedProxyPath + qs,
+							headers: {},
+							paymentInfo: {
+								txHash,
+								payer: payer ?? undefined,
+								planId,
+								amount: plan.unitAmount ?? "$0",
+								method: plan.proxyMethod ?? "GET",
+								path: resolvedProxyPath,
+								challengeId: proxyChallengeId,
+							},
+						});
+					} catch (err) {
+						const msg =
+							err instanceof Error && err.name === "AbortError"
+								? "Backend timed out. A refund has been initiated."
+								: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
+						await engine.initiateRefund(proxyChallengeId, "proxy_timeout").catch(() => {});
+						return res.status(502).json({ type: "Error", code: "PROXY_ERROR", message: msg });
+					}
+
+					if (backendResult.status >= 400) {
+						await engine.initiateRefund(proxyChallengeId, "backend_non_2xx").catch(() => {});
+						return res.status(502).json({
+							type: "Error",
+							code: "PROXY_BACKEND_ERROR",
+							message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+						});
+					}
+
+					await engine.markDelivered(proxyChallengeId).catch(() => {});
+
+					const proxyResponse: ResourceResponse = {
+						type: "ResourceResponse",
+						challengeId: proxyChallengeId,
+						requestId,
+						planId,
+						txHash,
+						explorerUrl: proxyExplorerUrl,
+						resource: {
+							status: backendResult.status,
+							...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
+							body: backendResult.body,
+						},
+					};
+					return res.status(200).json(proxyResponse);
 				}
 
 				// Subscription plan: process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)

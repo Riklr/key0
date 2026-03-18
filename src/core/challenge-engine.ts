@@ -2,6 +2,7 @@ import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type {
 	AccessGrant,
 	AccessRequest,
+	AuditActor,
 	ChallengeRecord,
 	IChallengeStore,
 	IPaymentAdapter,
@@ -58,13 +59,22 @@ export class ChallengeEngine {
 	private async issueTokenWithRetry(
 		params: import("../types/config.js").IssueTokenParams,
 	): Promise<import("../types/config.js").TokenIssuanceResult> {
+		if (!this.config.fetchResourceCredentials) {
+			throw new Key0Error(
+				"INTERNAL_ERROR",
+				"fetchResourceCredentials is required for subscription plans but was not provided",
+				500,
+			);
+		}
+
+		const fetchResourceCredentials = this.config.fetchResourceCredentials;
 		const timeoutMs = this.config.tokenIssueTimeoutMs ?? 15_000;
 		const maxRetries = this.config.tokenIssueRetries ?? 2;
 
 		const callWithTimeout = () => {
 			let timer: ReturnType<typeof setTimeout>;
 			return Promise.race([
-				this.config.fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
+				fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() => reject(new Key0Error("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
@@ -219,7 +229,7 @@ export class ChallengeEngine {
 			requestId: req.requestId,
 			resourceId: resourceId,
 			planId: req.planId,
-			amount: tier.unitAmount,
+			amount: tier.unitAmount!,
 			destination: this.config.walletAddress,
 			expiresAt,
 			metadata: { clientAgentId: clientAgentId },
@@ -233,8 +243,8 @@ export class ChallengeEngine {
 			clientAgentId: clientAgentId,
 			resourceId: resourceId,
 			planId: req.planId,
-			amount: tier.unitAmount,
-			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+			amount: tier.unitAmount!,
+			amountRaw: parseDollarToUsdcMicro(tier.unitAmount!),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -576,8 +586,8 @@ export class ChallengeEngine {
 			clientAgentId: "x402-http",
 			resourceId,
 			planId,
-			amount: tier.unitAmount,
-			amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+			amount: tier.unitAmount!,
+			amountRaw: parseDollarToUsdcMicro(tier.unitAmount!),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -658,8 +668,8 @@ export class ChallengeEngine {
 				clientAgentId: "x402-http",
 				resourceId,
 				planId,
-				amount: tier.unitAmount,
-				amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+				amount: tier.unitAmount!,
+				amountRaw: parseDollarToUsdcMicro(tier.unitAmount!),
 				asset: "USDC",
 				chainId: this.networkConfig.chainId,
 				destination: this.config.walletAddress,
@@ -840,8 +850,8 @@ export class ChallengeEngine {
 				clientAgentId: "x402-ppr",
 				resourceId: resourcePath,
 				planId,
-				amount: tier.unitAmount,
-				amountRaw: parseDollarToUsdcMicro(tier.unitAmount),
+				amount: tier.unitAmount!,
+				amountRaw: parseDollarToUsdcMicro(tier.unitAmount!),
 				asset: "USDC",
 				chainId: this.networkConfig.chainId,
 				destination: this.config.walletAddress,
@@ -917,5 +927,40 @@ export class ChallengeEngine {
 				err,
 			);
 		}
+	}
+
+	/**
+	 * Asserts that a challenge is still in PAID state by performing a no-op PAID→PAID transition.
+	 * Throws if the challenge is no longer PAID (e.g. refund already in progress).
+	 * Called as a pre-proxy guard to avoid calling the backend when the challenge is stale.
+	 */
+	async assertPaidState(
+		challengeId: string,
+		actor: AuditActor = "engine",
+		reason: string = "pre-proxy state guard",
+	): Promise<void> {
+		const ok = await this.store.transition(challengeId, "PAID", "PAID", {}, { actor, reason });
+		if (!ok) {
+			throw new Key0Error(
+				"CHALLENGE_NOT_PAID",
+				"Challenge is no longer in PAID state. A refund may already be in progress.",
+				409,
+			);
+		}
+	}
+
+	/**
+	 * Transitions a challenge from PAID to REFUND_PENDING.
+	 * Called when the backend proxy returns a non-2xx response or times out.
+	 * Best-effort — callers should `.catch(() => {})` if fire-and-forget.
+	 */
+	async initiateRefund(challengeId: string, reason: string): Promise<void> {
+		await this.store.transition(
+			challengeId,
+			"PAID",
+			"REFUND_PENDING",
+			{},
+			{ actor: "engine", reason },
+		);
 	}
 }

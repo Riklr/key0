@@ -56,9 +56,11 @@ const redisUsable = await isHostReachable(REDIS_URL);
 const postgresUrlUsable = await isHostReachable(process.env.DATABASE_URL);
 const STORAGE_BACKEND_EARLY = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 
+// Proxy-only mode: ISSUE_TOKEN_API not required when PROXY_TO_BASE_URL is set
+const isProxyOnlyMode = Boolean(process.env.PROXY_TO_BASE_URL);
 const isConfigured = Boolean(
 	WALLET_ADDRESS &&
-		ISSUE_TOKEN_API &&
+		(ISSUE_TOKEN_API || isProxyOnlyMode) &&
 		(STORAGE_BACKEND_EARLY === "postgres" ? postgresUrlUsable && redisUsable : redisUsable),
 );
 
@@ -311,6 +313,7 @@ if (!isConfigured) {
 	const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 	const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 	const _PROXY_TO_BASE_URL = process.env.PROXY_TO_BASE_URL;
+	const _KEY0_PROXY_SECRET = process.env.KEY0_PROXY_SECRET;
 	const WALLET_PRIVATE_KEY = process.env.KEY0_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
 	const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 	const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
@@ -383,11 +386,13 @@ if (!isConfigured) {
 		console.log("[key0] Using Redis storage:", REDIS_URL);
 	}
 
-	// Token issuance
-	const fetchResourceCredentials = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
-		apiSecret: ISSUE_TOKEN_API_SECRET,
-		plans,
-	});
+	// Token issuance — optional in proxy-only mode (no ISSUE_TOKEN_API)
+	const fetchResourceCredentials = ISSUE_TOKEN_API
+		? buildDockerTokenIssuer(ISSUE_TOKEN_API, {
+				apiSecret: ISSUE_TOKEN_API_SECRET,
+				plans,
+			})
+		: undefined;
 
 	// Adapter & routes
 	const adapter = new X402Adapter({
@@ -622,7 +627,14 @@ if (!isConfigured) {
 				...(GAS_WALLET_PRIVATE_KEY && redis
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),
-				...(_PROXY_TO_BASE_URL ? { proxyTo: { baseUrl: _PROXY_TO_BASE_URL } } : {}),
+				...(_PROXY_TO_BASE_URL
+					? {
+							proxyTo: {
+								baseUrl: _PROXY_TO_BASE_URL,
+								...(_KEY0_PROXY_SECRET ? { proxySecret: _KEY0_PROXY_SECRET } : {}),
+							},
+						}
+					: {}),
 			},
 			adapter,
 			store,

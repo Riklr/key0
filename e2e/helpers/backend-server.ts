@@ -28,6 +28,9 @@ const failForChallengeIds: Set<string> = new Set();
 /** PPR route mode: "success" = 200, "error" = 500 (backend error). */
 let pprMode: "success" | "error" = "success";
 
+/** Internal token for gateway proxy tests — unset means validation is skipped. */
+let pprInternalSecret: string | undefined;
+
 export function startBackend(): Promise<Server> {
 	const app = express();
 	app.use(express.json());
@@ -92,8 +95,29 @@ export function startBackend(): Promise<Server> {
 		res.status(204).send();
 	});
 
+	// ── Internal token control (for gateway proxy tests) ─────────────────────
+	app.post("/test/set-internal-secret", express.json(), (req: Request, res: Response) => {
+		const { secret } = req.body as { secret?: string };
+		pprInternalSecret = secret;
+		res.json({ ok: true });
+	});
+
+	// ── Internal token validation helper ─────────────────────────────────────
+	function validateInternalToken(req: Request, res: Response): boolean {
+		if (!pprInternalSecret) return true; // not enforced when unset
+		const token = req.headers["x-key0-internal-token"];
+		if (token !== pprInternalSecret) {
+			res
+				.status(401)
+				.json({ error: "unauthorized", message: "Missing or invalid X-Key0-Internal-Token" });
+			return false;
+		}
+		return true;
+	}
+
 	// ── PPR routes (proxied to by standalone gateway after payment) ──────────
 	app.get("/api/weather/:city", (req, res) => {
+		if (!validateInternalToken(req, res)) return;
 		if (pprMode === "error") {
 			res.status(500).json({ error: "Backend down" });
 			return;
@@ -111,6 +135,7 @@ export function startBackend(): Promise<Server> {
 	});
 
 	app.get("/api/joke", (req, res) => {
+		if (!validateInternalToken(req, res)) return;
 		if (pprMode === "error") {
 			res.status(500).json({ error: "Backend down" });
 			return;
@@ -120,6 +145,12 @@ export function startBackend(): Promise<Server> {
 			txHash: req.headers["x-key0-tx-hash"] ?? null,
 			planId: req.headers["x-key0-plan-id"] ?? null,
 		});
+	});
+
+	// ── Gateway proxy free-plan route ─────────────────────────────────────────
+	app.get("/api/status", (req: Request, res: Response) => {
+		if (!validateInternalToken(req, res)) return;
+		res.json({ status: "ok", pipelines: 5, uptime: 99.9 });
 	});
 
 	// ── Protected resource ──────────────────────────────────────────────────
@@ -153,4 +184,8 @@ export function resetMode(): void {
 
 export function resetPprMode(): void {
 	pprMode = "success";
+}
+
+export function resetPprInternalSecret(): void {
+	pprInternalSecret = undefined;
 }
