@@ -135,6 +135,16 @@ app.get("/api/setup/status", (_req, res) => {
 			providerName: process.env.PROVIDER_NAME ?? "",
 			providerUrl: process.env.PROVIDER_URL ?? "",
 			plans: plans ?? [],
+			routes: (() => {
+				try {
+					if (process.env.ROUTES_B64)
+						return JSON.parse(Buffer.from(process.env.ROUTES_B64, "base64").toString("utf-8"));
+					if (process.env.ROUTES) return JSON.parse(process.env.ROUTES);
+				} catch {}
+				return [];
+			})(),
+			proxyToBaseUrl: process.env.PROXY_TO_BASE_URL ?? "",
+			proxySecret: process.env.KEY0_PROXY_SECRET ? "••••••" : "",
 			challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
 			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "none",
 			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
@@ -166,6 +176,15 @@ interface SetupBody {
 		unitAmount: string;
 		description?: string;
 	}>;
+	routes?: Array<{
+		routeId: string;
+		method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+		path: string;
+		unitAmount?: string;
+		description?: string;
+	}>;
+	proxyToBaseUrl?: string;
+	proxySecret?: string;
 	challengeTtlSeconds: string;
 	mcpEnabled: boolean;
 	backendAuthStrategy: "none" | "shared-secret" | "jwt";
@@ -179,19 +198,29 @@ interface SetupBody {
 // Unauthenticated — see warning above.
 app.post("/api/setup", async (req, res) => {
 	const body = req.body as SetupBody;
+	const { plans, routes, proxyToBaseUrl, proxySecret, issueTokenApi, walletAddress } = body;
 
-	if (!body.walletAddress || !body.issueTokenApi) {
-		res.status(400).json({
-			error: "walletAddress and issueTokenApi are required",
-		});
+	if (!walletAddress) {
+		res.status(400).json({ error: "walletAddress is required" });
+		return;
+	}
+	if (!plans?.length && !routes?.length) {
+		res.status(400).json({ error: "At least one plan or route must be configured" });
+		return;
+	}
+	if (plans?.length && !issueTokenApi) {
+		res.status(400).json({ error: "issueTokenApi is required when plans are configured" });
+		return;
+	}
+	if (routes?.length && !proxyToBaseUrl) {
+		res.status(400).json({ error: "proxyToBaseUrl is required when routes are configured" });
 		return;
 	}
 
 	// Build .env content — values with spaces must be double-quoted for shell sourcing
 	const q = (v: string) => (v.includes(" ") ? `"${v.replace(/"/g, '\\"')}"` : v);
 	const lines: string[] = [
-		`KEY0_WALLET_ADDRESS=${body.walletAddress}`,
-		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
+		`KEY0_WALLET_ADDRESS=${walletAddress}`,
 		`KEY0_NETWORK=${body.network || "testnet"}`,
 		`PORT=${body.port || PORT}`,
 		`AGENT_NAME=${q(body.agentName || (body.providerName ? `${body.providerName} Agent` : "Key0 Server"))}`,
@@ -210,11 +239,25 @@ app.post("/api/setup", async (req, res) => {
 	}
 	if (body.providerName) lines.push(`PROVIDER_NAME=${q(body.providerName)}`);
 	if (body.providerUrl) lines.push(`PROVIDER_URL=${body.providerUrl}`);
-	if (body.plans?.length > 0) {
+	if (plans?.length) {
 		// Base64-encode JSON to avoid shell quoting issues
-		const json = JSON.stringify(body.plans);
+		const json = JSON.stringify(plans);
 		const b64 = Buffer.from(json).toString("base64");
 		lines.push(`PLANS_B64=${b64}`);
+	}
+	// Routes — normalize unitAmount: empty string → omit from serialized JSON
+	if (routes?.length) {
+		type RouteWithOptionalAmount = { unitAmount?: string; [key: string]: unknown };
+		const normalizedRoutes = routes.map((r: RouteWithOptionalAmount) =>
+			r.unitAmount === "" ? { ...r, unitAmount: undefined } : r,
+		);
+		lines.push(`ROUTES_B64=${Buffer.from(JSON.stringify(normalizedRoutes)).toString("base64")}`);
+		if (proxyToBaseUrl) lines.push(`PROXY_TO_BASE_URL=${proxyToBaseUrl}`);
+		if (proxySecret && !proxySecret.includes("•")) lines.push(`KEY0_PROXY_SECRET=${proxySecret}`);
+	}
+	// Only write ISSUE_TOKEN_API when plans are configured
+	if (plans?.length && issueTokenApi) {
+		lines.push(`ISSUE_TOKEN_API=${issueTokenApi}`);
 	}
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
@@ -291,6 +334,7 @@ if (!isConfigured) {
 	type ISeenTxStore = key0.ISeenTxStore;
 	type NetworkName = key0.NetworkName;
 	type Plan = key0.Plan;
+	type Route = key0.Route;
 	const {
 		processRefunds,
 		PostgresAuditStore,
@@ -345,6 +389,18 @@ if (!isConfigured) {
 		}
 	} catch {
 		console.error("FATAL: PLANS / PLANS_B64 env var is not valid JSON");
+		process.exit(1);
+	}
+
+	let routes: Route[] = [];
+	try {
+		if (process.env.ROUTES_B64) {
+			routes = JSON.parse(Buffer.from(process.env.ROUTES_B64, "base64").toString("utf-8")) as Route[];
+		} else if (process.env.ROUTES) {
+			routes = JSON.parse(process.env.ROUTES) as Route[];
+		}
+	} catch {
+		console.error("FATAL: ROUTES / ROUTES_B64 env var is not valid JSON");
 		process.exit(1);
 	}
 
@@ -617,6 +673,7 @@ if (!isConfigured) {
 				walletAddress: WALLET_ADDRESS as `0x${string}`,
 				network: NETWORK,
 				plans,
+				routes,
 				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 				basePath: BASE_PATH,
 				fetchResourceCredentials,
