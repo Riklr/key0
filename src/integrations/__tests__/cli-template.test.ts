@@ -104,7 +104,7 @@ describe("runDiscover", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	test("calls GET /discovery and returns JSON body", async () => {
+	test("calls GET /discover and returns JSON body", async () => {
 		const mockBody = { discoveryResponse: { x402Version: 2, accepts: [] } };
 		globalThis.fetch = mock(() =>
 			Promise.resolve(new Response(JSON.stringify(mockBody), { status: 200 })),
@@ -112,7 +112,7 @@ describe("runDiscover", () => {
 		const result = await runDiscover("https://api.example.com");
 		expect(result).toEqual({ exitCode: 0, output: mockBody });
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"https://api.example.com/discovery",
+			"https://api.example.com/discover",
 			expect.objectContaining({
 				method: "GET",
 				headers: { Accept: "application/json" },
@@ -263,7 +263,7 @@ describe("runMain", () => {
 			name: "mycli",
 			url: "https://api.example.com",
 			commands: {
-				discover: "List available plans (GET /discovery)",
+				discover: "List available plans (GET /discover)",
 				request: "Request access or submit payment (POST /x402/access)",
 			},
 			flags: {

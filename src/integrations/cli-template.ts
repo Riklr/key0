@@ -23,7 +23,7 @@ export interface CliResult {
 export async function runDiscover(baseUrl: string): Promise<CliResult> {
 	let response: Response;
 	try {
-		response = await fetch(`${baseUrl}/discovery`, {
+		response = await fetch(`${baseUrl}/discover`, {
 			method: "GET",
 			headers: { Accept: "application/json" },
 			signal: AbortSignal.timeout(10_000),
@@ -183,7 +183,7 @@ export async function runMain(args: string[], name: string, url: string): Promis
 					name,
 					url,
 					commands: {
-						discover: "List available plans (GET /discovery)",
+						discover: "List available plans (GET /discover)",
 						request: "Request access or submit payment (POST /x402/access)",
 					},
 					flags: {

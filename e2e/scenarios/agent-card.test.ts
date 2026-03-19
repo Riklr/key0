@@ -38,7 +38,7 @@ describe("Agent Card", () => {
 		const res = await fetch(`${KEY0_URL}/.well-known/agent.json`);
 		const card = (await res.json()) as AgentCard;
 
-		// Discovery must be done via GET /discovery, not from the agent card
+		// Discovery must be done via GET /discover, not from the agent card
 		// Agent card skills should NOT have pricing (A2A spec compliance)
 		const discoverSkill = card.skills.find((s) => s.id === "discover");
 		expect(discoverSkill).toBeDefined();
