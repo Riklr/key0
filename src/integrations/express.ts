@@ -57,15 +57,15 @@ type PlanRouteInfo = { method: string; path: string; description?: string };
  */
 export type Key0Router = Router & {
 	/**
-	 * Create a per-request payment middleware for the given plan.
+	 * Create a per-request payment middleware for the given route.
 	 *
 	 * The middleware returns **402** when no `PAYMENT-SIGNATURE` header is present,
 	 * and settles on-chain + calls `next()` when one is provided.
 	 *
-	 * @param planId - Which plan from `config.plans` to charge per request
+	 * @param routeId - Which route from `config.routes` to charge per request
 	 * @param options - Optional callbacks (e.g. `onPayment`)
 	 */
-	payPerRequest: (planId: string, options?: PayPerRequestOptions) => ExpressMiddleware;
+	payPerRequest: (routeId: string, options?: PayPerRequestOptions) => ExpressMiddleware;
 };
 
 /**
@@ -106,13 +106,13 @@ export function key0Router(opts: Key0Config): Key0Router {
 	// Discovery merges these with config-declared routes at request time.
 	const pprRouteRegistry = new Map<string, PlanRouteInfo[]>();
 
-	router.payPerRequest = (planId: string, options?: PayPerRequestOptions) => {
+	router.payPerRequest = (routeId: string, options?: PayPerRequestOptions) => {
 		if (options?.route) {
-			const existing = pprRouteRegistry.get(planId) ?? [];
+			const existing = pprRouteRegistry.get(routeId) ?? [];
 			existing.push(options.route);
-			pprRouteRegistry.set(planId, existing);
+			pprRouteRegistry.set(routeId, existing);
 		}
-		return createExpressPayPerRequest(planId, pprDeps, options);
+		return createExpressPayPerRequest(routeId, pprDeps, options);
 	};
 
 	// Agent Card
@@ -147,6 +147,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 				let { planId, resourceId = "default" } = body;
 				let { requestId } = body;
 				const { routeId } = body as { routeId?: string };
+				const params = (body as { params?: Record<string, string> }).params ?? {};
 				const resource = body.resource as
 					| { method: string; path: string; body?: unknown }
 					| undefined;
@@ -492,16 +493,30 @@ export function key0Router(opts: Key0Config): Key0Router {
 						"[x402-access] → CASE 2: planId provided, no PAYMENT-SIGNATURE, issuing 402 challenge",
 					);
 
-					// Validate: per-request plans in standalone mode require a resource field
+					// Validate: per-request standalone plans require either a resource field
+					// (direct route proxy) or valid proxyPath params (plan-based proxy).
 					const planForValidation = (opts.config.plans ?? []).find((p) => p.planId === planId);
 					const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
-					if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
-						return res.status(400).json({
-							type: "Error",
-							code: "RESOURCE_REQUIRED",
-							message:
-								"Per-request plans in standalone mode require a 'resource' field (method + path).",
-						});
+					const isProxyPathPlan = !!planForValidation?.proxyPath;
+					if (planForValidation?.mode === "per-request" && isStandaloneMode) {
+						if (isProxyPathPlan) {
+							try {
+								interpolateUrlTemplate(planForValidation.proxyPath!, params);
+							} catch (err) {
+								return res.status(400).json({
+									type: "Error",
+									code: "TEMPLATE_ERROR",
+									message: (err as Error).message,
+								});
+							}
+						} else if (!resource) {
+							return res.status(400).json({
+								type: "Error",
+								code: "RESOURCE_REQUIRED",
+								message:
+									"Per-request plans in standalone mode require a 'resource' field (method + path).",
+							});
+						}
 					}
 
 					console.log(`[x402-access] Creating PENDING record for requestId: ${requestId}`);
@@ -513,6 +528,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 					// Determine plan mode to add resource field to schema for per-request plans
 					const planForChallenge = (opts.config.plans ?? []).find((p) => p.planId === planId);
 					const isPprPlan = planForChallenge?.mode === "per-request";
+					const isProxyPathChallenge = !!planForChallenge?.proxyPath;
 					const isStandaloneForChallenge = !!resolveConfigFetchResource(opts.config);
 
 					// Build payment requirements with schema
@@ -535,32 +551,42 @@ export function key0Router(opts: Key0Config): Key0Router {
 										description:
 											"Client-generated UUID for idempotency (auto-generated if omitted)",
 									},
-									...(isPprPlan && isStandaloneForChallenge
+									...(isPprPlan && isStandaloneForChallenge && isProxyPathChallenge
 										? {
-												resource: {
+												params: {
 													type: "object",
-													description:
-														"The backend resource to call after payment (required for per-request plans)",
-													properties: {
-														method: { type: "string" },
-														path: { type: "string" },
-														body: {
-															description: "Optional request body forwarded to the backend",
-														},
-													},
-													required: ["method", "path"],
+													description: "Template parameters used to interpolate the plan proxyPath",
+													additionalProperties: { type: "string" },
 												},
 											}
-										: {
-												resourceId: {
-													type: "string",
-													description:
-														"Optional: Specific resource identifier (defaults to 'default')",
-												},
-											}),
+										: isPprPlan && isStandaloneForChallenge
+											? {
+													resource: {
+														type: "object",
+														description:
+															"The backend resource to call after payment (required for per-request plans)",
+														properties: {
+															method: { type: "string" },
+															path: { type: "string" },
+															body: {
+																description: "Optional request body forwarded to the backend",
+															},
+														},
+														required: ["method", "path"],
+													},
+												}
+											: {
+													resourceId: {
+														type: "string",
+														description:
+															"Optional: Specific resource identifier (defaults to 'default')",
+													},
+												}),
 								},
 								required:
-									isPprPlan && isStandaloneForChallenge ? ["planId", "resource"] : ["planId"],
+									isPprPlan && isStandaloneForChallenge && !isProxyPathChallenge
+										? ["planId", "resource"]
+										: ["planId"],
 							},
 							outputSchema: {
 								type: "object",
@@ -631,6 +657,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 				// Pre-settlement guard: validate per-request plan requirements before burning USDC
 				const plan = (opts.config.plans ?? []).find((p) => p.planId === planId);
 				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+				let validatedProxyPath: string | undefined;
 
 				if (plan?.mode === "per-request") {
 					if (!fetchResourceFn) {
@@ -642,7 +669,16 @@ export function key0Router(opts: Key0Config): Key0Router {
 								`Use ${plan.routes?.[0]?.method ?? "GET"} ${routePath} with PAYMENT-SIGNATURE header.`,
 						});
 					}
-					if (!resource?.method || !resource?.path) {
+					if (plan.proxyPath) {
+						try {
+							validatedProxyPath = interpolateUrlTemplate(plan.proxyPath, params);
+						} catch (err) {
+							return res.status(400).json({
+								error: "TEMPLATE_ERROR",
+								message: (err as Error).message,
+							});
+						}
+					} else if (!resource?.method || !resource?.path) {
 						return res.status(400).json({
 							error: "MISSING_RESOURCE_FIELD",
 							message:
@@ -693,7 +729,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 				const paymentResponse = Buffer.from(JSON.stringify(settleResponse)).toString("base64");
 				res.setHeader("payment-response", paymentResponse);
 
-				if (plan?.mode === "per-request") {
+				if (plan?.mode === "per-request" && !plan.proxyPath) {
 					// Validated by pre-settlement guard above — safe to assert non-null
 					const pprResource = resource!;
 					const pprFetch = fetchResourceFn!;
@@ -818,15 +854,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 
 				// ProxyPath plan: record payment then proxy to backend (no token issuance)
 				if (plan?.proxyPath && fetchResourceFn) {
-					const rawParams = (req.body?.params ?? {}) as Record<string, string>;
-					let resolvedProxyPath: string;
-					try {
-						resolvedProxyPath = interpolateUrlTemplate(plan.proxyPath, rawParams);
-					} catch (err) {
-						return res
-							.status(400)
-							.json({ error: "TEMPLATE_ERROR", message: (err as Error).message });
-					}
+					const resolvedProxyPath = validatedProxyPath!;
 					const qs = plan.proxyQuery
 						? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
 						: "";

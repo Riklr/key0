@@ -1,5 +1,6 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import { Hono } from "hono";
+import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
@@ -61,7 +62,7 @@ export type Key0HonoApp = Hono & {
 	 * @param planId - Which plan from `config.plans` to charge per request
 	 * @param options - Optional callbacks (e.g. `onPayment`)
 	 */
-	payPerRequest: (planId: string, options?: PayPerRequestOptions) => HonoMiddleware;
+	payPerRequest: (routeId: string, options?: PayPerRequestOptions) => HonoMiddleware;
 };
 
 /**
@@ -94,8 +95,8 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 		store: opts.store,
 	} as const;
 
-	app.payPerRequest = (planId: string, options?: PayPerRequestOptions) => {
-		return createHonoPayPerRequest(planId, pprDeps, options) as HonoMiddleware;
+	app.payPerRequest = (routeId: string, options?: PayPerRequestOptions) => {
+		return createHonoPayPerRequest(routeId, pprDeps, options) as HonoMiddleware;
 	};
 
 	// Agent Card
@@ -103,7 +104,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 	app.get("/.well-known/agent.json", (c) => c.json(agentCard));
 
 	// Unified x402 endpoint
-	app.post("/x402/access", async (c, next) => {
+	app.post("/x402/access", async (c) => {
 		const startTime = Date.now();
 		try {
 			console.log("\n[x402-access/hono] ========== NEW REQUEST ==========");
@@ -125,14 +126,256 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 				return c.json({ error: "Provide either planId or routeId, not both" }, 400);
 			}
 
-			// ===== routeId path: delegate to pay-per-request middleware =====
+			// ===== routeId path: full standalone gateway flow =====
 			if (routeId !== undefined) {
 				const route = (opts.config.routes ?? []).find((r) => r.routeId === routeId);
 				if (!route) {
-					return c.json({ error: `Route "${routeId}" not found` }, 404);
+					return c.json(
+						{ type: "Error", code: "ROUTE_NOT_FOUND", error: `Route "${routeId}" not found` },
+						404,
+					);
 				}
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				return createHonoPayPerRequest(routeId, pprDeps)(c as any, next);
+
+				const routePaymentSig = c.req.header("payment-signature");
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+
+				if (fetchResourceFn && !_resource) {
+					return c.json(
+						{
+							type: "Error",
+							code: "RESOURCE_REQUIRED",
+							message: "Routes in standalone mode require a 'resource' field (method + path).",
+						},
+						400,
+					);
+				}
+
+				if (!requestId) requestId = `http-${crypto.randomUUID()}`;
+
+				if (!routePaymentSig) {
+					// CASE routeId-2: No payment → create PENDING challenge, return 402
+					const existingByRequest = await opts.store.findActiveByRequestId(requestId);
+					let finalChallengeId: string;
+					if (existingByRequest?.state === "PENDING") {
+						finalChallengeId = existingByRequest.challengeId;
+					} else {
+						finalChallengeId = `route-${crypto.randomUUID()}`;
+						const now = new Date();
+						const ttlMs = (opts.config.challengeTTLSeconds ?? 900) * 1000;
+						await opts.store.create(
+							{
+								challengeId: finalChallengeId,
+								requestId,
+								clientAgentId: (body as { clientAgentId?: string }).clientAgentId ?? "http",
+								resourceId: _resource?.path ?? routeId,
+								planId: routeId,
+								amount: route.unitAmount ?? "$0",
+								amountRaw: route.unitAmount ? parseDollarToUsdcMicro(route.unitAmount) : 0n,
+								asset: "USDC",
+								chainId: networkConfig.chainId,
+								destination: opts.config.walletAddress,
+								state: "PENDING",
+								expiresAt: new Date(Date.now() + ttlMs),
+								createdAt: now,
+								updatedAt: now,
+							},
+							{ actor: "engine", reason: "route_access_requested" },
+						);
+					}
+
+					const requirements = buildHttpPaymentRequirements(
+						routeId,
+						_resource?.path ?? routeId,
+						opts.config,
+						networkConfig,
+						{ description: route.description ?? `Pay-per-request: ${routeId}` },
+					);
+					const encoded = Buffer.from(JSON.stringify(requirements)).toString("base64");
+					c.header("payment-required", encoded);
+					c.header(
+						"www-authenticate",
+						`Payment realm="${opts.config.agentUrl}", accept="exact", challenge="${finalChallengeId}"`,
+					);
+					return c.json(
+						{
+							...requirements,
+							challengeId: finalChallengeId,
+							requestId,
+							error: "Payment required",
+						},
+						402,
+					);
+				}
+
+				// CASE routeId-3: Payment present → settle + proxy
+				if (!_resource?.method || !_resource?.path) {
+					return c.json(
+						{
+							type: "Error",
+							code: "MISSING_RESOURCE_FIELD",
+							message: 'Route payment requires a "resource" field: { method, path }',
+						},
+						400,
+					);
+				}
+
+				const existingRecord = await opts.store.findActiveByRequestId(requestId);
+
+				const routePayload = decodePaymentSignature(routePaymentSig);
+				let routeTxHash: `0x${string}`;
+				let routeSettleResponse: import("../types/index.js").X402SettleResponse;
+				let routePayer: string | undefined;
+				try {
+					const settled = await settlePayment(routePayload, opts.config, networkConfig);
+					routeTxHash = settled.txHash;
+					routeSettleResponse = settled.settleResponse;
+					routePayer = settled.payer;
+				} catch (settleErr) {
+					if (settleErr instanceof Key0Error) {
+						return c.json(
+							{ type: "Error", code: settleErr.code, message: settleErr.message },
+							(settleErr.httpStatus ?? 402) as any,
+						);
+					}
+					return c.json(
+						{
+							type: "Error",
+							code: "SETTLEMENT_FAILED",
+							message: "Payment settlement failed. Please try again.",
+						},
+						503,
+					);
+				}
+
+				const settleB64 = Buffer.from(JSON.stringify(routeSettleResponse)).toString("base64");
+				c.header("payment-response", settleB64);
+
+				const routeChallengeId = existingRecord?.challengeId ?? `route-${crypto.randomUUID()}`;
+
+				// Double-spend guard
+				const routeMarked = await opts.seenTxStore.markUsed(routeTxHash, routeChallengeId);
+				if (!routeMarked) {
+					return c.json(
+						{
+							type: "Error",
+							code: "TX_ALREADY_REDEEMED",
+							message: "This payment has already been used for a previous request",
+						},
+						409,
+					);
+				}
+
+				// Transition PENDING → PAID
+				if (existingRecord?.state === "PENDING") {
+					await opts.store.transition(
+						routeChallengeId,
+						"PENDING",
+						"PAID",
+						{
+							txHash: routeTxHash,
+							paidAt: new Date(),
+							...(routePayer ? { fromAddress: routePayer as `0x${string}` } : {}),
+						},
+						{ actor: "engine", reason: "route_payment_settled" },
+					);
+				}
+
+				if (!fetchResourceFn) {
+					return c.json(
+						{
+							type: "Error",
+							code: "EMBEDDED_MODE",
+							message: "Routes in embedded mode must be accessed via their route path directly.",
+						},
+						400,
+					);
+				}
+
+				// Forward headers (strip hop-by-hop and body headers for no-body methods)
+				const noBodyMethod =
+					_resource.method.toUpperCase() === "GET" || _resource.method.toUpperCase() === "HEAD";
+				const skipRouteHeaders = new Set([
+					"host",
+					"connection",
+					"payment-signature",
+					"transfer-encoding",
+					...(noBodyMethod ? ["content-length", "content-type"] : []),
+				]);
+				const forwardHeaders: Record<string, string> = {};
+				c.req.raw.headers.forEach((value, key) => {
+					if (!skipRouteHeaders.has(key.toLowerCase())) {
+						forwardHeaders[key] = value;
+					}
+				});
+
+				// Proxy to backend
+				let routeBackendResult: {
+					status: number;
+					headers?: Record<string, string>;
+					body: unknown;
+				};
+				try {
+					routeBackendResult = await fetchResourceFn({
+						paymentInfo: {
+							txHash: routeTxHash,
+							payer: routePayer ?? undefined,
+							planId: routeId,
+							amount: route.unitAmount ?? "$0",
+							method: _resource.method,
+							path: _resource.path,
+							challengeId: routeChallengeId,
+						},
+						method: _resource.method,
+						path: _resource.path,
+						headers: forwardHeaders,
+						body: _resource.body,
+					});
+				} catch (err) {
+					const isTimeout = err instanceof DOMException && err.name === "AbortError";
+					return c.json(
+						{
+							type: "Error",
+							code: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+							message: isTimeout
+								? "Backend timed out."
+								: `Backend error: ${(err as Error).message}`,
+							challengeId: routeChallengeId,
+							txHash: routeTxHash,
+						},
+						502,
+					);
+				}
+
+				// Mark DELIVERED on 2xx; keep PAID on non-2xx (refund-eligible)
+				if (routeBackendResult.status >= 200 && routeBackendResult.status < 300) {
+					opts.store
+						.transition(
+							routeChallengeId,
+							"PAID",
+							"DELIVERED",
+							{ deliveredAt: new Date() },
+							{ actor: "engine", reason: "route_delivered" },
+						)
+						.catch(() => {});
+				}
+
+				const routeExplorerUrl = `${networkConfig.explorerBaseUrl}/tx/${routeTxHash}`;
+				const routeResourceResponse: ResourceResponse = {
+					type: "ResourceResponse",
+					challengeId: routeChallengeId,
+					requestId,
+					routeId,
+					txHash: routeTxHash,
+					explorerUrl: routeExplorerUrl,
+					resource: {
+						status: routeBackendResult.status,
+						...(routeBackendResult.headers !== undefined
+							? { headers: routeBackendResult.headers }
+							: {}),
+						body: routeBackendResult.body,
+					},
+				};
+				return c.json(routeResourceResponse, 200);
 			}
 
 			// Extract planId from PAYMENT-SIGNATURE if not in body

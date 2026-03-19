@@ -1266,6 +1266,36 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 		};
 	}
 
+	test("returns 402 for paid proxyPath plans when template params are provided", async () => {
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config: makePerRequestConfig(), store, seenTxStore });
+
+		const res = await callX402Access(router, {
+			planId: "signal",
+			params: { asset: "BTC" },
+		});
+
+		expect(res.sentStatus).toBe(402);
+		const body = res.sentBody as any;
+		expect(body.challengeId).toBeDefined();
+		expect(body.error).toBe("Payment required");
+	});
+
+	test("returns 400 before challenge creation when a proxyPath template param is missing", async () => {
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config: makePerRequestConfig(), store, seenTxStore });
+
+		const res = await callX402Access(router, { planId: "signal" });
+
+		expect(res.sentStatus).toBe(400);
+		const body = res.sentBody as any;
+		expect(body.code).toBe("TEMPLATE_ERROR");
+		expect(body.message).toContain('Missing param "asset"');
+		expect((await store.listByState("PENDING")).length).toBe(0);
+	});
+
 	test("transitions PAID → REFUND_PENDING when proxy returns non-2xx", async () => {
 		const store = new TestChallengeStore();
 		const seenTxStore = new TestSeenTxStore();
@@ -1283,14 +1313,14 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 				router,
 				{
 					planId: "signal",
-					resource: { method: "GET", path: "/signal/BTC" },
+					params: { asset: "BTC" },
 				},
 				{ "payment-signature": makeFakePaymentSignature() },
 			);
 
 			expect(res.sentStatus).toBe(502);
 			const body = res.sentBody as any;
-			expect(body.error).toBe("PROXY_ERROR");
+			expect(body.code).toBe("PROXY_BACKEND_ERROR");
 
 			// Challenge must have been transitioned to REFUND_PENDING
 			const refundPending = await store.listByState("REFUND_PENDING");
@@ -1315,14 +1345,14 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 				router,
 				{
 					planId: "signal",
-					resource: { method: "GET", path: "/signal/BTC" },
+					params: { asset: "BTC" },
 				},
 				{ "payment-signature": makeFakePaymentSignature() },
 			);
 
 			expect(res.sentStatus).toBe(502);
 			const body = res.sentBody as any;
-			expect(body.error).toBe("PROXY_TIMEOUT");
+			expect(body.code).toBe("PROXY_ERROR");
 
 			// Challenge must have been transitioned to REFUND_PENDING
 			const refundPending = await store.listByState("REFUND_PENDING");

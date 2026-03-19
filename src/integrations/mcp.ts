@@ -238,11 +238,11 @@ export function createMcpServer(
 			].join(" "),
 			inputSchema: accessInputSchema,
 		},
-		async ({ planId, routeId, resourceId, resource: _resource, params }, extra) => {
+		async ({ planId, routeId, resourceId, resource, params }, extra) => {
 			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
 			const fetchResourceFn = resolveConfigFetchResource(config);
 
-			// routeId branch — stub for future full implementation
+			// routeId branch — full standalone gateway flow
 			if (routeId) {
 				const route = (config.routes ?? []).find((r) => r.routeId === routeId);
 				if (!route) {
@@ -251,14 +251,148 @@ export function createMcpServer(
 						content: [{ type: "text" as const, text: `Route "${routeId}" not found` }],
 					};
 				}
+
+				if (!paymentPayload) {
+					return buildPaymentRequiredResult(
+						routeId,
+						resource?.path ?? routeId,
+						config,
+						networkConfig,
+					);
+				}
+
+				if (!fetchResourceFn) {
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: "EMBEDDED_MODE",
+									message:
+										"Routes in embedded mode must be accessed via their route path directly.",
+								}),
+							},
+						],
+					};
+				}
+
+				const resourcePath = resource?.path ?? route.path;
+				const resourceMethod = resource?.method ?? route.method ?? "GET";
+
+				let txHash: `0x${string}`;
+				let settleResponse: import("../types/index.js").X402SettleResponse;
+				let payer: string | undefined;
+				try {
+					const settled = await settlePayment(paymentPayload, config, networkConfig);
+					txHash = settled.txHash;
+					settleResponse = settled.settleResponse;
+					payer = settled.payer;
+				} catch (err) {
+					const code = err instanceof Key0Error ? err.code : "SETTLEMENT_FAILED";
+					const message =
+						err instanceof Key0Error ? err.message : "Payment settlement failed. Please try again.";
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({ error: code, message }),
+							},
+						],
+					};
+				}
+
+				const requestId = deriveRequestId(paymentPayload);
+
+				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
+					requestId,
+					routeId,
+					resourcePath,
+					txHash,
+					payer as `0x${string}` | undefined,
+				);
+
+				await engine.assertPaidState(challengeId);
+
+				let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+				try {
+					backendResult = await fetchResourceFn({
+						method: resourceMethod,
+						path: resourcePath,
+						headers: {},
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId: routeId,
+							amount: route.unitAmount ?? "$0",
+							method: resourceMethod,
+							path: resourcePath,
+							challengeId,
+						},
+					});
+				} catch (err) {
+					const isTimeout = err instanceof Error && err.name === "AbortError";
+					const msg = isTimeout
+						? "Backend timed out. A refund has been initiated."
+						: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
+					await engine.initiateRefund(challengeId, "proxy_timeout").catch(() => {});
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+									message: msg,
+								}),
+							},
+						],
+					};
+				}
+
+				if (backendResult.status >= 400) {
+					const msg = `Backend returned ${backendResult.status}. A refund has been initiated.`;
+					await engine.initiateRefund(challengeId, "backend_non_2xx").catch(() => {});
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({ error: "PROXY_ERROR", message: msg }),
+							},
+						],
+					};
+				}
+
+				await engine.markDelivered(challengeId).catch(() => {});
+
 				return {
-					isError: true as const,
 					content: [
 						{
 							type: "text" as const,
-							text: "Route-based MCP access not yet fully implemented — use /x402/access HTTP endpoint",
+							text: JSON.stringify(
+								{
+									type: "ResourceResponse",
+									challengeId,
+									requestId,
+									routeId,
+									txHash,
+									explorerUrl,
+									resource: {
+										status: backendResult.status,
+										...(backendResult.headers !== undefined
+											? { headers: backendResult.headers }
+											: {}),
+										body: backendResult.body,
+									},
+								},
+								null,
+								2,
+							),
 						},
 					],
+					_meta: { "x402/payment-response": settleResponse },
 				};
 			}
 

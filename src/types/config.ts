@@ -163,6 +163,12 @@ export type SellerConfig = {
 	readonly tokenIssueRetries?: number;
 
 	/**
+	 * Callback for proxying route-based calls to a backend.
+	 * Called after settlement for per-request plans.
+	 * Takes precedence over proxyTo if both are set.
+	 */
+	readonly fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;
+	/**
 	 * Shorthand: proxy route-based calls to a backend URL.
 	 * Builds a fetch callback automatically.
 	 */

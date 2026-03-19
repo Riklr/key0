@@ -346,6 +346,7 @@ function proxyToFetchResource(
 export function resolveConfigFetchResource(
 	config: SellerConfig,
 ): ((params: FetchResourceParams) => Promise<FetchResourceResult>) | undefined {
+	if (config.fetchResource) return config.fetchResource;
 	if (config.proxyTo) return proxyToFetchResource(config.proxyTo);
 	return undefined;
 }
@@ -387,7 +388,7 @@ function resolveFromConfig(opts: PayPerRequestConfig): ResolvedDeps {
  * routes are appended after them.
  *
  * @param plans - The full plans array from SellerConfig.
- * @param registry - Routes registered at runtime via .payPerRequest(planId, { route }).
+ * @param registry - Routes registered at runtime via .payPerRequest(routeId, { route }).
  * @returns Map from planId → deduplicated PlanRouteInfo[].
  */
 export function mergePerRequestRoutes(
