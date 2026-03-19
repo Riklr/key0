@@ -706,10 +706,13 @@ export function key0Router(opts: Key0Config): Key0Router {
 		return res.status(200).json(discoveryResponse);
 	});
 
-	// Auto-mount transparent proxy routes from config.routes
-	for (const route of opts.config.routes ?? []) {
-		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
-		router[method](route.path, createExpressPayPerRequest(route.routeId, pprDeps));
+	// Auto-mount transparent proxy routes from config.routes (standalone gateway mode only).
+	// In embedded mode (no proxyTo), routes are gated via key0.payPerRequest() by the app.
+	if (opts.config.proxyTo) {
+		for (const route of opts.config.routes ?? []) {
+			const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
+			router[method](route.path, createExpressPayPerRequest(route.routeId, pprDeps));
+		}
 	}
 
 	// MCP routes (when mcp: true)
