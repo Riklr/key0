@@ -549,49 +549,55 @@ if (!isConfigured) {
 		cliDownloadsEnabled: CLI_DOWNLOADS_ENABLED,
 	};
 
+	// Pre-compute static onboarding content once at startup
+	const llmsTxtContent = LLMS_ENABLED ? buildLlmsTxt(sellerConfig, onboardingOptions) : null;
+	const skillsMdContent = SKILLS_MD_ENABLED ? buildSkillsMd(sellerConfig, onboardingOptions) : null;
+	const installShContent = INSTALL_SH_ENABLED ? buildInstallScript(sellerConfig) : null;
+
 	const cliManager = CLI_DOWNLOADS_ENABLED
 		? createCliArtifactManager(sellerConfig, resolve("/app/config/cli-cache"))
 		: null;
+
+	// Kick off CLI build once at startup — endpoint is a pure file serve
+	if (cliManager) {
+		cliManager
+			.buildAll()
+			.catch((err) => console.error("[key0] Failed to build CLI artifacts:", err));
+	}
 
 	app.get("/health", (_req, res) => {
 		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });
 	});
 
-	if (LLMS_ENABLED) {
+	if (llmsTxtContent !== null) {
 		app.get("/llms.txt", (_req, res) => {
 			res.type("text/plain; charset=utf-8");
-			res.send(buildLlmsTxt(sellerConfig, onboardingOptions));
+			res.send(llmsTxtContent);
 		});
 	}
 
-	if (SKILLS_MD_ENABLED) {
+	if (skillsMdContent !== null) {
 		app.get("/skills.md", (_req, res) => {
 			res.type("text/markdown; charset=utf-8");
-			res.send(buildSkillsMd(sellerConfig, onboardingOptions));
+			res.send(skillsMdContent);
 		});
 	}
 
-	if (INSTALL_SH_ENABLED) {
+	if (installShContent !== null) {
 		app.get("/install.sh", (_req, res) => {
 			res.type("text/x-shellscript; charset=utf-8");
-			res.send(buildInstallScript(sellerConfig));
+			res.send(installShContent);
 		});
 	}
 
 	if (CLI_DOWNLOADS_ENABLED && cliManager) {
-		app.get("/cli/:target", async (req, res) => {
-			try {
-				const binaryPath = await cliManager.ensureBinary(req.params.target);
-				if (!binaryPath) {
-					return res.status(404).json({ error: `Unsupported CLI target: ${req.params.target}` });
-				}
-
-				res.setHeader("Content-Disposition", `attachment; filename="${cliManager.cliName}"`);
-				return res.sendFile(binaryPath);
-			} catch (err) {
-				console.error("[key0] Failed to prepare CLI artifact:", err);
-				return res.status(500).json({ error: "Failed to prepare CLI binary" });
+		app.get("/cli/:target", (req, res) => {
+			const binaryPath = cliManager.getPath(req.params.target);
+			if (!binaryPath) {
+				return res.status(404).json({ error: `CLI target not available: ${req.params.target}` });
 			}
+			res.setHeader("Content-Disposition", `attachment; filename="${cliManager.cliName}"`);
+			return res.sendFile(binaryPath);
 		});
 	}
 

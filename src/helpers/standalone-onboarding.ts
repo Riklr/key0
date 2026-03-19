@@ -219,37 +219,26 @@ export function createCliArtifactManager(config: SellerConfig, cacheRoot: string
 	const cliName = slugifyCliName(config.agentName);
 	const fingerprint = buildCliFingerprint(config, targets);
 	const outputDir = join(cacheRoot, fingerprint);
-	let buildPromise: Promise<void> | null = null;
 
-	async function ensureBuilt(): Promise<void> {
-		if (buildPromise) return buildPromise;
-		buildPromise = (async () => {
-			mkdirSync(outputDir, { recursive: true });
-			await buildCli({
-				name: cliName,
-				url: normalizeBaseUrl(config.agentUrl),
-				targets,
-				outputDir,
-			});
-		})().finally(() => {
-			buildPromise = null;
+	/** Call once at startup — builds all target binaries into the cache dir. */
+	async function buildAll(): Promise<void> {
+		mkdirSync(outputDir, { recursive: true });
+		await buildCli({
+			name: cliName,
+			url: normalizeBaseUrl(config.agentUrl),
+			targets,
+			outputDir,
 		});
-		return buildPromise;
 	}
 
-	return {
-		cliName,
-		targets,
-		async ensureBinary(target: string): Promise<string | null> {
-			if (!targets.includes(target as (typeof DEFAULT_CLI_TARGETS)[number])) {
-				return null;
-			}
+	/** Sync lookup — returns the cached binary path, or null if not ready or unsupported target. */
+	function getPath(target: string): string | null {
+		// Use the allowlist value (not the raw user input) for path construction
+		const safeTarget = targets.find((t) => t === target);
+		if (!safeTarget) return null;
+		const filePath = join(outputDir, `${cliName}-${safeTarget.replace(/^bun-/, "")}`);
+		return existsSync(filePath) ? filePath : null;
+	}
 
-			const filePath = join(outputDir, `${cliName}-${target.replace(/^bun-/, "")}`);
-			if (!existsSync(filePath)) {
-				await ensureBuilt();
-			}
-			return existsSync(filePath) ? filePath : null;
-		},
-	};
+	return { cliName, targets, buildAll, getPath };
 }
