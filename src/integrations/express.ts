@@ -160,7 +160,11 @@ export function key0Router(opts: Key0Config): Key0Router {
 				if (routeId !== undefined) {
 					const route = (opts.config.routes ?? []).find((r) => r.routeId === routeId);
 					if (!route) {
-						return res.status(404).json({ type: "Error", code: "ROUTE_NOT_FOUND", error: `Route "${routeId}" not found` });
+						return res.status(404).json({
+							type: "Error",
+							code: "ROUTE_NOT_FOUND",
+							error: `Route "${routeId}" not found`,
+						});
 					}
 
 					const routePaymentSig = req.headers["payment-signature"] as string | undefined;
@@ -304,8 +308,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 
 					// Forward headers (strip hop-by-hop and body headers for no-body methods)
 					const noBodyMethod =
-						resource.method.toUpperCase() === "GET" ||
-						resource.method.toUpperCase() === "HEAD";
+						resource.method.toUpperCase() === "GET" || resource.method.toUpperCase() === "HEAD";
 					const skipRouteHeaders = new Set([
 						"host",
 						"connection",
@@ -321,7 +324,11 @@ export function key0Router(opts: Key0Config): Key0Router {
 					}
 
 					// Proxy to backend
-					let routeBackendResult: { status: number; headers?: Record<string, string>; body: unknown };
+					let routeBackendResult: {
+						status: number;
+						headers?: Record<string, string>;
+						body: unknown;
+					};
 					try {
 						routeBackendResult = await fetchResourceFn({
 							paymentInfo: {

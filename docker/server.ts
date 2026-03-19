@@ -64,7 +64,7 @@ const earlyPlans: Array<{ mode?: string }> = (() => {
 		if (process.env.PLANS) return JSON.parse(process.env.PLANS);
 	} catch {}
 	return [];
-})()
+})();
 const hasSubscriptionPlans =
 	earlyPlans.length === 0 || earlyPlans.some((p) => !p.mode || p.mode === "subscription");
 const isConfigured = Boolean(
@@ -375,8 +375,7 @@ if (!isConfigured) {
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
-	const RPC_URL_OVERRIDE =
-		process.env.ALCHEMY_BASE_SEPOLIA_RPC_URL || process.env.RPC_URL_OVERRIDE;
+	const RPC_URL_OVERRIDE = process.env.ALCHEMY_BASE_SEPOLIA_RPC_URL || process.env.RPC_URL_OVERRIDE;
 	const MCP_ENABLED = process.env.MCP_ENABLED === "true";
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
