@@ -11,48 +11,66 @@
 import { describe, expect, test } from "bun:test";
 import { BACKEND_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeState } from "../helpers/storage-client.ts";
+import { readChallengeState, transitionChallengeState } from "../helpers/storage-client.ts";
 
 describe("Token Issuance Failure", () => {
 	test("challenge stays in PAID state when backend /issue-token returns 500", async () => {
 		const client = makeClientE2eClient();
 		const requestId = crypto.randomUUID();
+		let challengeId: string | null = null;
 
-		// Step 1: Request access
-		const { challengeId, paymentRequired } = await client.requestAccess({
-			planId: DEFAULT_TIER_ID,
-			requestId,
-		});
+		try {
+			// Step 1: Request access
+			const { challengeId: createdChallengeId, paymentRequired } = await client.requestAccess({
+				planId: DEFAULT_TIER_ID,
+				requestId,
+			});
+			challengeId = createdChallengeId;
 
-		// Step 2: Sign EIP-3009
-		const requirements = paymentRequired.accepts[0]!;
-		const auth = await client.signEIP3009({
-			destination: requirements.payTo as `0x${string}`,
-			amountRaw: BigInt(requirements.amount),
-		});
+			// Step 2: Sign EIP-3009
+			const requirements = paymentRequired.accepts[0]!;
+			const auth = await client.signEIP3009({
+				destination: requirements.payTo as `0x${string}`,
+				amountRaw: BigInt(requirements.amount),
+			});
 
-		// Mark ONLY this challenge to fail token issuance (one-shot, no global side effects)
-		const failRes = await fetch(`${BACKEND_URL}/test/fail-for-challenge`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ challengeId }),
-		});
-		expect(failRes.status).toBe(204);
+			// Mark ONLY this challenge to fail token issuance (one-shot, no global side effects)
+			const failRes = await fetch(`${BACKEND_URL}/test/fail-for-challenge`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ challengeId }),
+			});
+			expect(failRes.status).toBe(204);
 
-		// Step 3: Submit payment — gas wallet settles, but backend returns 500
-		// Key0 should return an error response (HTTP 500)
-		const result = await client.submitPayment({
-			planId: DEFAULT_TIER_ID,
-			requestId,
-			auth,
-			paymentRequired,
-		});
+			// Step 3: Submit payment — gas wallet settles, but backend returns 500
+			// Key0 should return an error response (HTTP 500)
+			const result = await client.submitPayment({
+				planId: DEFAULT_TIER_ID,
+				requestId,
+				auth,
+				paymentRequired,
+			});
 
-		expect(result.status).toBe(500);
-		expect(result.error).toBeDefined();
+			expect(result.status).toBe(500);
+			expect(result.error).toBeDefined();
 
-		// Critical invariant: challenge must be in PAID state (not DELIVERED, not PENDING)
-		const state = await readChallengeState(challengeId);
-		expect(state).toBe("PAID");
+			// Critical invariant: challenge must be in PAID state (not DELIVERED, not PENDING)
+			const state = await readChallengeState(challengeId);
+			expect(state).toBe("PAID");
+		} finally {
+			if (challengeId) {
+				// Cleanup: close the PAID record deterministically instead of waiting
+				// for the refund cron to race later tests on the shared gas wallet.
+				const cleaned = await transitionChallengeState(challengeId, "PAID", "REFUND_FAILED");
+				expect(cleaned).toBeTrue();
+
+				const clearRes = await fetch(`${BACKEND_URL}/test/clear-fail-for-challenge`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ challengeId }),
+				});
+				expect(clearRes.status).toBe(204);
+			}
+		}
 	}, 120_000);
 });
