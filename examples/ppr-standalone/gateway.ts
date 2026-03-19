@@ -149,13 +149,13 @@ const key0 = key0Router({
 	seenTxStore,
 });
 
-// Mount Key0 — serves agent card, /discovery, and /x402/access.
+// Mount Key0 — serves agent card, /discover, and /x402/access.
 app.use(key0);
 
 app.listen(GATEWAY_PORT, () => {
 	console.log(`\nWeather API Gateway (Key0) running on ${PUBLIC_URL}`);
 	console.log(`  Agent card:    ${PUBLIC_URL}/.well-known/agent.json`);
-	console.log(`  Discovery:     GET ${PUBLIC_URL}/discovery`);
+	console.log(`  Discovery:     GET ${PUBLIC_URL}/discover`);
 	console.log(`  x402 endpoint: POST ${PUBLIC_URL}/x402/access`);
 	console.log(`\n  Subscription flow (pay once, call backend directly):`);
 	console.log(`    POST ${PUBLIC_URL}/x402/access  { planId: "basic" }`);

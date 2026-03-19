@@ -85,7 +85,7 @@ async function main() {
 	// Step 2: Call discover-plans to get available plans
 	// -----------------------------------------------------------------------
 	console.log("2. Discovering plans...");
-	const discoveryRes = await fetch(`${SELLER_URL}/discovery`);
+	const discoveryRes = await fetch(`${SELLER_URL}/discover`);
 
 	if (discoveryRes.status !== 200) {
 		console.error(`   Expected HTTP 200 for discovery, got ${discoveryRes.status}`);

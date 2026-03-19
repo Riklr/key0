@@ -25,8 +25,8 @@ describe("Invalid Plan", () => {
 		expect(body["code"]).toBe("TIER_NOT_FOUND");
 	});
 
-	test("missing planId returns 400 pointing to GET /discovery", async () => {
-		// POST /x402/access with no planId returns 400 — clients should use GET /discovery instead
+	test("missing planId returns 400 pointing to GET /discover", async () => {
+		// POST /x402/access with no planId returns 400 — clients should use GET /discover instead
 		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },

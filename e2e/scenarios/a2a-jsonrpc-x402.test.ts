@@ -6,7 +6,7 @@
  *   - No header → x402 HTTP flow (discovery / challenge / settle)
  *
  * Three-case flow (x402 HTTP):
- *   1. POST /x402/access (no planId)                         → 400 (use GET /discovery)
+ *   1. POST /x402/access (no planId)                         → 400 (use GET /discover)
  *   2. POST /x402/access + { planId } (no PAYMENT-SIGNATURE) → 402 Challenge
  *   3. POST /x402/access + { planId } + PAYMENT-SIGNATURE    → settle → 200 AccessGrant
  *
@@ -22,7 +22,7 @@ import type { AccessGrant } from "../helpers/client.ts";
 const X402_URL = `${KEY0_URL}/x402/access`;
 
 describe("Unified /x402/access endpoint", () => {
-	test("POST /x402/access with no planId returns 400 pointing to GET /discovery", async () => {
+	test("POST /x402/access with no planId returns 400 pointing to GET /discover", async () => {
 		const res = await fetch(X402_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },

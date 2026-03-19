@@ -69,7 +69,7 @@ const key0 = key0Router({
 	seenTxStore,
 });
 
-// Mount Key0 — serves agent card, /discovery, and /x402/access
+// Mount Key0 — serves agent card, /discover, and /x402/access
 app.use(key0);
 
 // ── Gated route: GET /api/weather/:city ─────────────────────────────────────
@@ -127,7 +127,7 @@ app.get(
 app.listen(PORT, () => {
 	console.log(`\nPay-Per-Request Demo (Embedded) running on ${PUBLIC_URL}`);
 	console.log(`  Agent card:    ${PUBLIC_URL}/.well-known/agent.json`);
-	console.log(`  Discovery:     GET ${PUBLIC_URL}/discovery`);
+	console.log(`  Discovery:     GET ${PUBLIC_URL}/discover`);
 	console.log(`  x402 endpoint: ${PUBLIC_URL}/x402/access`);
 	console.log(`  Weather API:   GET ${PUBLIC_URL}/api/weather/:city`);
 	console.log(`  Joke API:      GET ${PUBLIC_URL}/api/joke`);

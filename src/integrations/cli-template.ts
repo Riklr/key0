@@ -1,0 +1,292 @@
+import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+// These constants are replaced by buildCli() at build time.
+// When running tests, they have placeholder values.
+export const CLI_NAME = "__CLI_NAME__";
+export const CLI_URL = "__CLI_URL__";
+
+export type ParsedArgs =
+	| { command: "discover" }
+	| { command: "request"; plan: string; resource?: string; paymentSignature?: string }
+	| { command: "help" }
+	| { command: "version" }
+	| { command: "install" }
+	| { command: "error"; message: string };
+
+export interface CliResult {
+	exitCode: number;
+	output: Record<string, unknown>;
+}
+
+export async function runDiscover(baseUrl: string): Promise<CliResult> {
+	let response: Response;
+	try {
+		response = await fetch(`${baseUrl}/discover`, {
+			method: "GET",
+			headers: { Accept: "application/json" },
+			signal: AbortSignal.timeout(10_000),
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		return { exitCode: 1, output: { error: msg, code: "NETWORK_ERROR" } };
+	}
+
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return {
+			exitCode: 1,
+			output: { error: "Response was not valid JSON", code: "INVALID_RESPONSE" },
+		};
+	}
+
+	if (!response.ok) {
+		return { exitCode: 1, output: body as Record<string, unknown> };
+	}
+
+	return { exitCode: 0, output: body as Record<string, unknown> };
+}
+
+export async function runRequest(
+	baseUrl: string,
+	plan: string,
+	resource?: string,
+	paymentSignature?: string,
+): Promise<CliResult> {
+	const bodyObj: Record<string, unknown> = { planId: plan };
+	if (resource !== undefined) {
+		bodyObj["resourceId"] = resource;
+	}
+
+	const headers: Record<string, string> = { "Content-Type": "application/json" };
+	if (paymentSignature !== undefined) {
+		headers["payment-signature"] = paymentSignature;
+	}
+
+	let response: Response;
+	try {
+		response = await fetch(`${baseUrl}/x402/access`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(bodyObj),
+			signal: AbortSignal.timeout(10_000),
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		return { exitCode: 1, output: { error: msg, code: "NETWORK_ERROR" } };
+	}
+
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return {
+			exitCode: 1,
+			output: { error: "Response was not valid JSON", code: "INVALID_RESPONSE" },
+		};
+	}
+
+	if (response.status === 402) {
+		return { exitCode: 42, output: body as Record<string, unknown> };
+	}
+
+	if (response.status === 200) {
+		return { exitCode: 0, output: body as Record<string, unknown> };
+	}
+
+	return { exitCode: 1, output: body as Record<string, unknown> };
+}
+
+export async function runInstall(
+	binaryName: string,
+	opts?: {
+		localBinDir?: string;
+		systemBinDir?: string;
+		platform?: string;
+		isRoot?: boolean;
+		pathEnv?: string;
+		execPath?: string;
+	},
+): Promise<CliResult> {
+	const platform = opts?.platform ?? process.platform;
+	if (platform === "win32") {
+		return {
+			exitCode: 1,
+			output: { error: "Windows is not supported", code: "UNSUPPORTED_PLATFORM" },
+		};
+	}
+
+	const isRoot = opts?.isRoot ?? process.getuid?.() === 0;
+	const srcPath = opts?.execPath ?? process.execPath;
+	const localBinDir = opts?.localBinDir ?? join(homedir(), ".local", "bin");
+	const systemBinDir = opts?.systemBinDir ?? "/usr/local/bin";
+	const pathEnv = opts?.pathEnv ?? process.env["PATH"] ?? "";
+
+	function tryInstall(dir: string): string | null {
+		try {
+			mkdirSync(dir, { recursive: true });
+			const dest = join(dir, binaryName);
+			copyFileSync(srcPath, dest);
+			chmodSync(dest, 0o755);
+			return dest;
+		} catch {
+			return null;
+		}
+	}
+
+	let installed: string | null = null;
+	let usedLocalBin = false;
+
+	if (!isRoot) {
+		installed = tryInstall(localBinDir);
+		if (installed !== null) usedLocalBin = true;
+	}
+
+	if (installed === null) {
+		installed = tryInstall(systemBinDir);
+	}
+
+	if (installed === null) {
+		return {
+			exitCode: 1,
+			output: {
+				error: `Permission denied. Try: sudo ./${binaryName} --install`,
+				code: "PERMISSION_DENIED",
+			},
+		};
+	}
+
+	const installDir = usedLocalBin ? localBinDir : systemBinDir;
+	const inPath = pathEnv.split(":").includes(installDir);
+	const output: Record<string, unknown> = { installed, inPath };
+
+	if (usedLocalBin) {
+		// `addToPath` uses the actual installDir so the hint is accurate
+		// even when localBinDir is overridden via opts
+		output["addToPath"] = `export PATH="${installDir}:$PATH"`;
+	}
+
+	return { exitCode: 0, output };
+}
+
+export async function runMain(args: string[], name: string, url: string): Promise<CliResult> {
+	const parsed = parseCli(args);
+
+	switch (parsed.command) {
+		case "help":
+			return {
+				exitCode: 0,
+				output: {
+					name,
+					url,
+					commands: {
+						discover: "List available plans (GET /discover)",
+						request: "Request access or submit payment (POST /x402/access)",
+					},
+					flags: {
+						"--plan": "Plan ID (required for request)",
+						"--resource": "Resource ID (optional, defaults to 'default')",
+						"--payment-signature": "Base64-encoded x402 payment payload from payments-mcp",
+						"--install": "Install this binary to PATH (~/.local/bin or /usr/local/bin)",
+					},
+				},
+			};
+
+		case "version":
+			return {
+				exitCode: 0,
+				output: { name, version: "1.0.0", url },
+			};
+
+		case "error":
+			return {
+				exitCode: 1,
+				output: { error: parsed.message, code: "INVALID_REQUEST" },
+			};
+
+		case "discover":
+			return runDiscover(url);
+
+		case "request":
+			return runRequest(url, parsed.plan, parsed.resource, parsed.paymentSignature);
+
+		case "install":
+			return runInstall(name);
+	}
+}
+
+// Binary entry point — only runs in compiled binary (not during tests)
+const IS_MAIN = typeof process !== "undefined" && CLI_NAME !== "__CLI_NAME__";
+
+if (IS_MAIN) {
+	const args = process.argv.slice(2);
+	runMain(args, CLI_NAME, CLI_URL).then((result) => {
+		const stream =
+			result.exitCode === 0 || result.exitCode === 42 ? process.stdout : process.stderr;
+		stream.write(`${JSON.stringify(result.output, null, 2)}\n`);
+		process.exit(result.exitCode);
+	});
+}
+
+export function parseCli(args: string[]): ParsedArgs {
+	if (args.length === 0) {
+		return { command: "help" };
+	}
+
+	const first = args[0];
+
+	if (first === "--help" || first === "-h") {
+		return { command: "help" };
+	}
+
+	if (first === "--version" || first === "-v") {
+		return { command: "version" };
+	}
+
+	if (first === "--install") {
+		return { command: "install" };
+	}
+
+	if (first === "discover") {
+		return { command: "discover" };
+	}
+
+	if (first === "request") {
+		const rest = args.slice(1);
+		let plan: string | undefined;
+		let resource: string | undefined;
+		let paymentSignature: string | undefined;
+
+		for (let i = 0; i < rest.length; i++) {
+			const flag = rest[i];
+			const value = rest[i + 1];
+
+			if (flag === "--plan") {
+				plan = value;
+				if (value !== undefined) i++;
+			} else if (flag === "--resource") {
+				resource = value;
+				if (value !== undefined) i++;
+			} else if (flag === "--payment-signature") {
+				paymentSignature = value;
+				if (value !== undefined) i++;
+			}
+		}
+
+		if (plan === undefined) {
+			return { command: "error", message: "Missing required flag: --plan" };
+		}
+
+		return {
+			command: "request" as const,
+			plan,
+			...(resource !== undefined && { resource }),
+			...(paymentSignature !== undefined && { paymentSignature }),
+		};
+	}
+
+	return { command: "error", message: `Unknown command: "${first}"` };
+}

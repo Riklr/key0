@@ -2,7 +2,7 @@
  * Client agent demonstrating the full Key0 x402 payment flow on Base Sepolia testnet:
  *
  *   1. Discover the seller's agent card
- *   2. Discover available plans (GET /discovery → 200)
+ *   2. Discover available plans (GET /discover → 200)
  *   3. Request a challenge    (POST /x402/access with { planId } → 402 Challenge)
  *   4. Sign EIP-3009 authorization off-chain
  *   5. Submit payment         (POST /x402/access with { planId } + PAYMENT-SIGNATURE → 200 Grant)
@@ -182,10 +182,10 @@ async function main() {
 	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 2: Discover available plans via GET /discovery
+	// Step 2: Discover available plans via GET /discover
 	// -----------------------------------------------------------------------
 	console.log("2. Discovering plans...");
-	const discoveryRes = await fetch(`${SELLER_URL}/discovery`);
+	const discoveryRes = await fetch(`${SELLER_URL}/discover`);
 
 	if (discoveryRes.status !== 200) {
 		console.error(`   Expected HTTP 200 for discovery, got ${discoveryRes.status}`);
