@@ -14,8 +14,8 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	// Additional per-request skills are appended below for each gated route.
 	const skills: AgentSkill[] = [
 		{
-			id: "discover-plans",
-			name: "Discover plans",
+			id: "discover",
+			name: "Discover",
 			description: [
 				`Browse available plans and pricing for ${config.agentName}.`,
 				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
