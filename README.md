@@ -121,6 +121,33 @@ app.use(
 app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 ```
 
+For per-request billing (no JWT, inline settlement per call), use `payPerRequest` middleware:
+
+```ts
+const key0 = key0Router({
+  config: {
+    walletAddress: "0xYourWalletAddress" as `0x${string}`,
+    network: "testnet",
+    routes: [{ routeId: "weather", method: "GET" as const, path: "/api/weather/:city", unitAmount: "$0.01" }],
+  },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
+app.use(key0);
+
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather"),
+  (req, res) => {
+    const payment = req.key0Payment; // { txHash: "0x...", amount: "$0.01", ... }
+    res.json({ city: req.params.city, temp: 72, txHash: payment?.txHash });
+  },
+);
+```
+
+For Hono and Fastify variants, see [Embedded Quickstart](https://docs.key0.ai/quickstart/embedded).
+
 Continue with:
 
 - [Quickstart: Embedded](https://docs.key0.ai/quickstart/embedded)
