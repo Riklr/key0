@@ -156,6 +156,35 @@ Continue with:
 - [Fastify integration](https://docs.key0.ai/integrations/fastify)
 - [SellerConfig reference](https://docs.key0.ai/sdk-reference/seller-config)
 
+## Settlement
+
+Two strategies for settling USDC payments on-chain:
+
+### Facilitator (default)
+
+Coinbase CDP submits an EIP-3009 `transferWithAuthorization` on your behalf. No ETH required in your wallet.
+
+```bash
+CDP_API_KEY_ID=your-key-id
+CDP_API_KEY_SECRET=your-key-secret
+```
+
+### Gas Wallet
+
+Self-contained — no external service. The wallet signs and broadcasts the transfer directly. Must hold ETH on Base for gas fees.
+
+```bash
+# Standalone (env var)
+GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
+```
+
+```ts
+// Embedded (SellerConfig)
+config: { gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` }
+```
+
+See [Environment variables](https://docs.key0.ai/deployment/environment-variables) for the full list of settlement options.
+
 ## How It Works
 
 1. The agent discovers your service and pricing through `GET /discover`, A2A, or MCP.
