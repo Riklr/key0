@@ -26,4 +26,3 @@ export function findCatalogRoute(
 ): RouteCatalogEntry | undefined {
 	return listCatalogRoutes(config).find((route) => route.routeId === routeId);
 }
-

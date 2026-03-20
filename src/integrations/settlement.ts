@@ -8,7 +8,6 @@ import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
 	Plan,
-	Route,
 	SellerConfig,
 	X402PaymentPayload,
 	X402PaymentRequiredResponse,

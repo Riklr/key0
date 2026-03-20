@@ -1,7 +1,7 @@
 import type { Message, Task } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
-import { findCatalogRoute, listCatalogRoutes, type ChallengeEngine } from "./core/index.js";
+import { type ChallengeEngine, findCatalogRoute, listCatalogRoutes } from "./core/index.js";
 import { resolveConfigFetchResource } from "./integrations/pay-per-request.js";
 import { settlePayment } from "./integrations/settlement.js";
 import type {
@@ -423,8 +423,7 @@ export class Key0Executor implements AgentExecutor {
 			throw err;
 		}
 
-		// 5. Determine plan mode and deployment mode
-		const plan = (this.config.plans ?? []).find((p) => p.planId === planId);
+		// 5. Determine deployment mode
 		const route = findCatalogRoute(this.config, planId);
 		const fetchResourceFn = resolveConfigFetchResource(this.config);
 

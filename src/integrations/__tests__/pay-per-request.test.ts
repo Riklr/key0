@@ -1,27 +1,36 @@
 import { describe, expect, it } from "bun:test";
-import { TestSeenTxStore } from "../../test-utils/stores.js";
 import { makeSellerConfig } from "../../test-utils/index.js";
+import { TestSeenTxStore } from "../../test-utils/stores.js";
 import { key0PayPerRequest, resolveConfigFetchResource } from "../pay-per-request.js";
 
 describe("resolveConfigFetchResource", () => {
 	it("returns undefined when neither fetchResource nor proxyTo is configured", () => {
 		const config = makeSellerConfig({
-			routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
 		});
 		expect(resolveConfigFetchResource(config)).toBeUndefined();
 	});
 
 	it("builds a proxy fetcher from proxyTo", async () => {
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = ((async () =>
+		globalThis.fetch = (async () =>
 			new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: { "content-type": "application/json" },
-			})) as unknown) as typeof fetch;
+			})) as unknown as typeof fetch;
 
 		try {
 			const config = makeSellerConfig({
-				routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+				routes: [
+					{
+						routeId: "weather",
+						method: "GET",
+						path: "/api/weather/:city",
+						unitAmount: "$0.01",
+					},
+				],
 				proxyTo: { baseUrl: "https://backend.example.com" },
 			});
 			const fetchResource = resolveConfigFetchResource(config);
@@ -55,7 +64,9 @@ describe("key0PayPerRequest", () => {
 		const config = makeSellerConfig({
 			plans: [],
 			fetchResourceCredentials: undefined as unknown as never,
-			routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
 		});
 		const middleware = key0PayPerRequest({
 			routeId: "weather",
@@ -100,7 +111,9 @@ describe("key0PayPerRequest", () => {
 		const config = makeSellerConfig({
 			plans: [],
 			fetchResourceCredentials: undefined as unknown as never,
-			routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
 		});
 
 		expect(() =>

@@ -115,7 +115,9 @@ export class ChallengeEngine {
 		return route;
 	}
 
-	private resolveChargeTarget(req: AccessRequest):
+	private resolveChargeTarget(
+		req: AccessRequest,
+	):
 		| { kind: "plan"; id: string; amount: string; description: string }
 		| { kind: "route"; id: string; amount: string; description: string } {
 		if (req.planId && req.routeId) {

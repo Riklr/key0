@@ -117,9 +117,7 @@ export function validateSellerConfig(config: SellerConfig): void {
 			}
 			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
 			if (planIds.has(route.routeId)) {
-				throw new Error(
-					`route "${route.routeId}": routeId must not overlap an existing planId`,
-				);
+				throw new Error(`route "${route.routeId}": routeId must not overlap an existing planId`);
 			}
 			routeIds.add(route.routeId);
 		}

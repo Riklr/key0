@@ -5,8 +5,6 @@ export type { TokenClaims, TokenResult } from "./access-token.js";
 export { AccessTokenIssuer } from "./access-token.js";
 // Agent Card
 export { buildAgentCard } from "./agent-card.js";
-export type { RouteCatalogEntry } from "./route-catalog.js";
-export { findCatalogRoute, listCatalogRoutes } from "./route-catalog.js";
 export type { ChallengeEngineConfig } from "./challenge-engine.js";
 // Challenge Engine
 export { ChallengeEngine } from "./challenge-engine.js";
@@ -15,6 +13,8 @@ export { validateSellerConfig } from "./config-validation.js";
 export type { RefundConfig, RefundResult } from "./refund.js";
 // Refund Utility
 export { processRefunds, retryFailedRefunds } from "./refund.js";
+export type { RouteCatalogEntry } from "./route-catalog.js";
+export { findCatalogRoute, listCatalogRoutes } from "./route-catalog.js";
 export type { PostgresStoreConfig } from "./storage/postgres.js";
 // Storage — Postgres
 export {

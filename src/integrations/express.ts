@@ -150,7 +150,6 @@ export function key0Router(opts: Key0Config): Key0Router {
 				let { planId, resourceId = "default" } = body;
 				let { requestId } = body;
 				const { routeId } = body as { routeId?: string };
-				const params = (body as { params?: Record<string, string> }).params ?? {};
 				const resource = body.resource as
 					| { method: string; path: string; body?: unknown }
 					| undefined;
