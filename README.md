@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/key0ai/key0)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-key0.ai-blue)](https://docs.key0.ai/introduction/overview)
 
-key0 is an open-source commerce layer for AI agents and APIs. It lets agents discover pricing, pay in USDC on Base, and access protected services through HTTP x402, A2A, and MCP.
+key0 is an open-source commerce layer for AI agents and APIs. It lets agents discover pricing, pay in USDC on Base, and access protected services through HTTP x402, A2A, and MCP. It also generates `llms.txt`, `skills.md`, and related agent-facing surfaces to make it easier for agents to discover and interact with your offerings.
 
 For integration, deployment, protocol, and API reference docs, see [docs.key0.ai](https://docs.key0.ai/introduction/overview).
 
@@ -16,7 +16,8 @@ For integration, deployment, protocol, and API reference docs, see [docs.key0.ai
 - Sell subscription plans or per-request routes to agents.
 - Run as embedded middleware or as a standalone Docker gateway.
 - Keep your existing API and credential model.
-- Support agent-native discovery through x402, A2A, and MCP.
+- Generate agent-facing discovery artifacts like `llms.txt` and `skills.md`.
+- Support agent-native discovery and access through x402, A2A, MCP, and CLI workflows.
 - Refund automatically when payment succeeds but delivery fails.
 
 ## Choose a Mode
@@ -46,6 +47,8 @@ docker compose -f docker/docker-compose.yml --profile full up
 ```
 
 Standalone mode exposes the payment endpoints and generates the buyer onboarding bundle from your config, including `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`, optional `/.well-known/mcp.json`, `/llms.txt`, and `/skills.md`.
+
+That gives agents multiple standard ways to discover and interact with your service out of the box: HTTP x402, A2A, MCP, generated onboarding files, and CLI distribution flows.
 
 Continue with:
 
@@ -120,6 +123,7 @@ Protocol details:
 - [A2A flow](https://docs.key0.ai/protocol/a2a-flow)
 - [MCP protocol](https://docs.key0.ai/protocol/mcp)
 - [Core concepts](https://docs.key0.ai/introduction/core-concepts)
+- [Agent CLI](https://docs.key0.ai/guides/agent-cli)
 
 ## What To Read Next
 
