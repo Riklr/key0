@@ -50,6 +50,25 @@ Standalone mode exposes the payment endpoints and generates the buyer onboarding
 
 That gives agents multiple standard ways to discover and interact with your service out of the box: HTTP x402, A2A, MCP, generated onboarding files, and CLI distribution flows.
 
+After on-chain payment is verified, key0 POSTs to `ISSUE_TOKEN_API`:
+
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "challengeId": "7f3b2c1d-...",
+  "resourceId": "basic",
+  "planId": "basic",
+  "txHash": "0xabc123...",
+  "unitAmount": "$0.10"
+}
+```
+
+`unitAmount` is merged from the matching plan. Any extra fields you add to a plan are included automatically. Return any credential shape — key0 passes the response to the client as-is:
+
+```json
+{ "token": "eyJ...", "expiresAt": "2027-01-01T00:00:00Z" }
+```
+
 Continue with:
 
 - [Quickstart: Standalone](https://docs.key0.ai/quickstart/standalone)
