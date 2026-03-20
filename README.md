@@ -7,7 +7,7 @@
 
 key0 is an open-source commerce layer for AI agents and APIs. It lets agents discover pricing, pay in USDC on Base, and access protected services through HTTP x402, A2A, and MCP.
 
-This README is intentionally short. Detailed integration, deployment, protocol, and API reference docs live in Mintlify at [docs.key0.ai](https://docs.key0.ai/introduction/overview).
+For integration, deployment, protocol, and API reference docs, see [docs.key0.ai](https://docs.key0.ai/introduction/overview).
 
 [Docs](https://docs.key0.ai/introduction/overview) · [Standalone Quickstart](https://docs.key0.ai/quickstart/standalone) · [Embedded Quickstart](https://docs.key0.ai/quickstart/embedded) · [Examples](#examples)
 
