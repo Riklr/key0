@@ -13,6 +13,8 @@ export { validateSellerConfig } from "./config-validation.js";
 export type { RefundConfig, RefundResult } from "./refund.js";
 // Refund Utility
 export { processRefunds, retryFailedRefunds } from "./refund.js";
+export type { RouteCatalogEntry } from "./route-catalog.js";
+export { findCatalogRoute, listCatalogRoutes } from "./route-catalog.js";
 export type { PostgresStoreConfig } from "./storage/postgres.js";
 // Storage — Postgres
 export {

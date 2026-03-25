@@ -91,6 +91,8 @@ describe("MCP 'discover' tool", () => {
 		expect(parsed.plans[0]?.planId).toBe("pro");
 		expect(parsed.routes).toHaveLength(1);
 		expect(parsed.routes[0]?.routeId).toBe("weather");
+		expect(parsed.routes[0]?.description).toContain("Call GET /weather directly");
+		expect(parsed.routes[0]?.description).toContain("402 first");
 	});
 
 	it("returns empty routes array when no routes configured", async () => {
@@ -122,6 +124,19 @@ describe("MCP 'discover' tool", () => {
 });
 
 describe("MCP 'access' tool — planId (subscription flow)", () => {
+	it("uses plan-purchase wording in tool metadata", () => {
+		const server = createMcpServer(makeEngine(), makeSellerConfig());
+		const tools = (
+			server as unknown as {
+				_registeredTools: Record<string, { title?: string; description?: string }>;
+			}
+		)._registeredTools;
+		const accessTool = tools["access"]!;
+		expect(accessTool.title).toBe("Purchase Plan");
+		expect(accessTool.description).toContain("Buy subscription access");
+		expect(accessTool.description).toContain("call the route directly");
+	});
+
 	it("returns x402 PaymentRequired (isError: true) when called without payment", async () => {
 		const config = makeSellerConfig({ plans: [{ planId: "single", unitAmount: "$0.10" }] });
 		const server = createMcpServer(makeEngine(), config);
@@ -175,6 +190,29 @@ describe("MCP 'access' tool — routeId (per-request flow)", () => {
 
 		// Route-based access returns isError (either 402 payment challenge or stub)
 		expect(result.isError).toBe(true);
+	});
+
+	it("emits route-shaped payment instructions for route access", async () => {
+		const config = makeSellerConfig({
+			plans: [],
+			routes: [{ routeId: "weather", method: "GET", path: "/weather", unitAmount: "$0.01" }],
+			proxyTo: { baseUrl: "http://localhost:9999" },
+		});
+		const server = createMcpServer(
+			makeEngine({ plans: [], routes: config.routes, proxyTo: config.proxyTo }),
+			config,
+		);
+
+		const result = (await callTool(server, "access", {
+			routeId: "weather",
+			resource: { method: "GET", path: "/weather" },
+		})) as { isError: boolean; content: Array<{ type: string; text: string }> };
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(result.content[0]?.text ?? "{}");
+		expect(parsed.paymentInstructions).toContain('"routeId":"weather"');
+		expect(parsed.paymentInstructions).toContain('"resource":{"method":"GET","path":"/weather"}');
+		expect(parsed.paymentInstructions).not.toContain('"planId":"weather"');
 	});
 
 	it("returns error for unknown routeId", async () => {
