@@ -91,6 +91,8 @@ describe("MCP 'discover' tool", () => {
 		expect(parsed.plans[0]?.planId).toBe("pro");
 		expect(parsed.routes).toHaveLength(1);
 		expect(parsed.routes[0]?.routeId).toBe("weather");
+		expect(parsed.routes[0]?.description).toContain("Call GET /weather directly");
+		expect(parsed.routes[0]?.description).toContain("402 first");
 	});
 
 	it("returns empty routes array when no routes configured", async () => {
@@ -122,6 +124,19 @@ describe("MCP 'discover' tool", () => {
 });
 
 describe("MCP 'access' tool — planId (subscription flow)", () => {
+	it("uses plan-purchase wording in tool metadata", () => {
+		const server = createMcpServer(makeEngine(), makeSellerConfig());
+		const tools = (
+			server as unknown as {
+				_registeredTools: Record<string, { title?: string; description?: string }>;
+			}
+		)._registeredTools;
+		const accessTool = tools["access"]!;
+		expect(accessTool.title).toBe("Purchase Plan");
+		expect(accessTool.description).toContain("Buy subscription access");
+		expect(accessTool.description).toContain("call the route directly");
+	});
+
 	it("returns x402 PaymentRequired (isError: true) when called without payment", async () => {
 		const config = makeSellerConfig({ plans: [{ planId: "single", unitAmount: "$0.10" }] });
 		const server = createMcpServer(makeEngine(), config);

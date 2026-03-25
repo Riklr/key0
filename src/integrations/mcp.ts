@@ -26,7 +26,9 @@ import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
 function buildPaymentRequiredResult(
-	target: { kind: "plan"; id: string; resourceId: string } | { kind: "route"; id: string; path: string },
+	target:
+		| { kind: "plan"; id: string; resourceId: string }
+		| { kind: "route"; id: string; path: string },
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
 ) {
@@ -60,18 +62,31 @@ function buildPaymentRequiredResult(
 		content: [
 			{
 				type: "text" as const,
-					text: JSON.stringify(
-						{
-							...structuredContent,
-							x402PaymentUrl,
-							paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body=${requestBody}, and pass the accepts array as paymentRequirements.`,
-						},
-						null,
-						2,
+				text: JSON.stringify(
+					{
+						...structuredContent,
+						x402PaymentUrl,
+						paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body=${requestBody}, and pass the accepts array as paymentRequirements.`,
+					},
+					null,
+					2,
 				),
 			},
 		],
 	};
+}
+
+function describeRouteForAgents(route: {
+	routeId: string;
+	method: string;
+	path: string;
+	unitAmount?: string;
+	description?: string;
+}) {
+	const routeBehavior = route.unitAmount
+		? `Call ${route.method} ${route.path} directly; paid routes return 402 first, then the backend response after payment.`
+		: `Call ${route.method} ${route.path} directly; this route is free and returns the backend response immediately.`;
+	return route.description ? `${route.description} ${routeBehavior}` : routeBehavior;
 }
 
 /** Minimal Zod schema for X402PaymentPayload — validates required fields at the boundary. */
@@ -169,8 +184,8 @@ export function createMcpServer(
 	server.registerTool(
 		"discover",
 		{
-			title: "Discover Plans",
-			description: `Discover available plans and routes for ${config.agentName}. Returns the catalog with plan IDs, prices (USDC), routes, wallet address, and chain ID needed for payment.`,
+			title: "Discover Catalog",
+			description: `Discover subscription plans and direct-call routes for ${config.agentName}. Returns the catalog with plan IDs, prices (USDC), route calling guidance, wallet address, and chain ID needed for payment.`,
 		},
 		async () => {
 			return {
@@ -190,7 +205,7 @@ export function createMcpServer(
 									method: r.method,
 									path: r.path,
 									...(r.unitAmount ? { unitAmount: r.unitAmount } : {}),
-									description: r.description,
+									description: describeRouteForAgents(r),
 								})),
 								walletAddress: config.walletAddress,
 								chainId: networkConfig.chainId,
@@ -230,12 +245,12 @@ export function createMcpServer(
 	server.registerTool(
 		"access",
 		{
-			title: "Request Access",
+			title: "Purchase Plan",
 			description: [
-				`Purchase access to a ${config.agentName} plan or route.`,
+				`Buy subscription access to a ${config.agentName} plan.`,
 				"This tool is x402 payment-gated.",
-				"For plan-based access: call without payment to get requirements, then re-call with x402 payment to receive an access token.",
-				"For route-based access: provide routeId instead of planId.",
+				"Use this tool for plan-based access only: call without payment to get requirements, then re-call with x402 payment to receive an access token.",
+				"For route-based access, call the route directly; paid routes return 402 first.",
 				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
 				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with either {planId, resourceId} for plan access or {routeId, resource} for route access.",
 				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
@@ -474,12 +489,12 @@ export function createMcpServer(
 					}
 
 					// Settlement / payment errors — return PaymentRequired with error reason
-						if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
-							const failResult = buildPaymentRequiredResult(
-								{ kind: "plan", id: effectivePlanId, resourceId },
-								config,
-								networkConfig,
-							);
+					if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
+						const failResult = buildPaymentRequiredResult(
+							{ kind: "plan", id: effectivePlanId, resourceId },
+							config,
+							networkConfig,
+						);
 						const failContent = {
 							...(failResult.structuredContent as Record<string, unknown>),
 							error: err.message,

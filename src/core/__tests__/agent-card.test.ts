@@ -90,8 +90,8 @@ describe("buildAgentCard", () => {
 		const skill = card.skills[1]!;
 
 		expect(skill.id).toBe("access");
-		expect(skill.name).toBe("Access");
-		expect(skill.description).toContain("Purchase access");
+		expect(skill.name).toBe("Purchase Plan");
+		expect(skill.description).toContain("Buy subscription access");
 		expect(skill.description).toContain("x402 payment");
 		expect(skill.tags).toContain("payment");
 		expect(skill.tags).toContain("x402");
@@ -220,6 +220,10 @@ describe("per-route skills from config.routes", () => {
 		const routeSkill = card.skills.find((s) => s.id.startsWith("ppr-weather"));
 		expect(routeSkill).toBeDefined();
 		expect(routeSkill?.description).toContain("weather");
+		expect(routeSkill?.description).toContain(
+			"Call GET https://agent.example.com/api/weather/:city directly",
+		);
+		expect(routeSkill?.description).toContain("402 challenge first");
 		expect(routeSkill?.examples?.some((ex) => ex.includes("/api/weather/<city>"))).toBe(true);
 	});
 

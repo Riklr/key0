@@ -2,6 +2,21 @@ import type { AgentCard, AgentExtension, AgentSkill, SellerConfig } from "../typ
 import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
 import { listCatalogRoutes } from "./route-catalog.js";
 
+function describeRouteForAgents(
+	baseUrl: string,
+	route: {
+		method: string;
+		path: string;
+		unitAmount?: string;
+		description?: string;
+	},
+): string {
+	const routeBehavior = route.unitAmount
+		? `Call ${route.method} ${baseUrl}${route.path} directly; paid routes return a 402 challenge first, then the backend response after payment.`
+		: `Call ${route.method} ${baseUrl}${route.path} directly; this route is free and returns the backend response immediately.`;
+	return route.description ? `${route.description} ${routeBehavior}` : routeBehavior;
+}
+
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];
 	const networkName =
@@ -25,9 +40,9 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		},
 		{
 			id: "access",
-			name: "Access",
+			name: "Purchase Plan",
 			description: [
-				`Purchase access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
+				`Buy subscription access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
 				`Step 1: GET ${baseUrl}/discover to list available plans.`,
 				`Step 2: POST ${baseUrl}/x402/access with { planId, requestId } — server returns 402 with payment requirements.`,
 				`Step 3: Pay USDC on-chain, then retry the same POST with PAYMENT-SIGNATURE header to receive the access token.`,
@@ -73,11 +88,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		skills.push({
 			id: skillId,
 			name: `${route.method} ${route.path}`,
-			description:
-				route.description ??
-				(route.unitAmount
-					? `Pay-per-call route: ${route.unitAmount} USDC per request. Call ${route.method} ${baseUrl}${route.path} directly; Key0 returns a 402 first, then the backend response after payment.`
-					: `Free endpoint: call ${route.method} ${baseUrl}${route.path} directly.`),
+			description: describeRouteForAgents(baseUrl, route),
 			tags: route.unitAmount ? ["pay-per-call", "x402"] : ["free"],
 			examples: routeExamples,
 		});

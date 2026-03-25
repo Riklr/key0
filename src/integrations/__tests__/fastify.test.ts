@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import Fastify from "fastify";
 import {
-	makeSellerConfig,
 	MockPaymentAdapter,
+	makeSellerConfig,
 	TestChallengeStore,
 	TestSeenTxStore,
 } from "../../test-utils/index.js";
@@ -13,7 +13,9 @@ describe("createKey0Fastify", () => {
 		const key0 = createKey0Fastify({
 			config: makeSellerConfig({
 				plans: [],
-				routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+				routes: [
+					{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+				],
 			}),
 			store: new TestChallengeStore(),
 			seenTxStore: new TestSeenTxStore(),
